@@ -4,6 +4,6 @@ package server
 
 // server управляет HTTP сервером для Swagger UI.
 type server struct {
-	listenerID uint64
-	specBytes  []byte
+	serverID  uint64
+	specBytes []byte
 }

@@ -12,47 +12,6 @@ import (
 	"strings"
 )
 
-// getGitCommitHash получает хеш текущего коммита напрямую из файлов .git.
-func getGitCommitHash(gitDir string) (commitHash string, err error) {
-
-	return getGitCommitFromFiles(gitDir)
-}
-
-// getGitCommitFromFiles получает хеш коммита напрямую из файлов .git.
-func getGitCommitFromFiles(gitDir string) (commit string, err error) {
-
-	// Читаем HEAD
-	headPath := filepath.Join(gitDir, "HEAD")
-	var headContent []byte
-	if headContent, err = os.ReadFile(headPath); err != nil {
-		return "", fmt.Errorf("failed to read HEAD: %w", err)
-	}
-
-	headStr := strings.TrimSpace(string(headContent))
-
-	// Если HEAD указывает на ветку (ref: refs/heads/master)
-	if strings.HasPrefix(headStr, "ref: ") {
-		refPath := strings.TrimPrefix(headStr, "ref: ")
-		refPath = strings.TrimSpace(refPath)
-		commitPath := filepath.Join(gitDir, refPath)
-		var commitBytes []byte
-		if commitBytes, err = os.ReadFile(commitPath); err != nil {
-			// Если файл не существует, это пустой репозиторий
-			// Возвращаем пустую строку как маркер пустого репозитория
-			if os.IsNotExist(err) {
-				return "", nil
-			}
-			return "", fmt.Errorf("failed to read ref %s: %w", refPath, err)
-		}
-		commit = strings.TrimSpace(string(commitBytes))
-		return commit, nil
-	}
-
-	// Если HEAD указывает напрямую на коммит (detached HEAD)
-	commit = headStr
-	return commit, nil
-}
-
 // trackedFile представляет отслеживаемый файл с его hash из Git индекса.
 type trackedFile struct {
 	path string

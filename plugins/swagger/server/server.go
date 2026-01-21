@@ -30,15 +30,24 @@ func Serve(addr string, swaggerDoc types.Object) (err error) {
 
 	slog.Info(i18n.Msg("starting swagger server"), slog.String("addr", addr))
 
-	var serverID uint64
-	if serverID, err = http.ListenAndServe(addr, mux); err != nil {
+	slog.Info(i18n.Msg("swagger server started successfully"), slog.String("addr", addr))
+
+	// Открываем браузер с URL сервера
+	browserURL := AddressToURL(addr)
+	if err = OpenBrowser(browserURL); err != nil {
+		slog.Warn(i18n.Msg("failed to open browser"),
+			slog.String("url", browserURL),
+			slog.String("error", err.Error()),
+		)
+		// Не возвращаем ошибку, так как это не критично
+	} else {
+		slog.Info(i18n.Msg("browser opened successfully"), slog.String("url", browserURL))
+	}
+
+	if s.serverID, err = http.ListenAndServe(addr, mux); err != nil {
 		slog.Error(i18n.Msg("failed to start swagger server"), slog.String("addr", addr), slog.Any("error", err))
 		return fmt.Errorf("%s: %w", i18n.Msg("failed to start server"), err)
 	}
-
-	s.listenerID = serverID
-
-	slog.Info(i18n.Msg("swagger server started successfully"), slog.String("addr", addr))
 
 	return
 }

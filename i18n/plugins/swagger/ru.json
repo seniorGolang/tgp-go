@@ -26,5 +26,12 @@
   "failed to set url in response": "не удалось установить url в ответе",
   "starting swagger server": "запуск swagger сервера",
   "failed to start swagger server": "не удалось запустить swagger сервер",
-  "swagger server started successfully": "swagger сервер успешно запущен"
+  "swagger server started successfully": "swagger сервер успешно запущен",
+  "panic in openBrowser": "паника в openBrowser",
+  "failed to open browser": "не удалось открыть браузер",
+  "browser opened successfully": "браузер успешно открыт",
+  "failed to open browser with any command": "не удалось открыть браузер ни одной командой",
+  "failed to open browser: no commands available": "не удалось открыть браузер: нет доступных команд",
+  "failed to start browser command": "не удалось запустить команду браузера",
+  "browser command failed": "команда браузера завершилась с ошибкой"
 }

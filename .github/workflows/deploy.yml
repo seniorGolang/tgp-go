@@ -57,6 +57,12 @@ jobs:
       - name: Install dependencies
         run: apk add --no-cache jq
 
+      - name: Update version in internal/version.go
+        env:
+          VERSION: ${{ needs.detect_plugins.outputs.version }}
+        run: |
+          sed -i "s/var Version = \".*\"/var Version = \"$VERSION\"/" internal/version.go
+
       - name: Build plugin
         env:
           PLUGIN_DIR: ${{ matrix.plugin }}

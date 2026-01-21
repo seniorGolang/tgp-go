@@ -19,7 +19,7 @@ func (r *ClientRenderer) RenderClientMetrics() error {
 	srcFile.ImportName(PackagePrometheus, "prometheus")
 	srcFile.ImportName(PackagePrometheusAuto, "promauto")
 	srcFile.ImportName(PackageOS, "os")
-	// VersionTg определен в version.go, который генерируется в том же пакете
+	// VersionASTg определен в version.go, который генерируется в том же пакете
 
 	srcFile.Line().Type().Id("Metrics").Struct(
 		Id("VersionGauge").Op("*").Qual(PackagePrometheus, "GaugeVec"),
@@ -64,7 +64,7 @@ func (r *ClientRenderer) RenderClientMetrics() error {
 				}),
 			), Index().String().Values(Lit("service"), Lit("method"), Lit("success"), Lit("errCode"))),
 		})
-		bg.Id("m").Dot("VersionGauge").Dot("WithLabelValues").Call(Lit("tg"), Id("VersionTg"), Id("hostname")).Dot("Set").Call(Lit(1))
+		bg.Id("m").Dot("VersionGauge").Dot("WithLabelValues").Call(Lit("astg"), Id("VersionASTg"), Id("hostname")).Dot("Set").Call(Lit(1))
 		bg.Return(Id("m"))
 	})
 

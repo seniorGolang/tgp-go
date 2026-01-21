@@ -47,7 +47,7 @@ func (r *contractRenderer) RenderTrace() error {
 				bg.Var().Id("span").Qual(PackageTrace, "Span")
 				bg.List(Id(VarNameCtx), Id("span")).Op("=").
 					Qual(PackageOTEL, "Tracer").
-					Call(Qual(PackageFmt, "Sprintf").Call(Lit("tg:%s"), Id("VersionTg"))).Dot("Start").Call(Id(VarNameCtx), Lit(r.methodFullName(method)))
+					Call(Qual(PackageFmt, "Sprintf").Call(Lit("astg:%s"), Id("VersionASTg"))).Dot("Start").Call(Id(VarNameCtx), Lit(r.methodFullName(method)))
 				bg.Defer().Func().Params().Block(
 					Id("span").Dot("RecordError").Call(Err()),
 					Id("span").Dot("End").Call(),

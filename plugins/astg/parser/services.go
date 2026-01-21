@@ -169,7 +169,7 @@ func findContractsInMainFile(file *ast.File, filePath string, project *model.Pro
 
 	transportAliases := make(map[string]bool)
 	for alias, impPath := range importAliases {
-		if hasVersionTgConstant(impPath, project, loader) {
+		if hasVersionASTgConstant(impPath, project, loader) {
 			transportAliases[alias] = true
 		}
 	}
@@ -280,7 +280,7 @@ func isServiceMain(file *ast.File, mainFunc *ast.FuncDecl, project *model.Projec
 			alias = parts[len(parts)-1]
 		}
 
-		if hasVersionTgConstant(impPath, project, loader) {
+		if hasVersionASTgConstant(impPath, project, loader) {
 			transportAliases[alias] = impPath
 		}
 	}
@@ -385,10 +385,10 @@ func checkContractRegistration(node ast.Node, contractNames map[string]bool, tra
 	return
 }
 
-// hasVersionTgConstant проверяет наличие константы VersionTg в пакете.
-func hasVersionTgConstant(pkgPath string, project *model.Project, loader *AutonomousPackageLoader) (hasVersion bool) {
+// hasVersionASTgConstant проверяет наличие константы VersionASTg в пакете.
+func hasVersionASTgConstant(pkgPath string, project *model.Project, loader *AutonomousPackageLoader) (hasVersion bool) {
 
-	hasVersion = loader.HasVersionTgConstant(pkgPath)
+	hasVersion = loader.HasVersionASTgConstant(pkgPath)
 	return
 }
 

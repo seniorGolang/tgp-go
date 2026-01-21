@@ -102,7 +102,7 @@ func (r *transportRenderer) newMetricsFunc() Code {
 					Index().String().Values(Lit("part"), Lit("version"), Lit("hostname")),
 				),
 			})
-			bg.Id("m").Dot("VersionGauge").Dot("WithLabelValues").Call(Lit("tg"), Id("VersionTg"), Id("hostname")).Dot("Set").Call(Lit(1))
+			bg.Id("m").Dot("VersionGauge").Dot("WithLabelValues").Call(Lit("astg"), Id("VersionASTg"), Id("hostname")).Dot("Set").Call(Lit(1))
 			bg.Return(Id("m"))
 		})
 }

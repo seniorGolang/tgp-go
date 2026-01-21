@@ -14,7 +14,7 @@ func (r *ClientRenderer) RenderVersion() error {
 	srcFile := NewSrcFile(filepath.Base(outDir))
 	srcFile.PackageComment(DoNotEdit)
 
-	srcFile.Const().Id("VersionTg").Op("=").Lit(r.project.Version)
+	srcFile.Const().Id("VersionASTg").Op("=").Lit(r.project.Version)
 
 	return srcFile.Save(path.Join(outDir, "version.go"))
 }

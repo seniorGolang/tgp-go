@@ -11,39 +11,39 @@ import (
 	"strings"
 )
 
-// HasVersionTgConstant проверяет наличие константы VersionTg в пакете с кэшированием.
-func (l *AutonomousPackageLoader) HasVersionTgConstant(pkgPath string) (hasVersionTg bool) {
+// HasVersionASTgConstant проверяет наличие константы VersionASTg в пакете с кэшированием.
+func (l *AutonomousPackageLoader) HasVersionASTgConstant(pkgPath string) (hasVersionASTg bool) {
 
-	l.versionTgCacheMu.RLock()
+	l.versionASTgCacheMu.RLock()
 	var cached bool
 	var ok bool
-	if cached, ok = l.versionTgCache[pkgPath]; ok {
-		l.versionTgCacheMu.RUnlock()
-		hasVersionTg = cached
+	if cached, ok = l.versionASTgCache[pkgPath]; ok {
+		l.versionASTgCacheMu.RUnlock()
+		hasVersionASTg = cached
 		return
 	}
-	l.versionTgCacheMu.RUnlock()
+	l.versionASTgCacheMu.RUnlock()
 
 	var pkgDir string
 	var err error
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
-		l.versionTgCacheMu.Lock()
-		l.versionTgCache[pkgPath] = false
-		l.versionTgCacheMu.Unlock()
+		l.versionASTgCacheMu.Lock()
+		l.versionASTgCache[pkgPath] = false
+		l.versionASTgCacheMu.Unlock()
 		return
 	}
 
-	hasVersionTg = l.checkVersionTgInDir(pkgDir)
+	hasVersionASTg = l.checkVersionASTgInDir(pkgDir)
 
-	l.versionTgCacheMu.Lock()
-	l.versionTgCache[pkgPath] = hasVersionTg
-	l.versionTgCacheMu.Unlock()
+	l.versionASTgCacheMu.Lock()
+	l.versionASTgCache[pkgPath] = hasVersionASTg
+	l.versionASTgCacheMu.Unlock()
 
 	return
 }
 
-// checkVersionTgInDir проверяет наличие константы VersionTg в директории пакета.
-func (l *AutonomousPackageLoader) checkVersionTgInDir(pkgDir string) (hasVersionTg bool) {
+// checkVersionASTgInDir проверяет наличие константы VersionASTg в директории пакета.
+func (l *AutonomousPackageLoader) checkVersionASTgInDir(pkgDir string) (hasVersionASTg bool) {
 
 	var entries []os.DirEntry
 	var err error
@@ -76,8 +76,8 @@ func (l *AutonomousPackageLoader) checkVersionTgInDir(pkgDir string) (hasVersion
 					var valueSpec *ast.ValueSpec
 					if valueSpec, ok = spec.(*ast.ValueSpec); ok {
 						for _, name := range valueSpec.Names {
-							if name.Name == "VersionTg" {
-								hasVersionTg = true
+							if name.Name == "VersionASTg" {
+								hasVersionASTg = true
 								return
 							}
 						}

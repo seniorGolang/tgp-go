@@ -14,14 +14,14 @@ import (
 
 // AutonomousPackageLoader загружает пакеты автономно без go list.
 type AutonomousPackageLoader struct {
-	modulePath       string
-	modFile          *modfile.File
-	resolver         *PackageResolver
-	cache            map[string]*PackageInfo
-	versionTgCache   map[string]bool
-	versionTgCacheMu sync.RWMutex
-	fset             *token.FileSet
-	mu               sync.RWMutex
+	modulePath         string
+	modFile            *modfile.File
+	resolver           *PackageResolver
+	cache              map[string]*PackageInfo
+	versionASTgCache   map[string]bool
+	versionASTgCacheMu sync.RWMutex
+	fset               *token.FileSet
+	mu                 sync.RWMutex
 
 	loadPackageStats   map[string]*loadPackageStat
 	loadPackageStatsMu sync.RWMutex
@@ -45,7 +45,7 @@ func NewAutonomousPackageLoader(modFile *modfile.File) (loader *AutonomousPackag
 		modFile:          modFile,
 		resolver:         resolver,
 		cache:            make(map[string]*PackageInfo),
-		versionTgCache:   make(map[string]bool),
+		versionASTgCache: make(map[string]bool),
 		fset:             token.NewFileSet(),
 		loadPackageStats: make(map[string]*loadPackageStat),
 	}

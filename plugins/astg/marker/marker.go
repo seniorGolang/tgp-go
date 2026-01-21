@@ -10,68 +10,45 @@ import (
 	"strings"
 )
 
-const (
-	// MarkerVersion версия формата маркера.
-	MarkerVersion = "v1"
-)
-
 // ComputeMarker вычисляет маркер состояния проекта.
 // Маркер - это SHA256 hash, который уникально идентифицирует состояние всех релевантных файлов проекта.
 // rootDir - корневая директория проекта (обычно internal.ProjectRoot).
 func ComputeMarker(rootDir string) (marker string, err error) {
 
-	// Проверяем, что это Git репозиторий
-	var gitDir string
-	if gitDir, err = findGitDir(rootDir); err != nil {
-		return "", fmt.Errorf("not a git repository: %w", err)
-	}
-
-	// 1. Получить текущий коммит (может быть пустым для пустого репозитория)
-	var commitHash string
-	if commitHash, err = getGitCommitHash(gitDir); err != nil {
-		return "", fmt.Errorf("failed to get git commit: %w", err)
-	}
-	// Если коммит пустой (пустой репозиторий), используем специальное значение
-	if commitHash == "" {
-		commitHash = "empty-repository"
-	}
-
-	// 2. Получить hash отслеживаемых .go файлов
+	// 1. Получить hash отслеживаемых .go файлов
 	var trackedHash string
 	if trackedHash, err = computeTrackedFilesHash(rootDir); err != nil {
 		return "", fmt.Errorf("failed to compute tracked files hash: %w", err)
 	}
 
-	// 3. Получить hash измененных файлов
+	// 2. Получить hash измененных файлов
 	var modifiedHash string
 	if modifiedHash, err = computeModifiedFilesHash(rootDir); err != nil {
 		return "", fmt.Errorf("failed to compute modified files hash: %w", err)
 	}
 
-	// 4. Получить hash неотслеживаемых .go файлов
+	// 3. Получить hash неотслеживаемых .go файлов
 	var untrackedHash string
 	if untrackedHash, err = computeUntrackedFilesHash(rootDir); err != nil {
 		return "", fmt.Errorf("failed to compute untracked files hash: %w", err)
 	}
 
-	// 5. Получить hash списка удаленных файлов
+	// 4. Получить hash списка удаленных файлов
 	var deletedHash string
 	if deletedHash, err = computeDeletedFilesHash(rootDir); err != nil {
 		return "", fmt.Errorf("failed to compute deleted files hash: %w", err)
 	}
 
-	// 6. Собрать финальный маркер
-	marker = computeFinalMarker(commitHash, trackedHash, modifiedHash, untrackedHash, deletedHash)
+	// 5. Собрать финальный маркер
+	marker = computeFinalMarker(trackedHash, modifiedHash, untrackedHash, deletedHash)
 
 	return marker, nil
 }
 
 // computeFinalMarker вычисляет финальный маркер из всех компонентов.
-func computeFinalMarker(commitHash string, trackedHash string, modifiedHash string, untrackedHash string, deletedHash string) (marker string) {
+func computeFinalMarker(trackedHash string, modifiedHash string, untrackedHash string, deletedHash string) (marker string) {
 
 	components := []string{
-		MarkerVersion,
-		commitHash,
 		trackedHash,
 		modifiedHash,
 		untrackedHash,

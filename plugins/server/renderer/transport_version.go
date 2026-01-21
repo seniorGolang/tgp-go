@@ -15,8 +15,7 @@ func (r *transportRenderer) RenderTransportVersion() error {
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
 	srcFile.PackageComment(DoNotEdit)
 
-	// Версия берется из эталона transport_optimize
-	srcFile.Const().Id("VersionTg").Op("=").Lit("v2.4.0")
+	srcFile.Const().Id("VersionASTg").Op("=").Lit(r.project.Version)
 
 	return srcFile.Save(versionPath)
 }

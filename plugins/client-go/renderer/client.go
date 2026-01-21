@@ -40,9 +40,9 @@ func (r *ClientRenderer) RenderClient() error {
 			bg.Var().Id("name").String()
 			bg.List(Id("hostname"), Id("err")).Op(":=").Qual(PackageOS, "Hostname").Call()
 			bg.If(Id("err").Op("==").Nil().Op("&&").Id("hostname").Op("!=").Lit("")).Block(
-				Id("name").Op("=").Id("hostname").Op("+").Lit("_tg_").Op("+").Lit(r.project.Version),
+				Id("name").Op("=").Id("hostname").Op("+").Lit("_astg_go_").Op("+").Lit(r.project.Version),
 			).Else().Block(
-				Id("name").Op("=").Lit("tg_").Op("+").Lit(r.project.Version),
+				Id("name").Op("=").Lit("astg_go_").Op("+").Lit(r.project.Version),
 			)
 			bg.Id("defaultTransport").Op(":=").Op("&").Qual(PackageHttp, "Transport").Values(Dict{
 				Id("DisableKeepAlives"):     False(),

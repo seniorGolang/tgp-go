@@ -116,15 +116,20 @@ func (p *ClientTsPlugin) Info() (info plugin.Info, err error) {
 				Description: i18n.Msg("Generate TypeScript client"),
 				Options: []plugin.Option{
 					{
+						Name:        "contracts-dir",
+						Type:        "string",
+						Description: i18n.Msg("Path to contracts folder (relative to rootDir)"),
+						Required:    false,
+						Default:     "contracts",
+					},
+					{
 						Name:        "out",
-						Short:       "o",
 						Type:        "string",
 						Description: i18n.Msg("Path to output directory"),
 						Required:    true,
 					},
 					{
 						Name:        "contracts",
-						Short:       "c",
 						Type:        "string",
 						Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")"),
 						Required:    false,

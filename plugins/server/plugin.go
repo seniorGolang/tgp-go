@@ -3,7 +3,6 @@ package main
 import (
 	_ "embed"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 
@@ -37,11 +36,7 @@ func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...str
 		return nil, errors.New(i18n.Msg("out option is required and must be a string"))
 	}
 
-	// Получаем список интерфейсов для фильтрации
-	var ifaces []string
-	if ifaces, err = helper.ParseStringList(request, "ifaces"); err != nil {
-		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse ifaces"), err)
-	}
+	// project уже отфильтрован по contracts в плагине astg (зависимость)
 
 	// Очищаем старые сгенерированные файлы перед новой генерацией
 	if err = cleanup.CleanupGeneratedFiles(output); err != nil {
@@ -49,18 +44,15 @@ func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...str
 		// Не возвращаем ошибку, так как очистка не критична
 	}
 
-	// Определяем значение для вывода ifaces
-	ifacesDisplay := "all"
-	if len(ifaces) > 0 {
-		ifacesDisplay = strings.Join(ifaces, ", ")
+	contractNames := make([]string, 0, len(project.Contracts))
+	for _, c := range project.Contracts {
+		contractNames = append(contractNames, c.Name)
 	}
-
-	// Генерируем транспортные файлы
 	slog.Info(i18n.Msg("generating transport files"),
 		slog.String("output", output),
-		slog.String("ifaces", ifacesDisplay),
+		slog.String("contracts", strings.Join(contractNames, ", ")),
 	)
-	if err = generator.GenerateTransportFiles(project, output, ifaces...); err != nil {
+	if err = generator.GenerateTransportFiles(project, output); err != nil {
 		slog.Error(i18n.Msg("failed to generate transport files"),
 			slog.String("output", output),
 			slog.String("error", err.Error()),
@@ -68,22 +60,8 @@ func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...str
 		return
 	}
 
-	// Генерируем сервер для каждого контракта
+	// Генерируем сервер для каждого контракта (project.Contracts уже отфильтрован в astg)
 	for _, contract := range project.Contracts {
-		// Проверяем фильтры
-		if len(ifaces) > 0 {
-			found := false
-			for _, ifaceName := range ifaces {
-				if contract.Name == ifaceName || contract.ID == ifaceName {
-					found = true
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-
 		// Генерируем сервер для контракта (без логирования - детали в generator)
 		if err = generator.GenerateServer(project, contract.ID, output); err != nil {
 			slog.Error(i18n.Msg("failed to generate server"),
@@ -123,8 +101,7 @@ func (p *ServerPlugin) Info() (info plugin.Info, err error) {
 				Description: i18n.Msg("Generate server code"),
 				Options: []plugin.Option{
 					{
-						Name:        "contracts",
-						Short:       "c",
+						Name:        "contracts-dir",
 						Type:        "string",
 						Description: i18n.Msg("Path to contracts folder (relative to rootDir)"),
 						Required:    false,
@@ -138,9 +115,9 @@ func (p *ServerPlugin) Info() (info plugin.Info, err error) {
 						Required:    true,
 					},
 					{
-						Name:        "ifaces",
+						Name:        "contracts",
 						Type:        "string",
-						Description: i18n.Msg("Comma-separated list of interfaces for filtering (e.g., \"Contract1,Contract2\")"),
+						Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")"),
 						Required:    false,
 					},
 				},

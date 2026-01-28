@@ -105,8 +105,14 @@ func (p *SwaggerPlugin) Info() (info plugin.Info, err error) {
 				Description: i18n.Msg("Generate Swagger/OpenAPI documentation"),
 				Options: []plugin.Option{
 					{
+						Name:        "contracts-dir",
+						Type:        "string",
+						Description: i18n.Msg("Path to contracts folder (relative to rootDir)"),
+						Required:    false,
+						Default:     "contracts",
+					},
+					{
 						Name:        "out",
-						Short:       "o",
 						Type:        "string",
 						Description: i18n.Msg("Path to output file (.json and .yaml/.yml supported)"),
 						Required:    false,

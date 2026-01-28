@@ -37,18 +37,7 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 		slog.String("plugin", "astg"),
 	))
 
-	// Создаем Response и копируем все данные из request
-	response = data.NewStorage()
-	if request != nil {
-		if storageMap, ok := request.(*data.MapStorage); ok {
-			// Копируем map напрямую
-			responseMap := response.(*data.MapStorage)
-			*responseMap = make(data.MapStorage, len(*storageMap))
-			for k, raw := range *storageMap {
-				(*responseMap)[k] = raw
-			}
-		}
-	}
+	response = request
 
 	// Если project уже есть в request, не пересоздаем его
 	if request != nil && request.Has("project") {
@@ -56,33 +45,24 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 		return
 	}
 
-	// Получаем contracts из request или используем значение по умолчанию
-	contractsDir := "contracts"
-	var contractsStr string
-	if contractsStr, err = data.Get[string](request, "contracts"); err == nil && contractsStr != "" {
-		contractsDir = contractsStr
+	// Получаем contracts-dir из request или используем значение по умолчанию
+	contractsDir := "./contracts"
+	var contractsDirStr string
+	if contractsDirStr, err = data.Get[string](request, "contracts-dir"); err == nil && contractsDirStr != "" {
+		contractsDir = contractsDirStr
 	}
 
-	// Получаем список интерфейсов для фильтрации
-	var ifaces []string
-	var ifacesStr string
-	if ifacesStr, err = data.Get[string](request, "ifaces"); err == nil && ifacesStr != "" {
-		parts := strings.FieldsFunc(ifacesStr, func(r rune) bool {
-			return r == ',' || r == ' ' || r == '\t'
-		})
-		ifaces = make([]string, 0, len(parts))
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				ifaces = append(ifaces, part)
-			}
-		}
+	// Получаем список контрактов для фильтрации
+	var contractsFilter []string
+	if contractsFilter, err = helper.ParseStringList(request, "contracts"); err != nil {
+		err = fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
+		return
 	}
 
-	// Определяем значение для вывода ifaces
-	ifacesDisplay := "all"
-	if len(ifaces) > 0 {
-		ifacesDisplay = strings.Join(ifaces, ", ")
+	// Определяем значение для вывода contracts
+	contractsDisplay := "all"
+	if len(contractsFilter) > 0 {
+		contractsDisplay = strings.Join(contractsFilter, ", ")
 	}
 
 	// Получаем опцию no-cache
@@ -90,7 +70,7 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 
 	slog.Info(i18n.Msg("analyzing project"),
 		slog.String("contractsDir", contractsDir),
-		slog.String("ifaces", ifacesDisplay),
+		slog.String("contracts", contractsDisplay),
 		slog.String("version", internal.Version),
 		slog.Bool("no-cache", noCache),
 	)
@@ -121,7 +101,6 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 		// Выполняем парсинг проекта (всегда собираем все контракты, игнорируя ifaces)
 		if project, err = parser.CollectWithExcludeDirs(internal.Version, contractsDir, nil); err != nil {
 			err = fmt.Errorf("%s: %w", i18n.Msg("failed to collect project"), err)
-			response = nil
 			return
 		}
 
@@ -150,13 +129,12 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 		}
 	}
 
-	// Применяем фильтрацию по ifaces после загрузки проекта (из кэша или после парсинга)
+	// Применяем фильтрацию по contracts после загрузки проекта (из кэша или после парсинга)
 	// Фильтрация применяется к копии проекта, чтобы не изменять данные в кэше
-	if len(ifaces) > 0 {
+	if len(contractsFilter) > 0 {
 		var filteredContracts []*model.Contract
-		if filteredContracts, err = helper.FilterContractsByInterfaces(project, ifaces); err != nil {
-			err = fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts by interfaces"), err)
-			response = nil
+		if filteredContracts, err = helper.FilterContractsByInterfaces(project, contractsFilter); err != nil {
+			err = fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts"), err)
 			return
 		}
 		// Создаем копию проекта с отфильтрованными контрактами
@@ -211,7 +189,6 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 	// Добавляем project в response
 	if err = response.Set("project", project); err != nil {
 		err = fmt.Errorf("%s: %w", i18n.Msg("failed to set project in response"), err)
-		response = nil
 		return
 	}
 

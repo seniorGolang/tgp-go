@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -11,7 +11,6 @@ import (
 	"tgp/internal/model"
 )
 
-// jsonrpcClientMethodFunc генерирует метод для JSON-RPC вызова
 func (r *ClientRenderer) jsonrpcClientMethodFunc(ctx context.Context, contract *model.Contract, method *model.Method, outDir string) Code {
 
 	return Func().
@@ -19,7 +18,7 @@ func (r *ClientRenderer) jsonrpcClientMethodFunc(ctx context.Context, contract *
 		Id(method.Name).
 		Params(r.funcDefinitionParams(ctx, method.Args)).Params(r.funcDefinitionParams(ctx, method.Results)).BlockFunc(func(bg *Group) {
 
-		if r.HasMetrics() && contract.Annotations.IsSet(TagMetrics) {
+		if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 			bg.Line().Defer().Func().Params(Id("_begin").Qual(PackageTime, "Time")).Block(
 				If(Id("cli").Dot("metrics").Op("==").Nil()).Block(
 					Return(),
@@ -103,7 +102,7 @@ func (r *ClientRenderer) jsonrpcClientMethodFunc(ctx context.Context, contract *
 		)
 		resp := Id("_response")
 		resultsWithoutErr := r.resultsWithoutError(method)
-		if len(resultsWithoutErr) == 1 && method.Annotations.IsSet(TagHttpEnableInlineSingle) {
+		if len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpEnableInlineSingle) {
 			resp = Id("_response").Dot(ToCamel(resultsWithoutErr[0].Name))
 		}
 		jsonPkg := r.getPackageJSON(contract)
@@ -137,7 +136,6 @@ func (r *ClientRenderer) jsonrpcClientMethodFunc(ctx context.Context, contract *
 	})
 }
 
-// jsonrpcClientRequestFunc генерирует функцию для создания JSON-RPC запроса с callback
 func (r *ClientRenderer) jsonrpcClientRequestFunc(ctx context.Context, contract *model.Contract, method *model.Method, outDir string) Code {
 
 	return Func().Params(Id("cli").Op("*").Id("Client"+contract.Name)).
@@ -164,7 +162,7 @@ func (r *ClientRenderer) jsonrpcClientRequestFunc(ctx context.Context, contract 
 		})
 		resp := Id("_response")
 		resultsWithoutErr := r.resultsWithoutError(method)
-		if len(resultsWithoutErr) == 1 && method.Annotations.IsSet(TagHttpEnableInlineSingle) {
+		if len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpEnableInlineSingle) {
 			resp = Id("_response").Dot(ToCamel(resultsWithoutErr[0].Name))
 		}
 		jsonPkg := r.getPackageJSON(contract)

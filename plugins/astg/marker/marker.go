@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package marker
 
 import (
@@ -10,30 +10,23 @@ import (
 	"strings"
 )
 
-// ComputeMarker вычисляет маркер состояния проекта.
-// Маркер - это SHA256 hash, который уникально идентифицирует состояние всех релевантных файлов проекта.
-// rootDir - корневая директория проекта (обычно internal.ProjectRoot).
 func ComputeMarker(rootDir string) (marker string, err error) {
 
-	// 1. Получить hash отслеживаемых .go файлов
 	var trackedHash string
 	if trackedHash, err = computeTrackedFilesHash(rootDir); err != nil {
 		return "", fmt.Errorf("failed to compute tracked files hash: %w", err)
 	}
 
-	// 2. Получить hash измененных файлов
 	var modifiedHash string
 	if modifiedHash, err = computeModifiedFilesHash(rootDir); err != nil {
 		return "", fmt.Errorf("failed to compute modified files hash: %w", err)
 	}
 
-	// 3. Получить hash неотслеживаемых .go файлов
 	var untrackedHash string
 	if untrackedHash, err = computeUntrackedFilesHash(rootDir); err != nil {
 		return "", fmt.Errorf("failed to compute untracked files hash: %w", err)
 	}
 
-	// 4. Получить hash списка удаленных файлов
 	var deletedHash string
 	if deletedHash, err = computeDeletedFilesHash(rootDir); err != nil {
 		return "", fmt.Errorf("failed to compute deleted files hash: %w", err)
@@ -45,7 +38,6 @@ func ComputeMarker(rootDir string) (marker string, err error) {
 	return marker, nil
 }
 
-// computeFinalMarker вычисляет финальный маркер из всех компонентов.
 func computeFinalMarker(trackedHash string, modifiedHash string, untrackedHash string, deletedHash string) (marker string) {
 
 	components := []string{
@@ -60,7 +52,6 @@ func computeFinalMarker(trackedHash string, modifiedHash string, untrackedHash s
 	return fmt.Sprintf("%x", hash)
 }
 
-// findGitDir находит директорию .git репозитория.
 func findGitDir(startDir string) (gitDir string, err error) {
 
 	dir := startDir
@@ -72,7 +63,6 @@ func findGitDir(startDir string) (gitDir string, err error) {
 				gitDir = gitPath
 				return
 			}
-			// Если .git - это файл (submodule), читаем его содержимое
 			var content []byte
 			if content, err = os.ReadFile(gitPath); err == nil {
 				gitDir = strings.TrimSpace(string(content))
@@ -96,7 +86,6 @@ func findGitDir(startDir string) (gitDir string, err error) {
 	}
 }
 
-// isGoFile проверяет, является ли файл Go файлом.
 func isGoFile(path string) bool {
 
 	return strings.HasSuffix(strings.ToLower(path), ".go")

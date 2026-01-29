@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -11,7 +11,6 @@ import (
 	"tgp/internal/model"
 )
 
-// detectInterfaces определяет все интерфейсы, которые реализует тип.
 func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Project, loader *AutonomousPackageLoader) {
 	if coreType.ImportPkgPath == "" || coreType.TypeName == "" {
 		return
@@ -30,7 +29,6 @@ func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Proje
 	implements := make([]string, 0)
 	seenIDs := make(map[string]bool)
 
-	// Проверяем сам тип
 	for ifaceID, iface := range allInterfaces {
 		if types.Implements(typ, iface) {
 			if !seenIDs[ifaceID] {
@@ -40,7 +38,6 @@ func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Proje
 		}
 	}
 
-	// Проверяем указатель на тип (для интерфейсов, которые требуют pointer receiver)
 	// Это нужно для типов, которые реализуют интерфейсы только через указатель
 	pointerType := types.NewPointer(typ)
 	for ifaceID, iface := range allInterfaces {
@@ -63,8 +60,6 @@ func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Proje
 	}
 }
 
-// getAllInterfacesFromLoader собирает интерфейсы из всех загруженных пакетов в loader.
-// Явно загружает стандартные библиотеки с известными интерфейсами, если они еще не загружены.
 func getAllInterfacesFromLoader(loader *AutonomousPackageLoader) (interfaces map[string]*types.Interface) {
 
 	// Список стандартных библиотек с важными интерфейсами
@@ -91,10 +86,8 @@ func getAllInterfacesFromLoader(loader *AutonomousPackageLoader) (interfaces map
 
 	// Явно загружаем стандартные библиотеки с интерфейсами
 	for _, pkgPath := range stdlibPackagesWithInterfaces {
-		// Проверяем, не загружен ли уже пакет
 		var ok bool
 		if _, ok = loader.GetPackage(pkgPath); !ok {
-			// Загружаем пакет (игнорируем ошибки, так как некоторые пакеты могут быть недоступны)
 			var err error
 			if _, err = loader.LoadPackageLazy(pkgPath); err != nil {
 				slog.Debug(i18n.Msg("Failed to load standard library package for interface detection"),
@@ -107,7 +100,6 @@ func getAllInterfacesFromLoader(loader *AutonomousPackageLoader) (interfaces map
 	interfaces = make(map[string]*types.Interface)
 	seenInterfaces := make(map[string]bool)
 
-	// Получаем все загруженные пакеты (включая только что загруженные)
 	allPackages := loader.GetAllPackages()
 
 	for _, pkgInfo := range allPackages {
@@ -133,17 +125,14 @@ func getAllInterfacesFromLoader(loader *AutonomousPackageLoader) (interfaces map
 				continue
 			}
 
-			// Формируем уникальный ID для интерфейса
 			interfacePkgPath := typeName.Pkg().Path()
 			interfaceID := fmt.Sprintf("%s:%s", interfacePkgPath, typeName.Name())
 
-			// Проверяем, не добавляли ли мы уже этот интерфейс по ID
 			// Если ID уже есть, это дубликат - пропускаем
 			if seenInterfaces[interfaceID] {
 				continue
 			}
 
-			// Добавляем интерфейс
 			interfaces[interfaceID] = iface
 			seenInterfaces[interfaceID] = true
 		}

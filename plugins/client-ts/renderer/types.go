@@ -1,16 +1,15 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import "fmt"
 
-// typeDefTs представляет определение типа для TypeScript
 type typeDefTs struct {
 	name       string
 	kind       string
 	typeName   string
 	nullable   bool
-	value      interface{}
+	value      any
 	properties map[string]typeDefTs
 	// Для импортированных типов храним информацию о пакете и имени типа
 	importPkg  string // Пакет импорта (например, "dto")

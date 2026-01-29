@@ -1,79 +1,44 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
 	"go/ast"
 	"go/token"
-	"strings"
 )
 
-// extractImportsFromMethodSignatures извлекает импорты, которые используются только в сигнатурах методов структур.
-func extractImportsFromMethodSignatures(files []*ast.File) (requiredImports map[string]bool) {
+func extractImportsFromExportedAndAliases(files []*ast.File) (requiredImports map[string]bool) {
 
 	requiredImports = make(map[string]bool)
-	importAliases := make(map[string]string)
-
-	for _, file := range files {
-		for _, imp := range file.Imports {
-			impPath := strings.Trim(imp.Path.Value, `"`)
-			var alias string
-			if imp.Name != nil {
-				alias = imp.Name.Name
-			} else {
-				parts := strings.Split(impPath, "/")
-				if len(parts) > 0 {
-					alias = parts[len(parts)-1]
-				}
-			}
-			importAliases[alias] = impPath
-		}
-	}
+	importAliases := collectImports(files)
 
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
-			funcDecl, ok := n.(*ast.FuncDecl)
-			if ok {
-				if funcDecl.Recv != nil && len(funcDecl.Recv.List) > 0 {
-					recvType := funcDecl.Recv.List[0].Type
-					if starExpr, ok := recvType.(*ast.StarExpr); ok {
-						recvType = starExpr.X
+			genDecl, ok := n.(*ast.GenDecl)
+			if ok && genDecl.Tok == token.TYPE {
+				for _, spec := range genDecl.Specs {
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok || typeSpec.Name == nil {
+						continue
 					}
-
-					if _, ok := recvType.(*ast.Ident); ok {
-						if funcDecl.Type != nil {
-							extractImportsFromFieldList(funcDecl.Type.Params, importAliases, requiredImports)
-							extractImportsFromFieldList(funcDecl.Type.Results, importAliases, requiredImports)
-						}
+					name := typeSpec.Name.Name
+					if token.IsExported(name) || typeSpec.Assign != token.NoPos {
+						extractImportsFromType(typeSpec.Type, importAliases, requiredImports)
 					}
 				}
 				return true
 			}
 
-			genDecl, ok := n.(*ast.GenDecl)
-			if ok && genDecl.Tok == token.TYPE {
-				for _, spec := range genDecl.Specs {
-					typeSpec, ok := spec.(*ast.TypeSpec)
-					if !ok {
-						continue
-					}
-
-					interfaceType, ok := typeSpec.Type.(*ast.InterfaceType)
-					if !ok {
-						continue
-					}
-
-					if interfaceType.Methods != nil {
-						for _, method := range interfaceType.Methods.List {
-							if len(method.Names) > 0 {
-								if funcType, ok := method.Type.(*ast.FuncType); ok {
-									extractImportsFromFieldList(funcType.Params, importAliases, requiredImports)
-									extractImportsFromFieldList(funcType.Results, importAliases, requiredImports)
-								}
-							} else {
-								extractImportsFromType(method.Type, importAliases, requiredImports)
-							}
-						}
+			funcDecl, ok := n.(*ast.FuncDecl)
+			if ok && funcDecl.Recv != nil && len(funcDecl.Recv.List) > 0 {
+				recvType := funcDecl.Recv.List[0].Type
+				if starExpr, ok := recvType.(*ast.StarExpr); ok {
+					recvType = starExpr.X
+				}
+				if ident, ok := recvType.(*ast.Ident); ok && token.IsExported(ident.Name) {
+					if funcDecl.Type != nil {
+						extractImportsFromFieldList(funcDecl.Type.Params, importAliases, requiredImports)
+						extractImportsFromFieldList(funcDecl.Type.Results, importAliases, requiredImports)
 					}
 				}
 				return true
@@ -86,27 +51,10 @@ func extractImportsFromMethodSignatures(files []*ast.File) (requiredImports map[
 	return requiredImports
 }
 
-// extractImportsFromTypeDefinition извлекает импорты, которые используются в определении конкретного типа и его полей.
 func extractImportsFromTypeDefinition(files []*ast.File, typeName string) (requiredImports map[string]bool) {
 
 	requiredImports = make(map[string]bool)
-	importAliases := make(map[string]string)
-
-	for _, file := range files {
-		for _, imp := range file.Imports {
-			impPath := strings.Trim(imp.Path.Value, `"`)
-			var alias string
-			if imp.Name != nil {
-				alias = imp.Name.Name
-			} else {
-				parts := strings.Split(impPath, "/")
-				if len(parts) > 0 {
-					alias = parts[len(parts)-1]
-				}
-			}
-			importAliases[alias] = impPath
-		}
-	}
+	importAliases := collectImports(files)
 
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -135,27 +83,10 @@ func extractImportsFromTypeDefinition(files []*ast.File, typeName string) (requi
 	return
 }
 
-// extractImportsFromErrorType извлекает импорты, которые используются в определении типа ошибки и его методов.
 func extractImportsFromErrorType(files []*ast.File, typeName string) (requiredImports map[string]bool) {
 
 	requiredImports = make(map[string]bool)
-	importAliases := make(map[string]string)
-
-	for _, file := range files {
-		for _, imp := range file.Imports {
-			impPath := strings.Trim(imp.Path.Value, `"`)
-			var alias string
-			if imp.Name != nil {
-				alias = imp.Name.Name
-			} else {
-				parts := strings.Split(impPath, "/")
-				if len(parts) > 0 {
-					alias = parts[len(parts)-1]
-				}
-			}
-			importAliases[alias] = impPath
-		}
-	}
+	importAliases := collectImports(files)
 
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -214,7 +145,6 @@ func extractImportsFromErrorType(files []*ast.File, typeName string) (requiredIm
 	return
 }
 
-// extractImportsFromFieldList извлекает импорты из списка полей (параметры или результаты).
 func extractImportsFromFieldList(fieldList *ast.FieldList, importAliases map[string]string, requiredImports map[string]bool) {
 
 	if fieldList == nil {
@@ -226,7 +156,6 @@ func extractImportsFromFieldList(fieldList *ast.FieldList, importAliases map[str
 	}
 }
 
-// extractImportsFromType рекурсивно извлекает импорты из типа.
 func extractImportsFromType(expr ast.Expr, importAliases map[string]string, requiredImports map[string]bool) {
 	if expr == nil {
 		return
@@ -253,5 +182,24 @@ func extractImportsFromType(expr ast.Expr, importAliases map[string]string, requ
 		extractImportsFromFieldList(t.Results, importAliases, requiredImports)
 	case *ast.Ellipsis:
 		extractImportsFromType(t.Elt, importAliases, requiredImports)
+	case *ast.StructType:
+		if t.Fields != nil {
+			for _, field := range t.Fields.List {
+				extractImportsFromType(field.Type, importAliases, requiredImports)
+			}
+		}
+	case *ast.InterfaceType:
+		if t.Methods != nil {
+			for _, method := range t.Methods.List {
+				if len(method.Names) > 0 {
+					if funcType, ok := method.Type.(*ast.FuncType); ok {
+						extractImportsFromFieldList(funcType.Params, importAliases, requiredImports)
+						extractImportsFromFieldList(funcType.Results, importAliases, requiredImports)
+					}
+				} else {
+					extractImportsFromType(method.Type, importAliases, requiredImports)
+				}
+			}
+		}
 	}
 }

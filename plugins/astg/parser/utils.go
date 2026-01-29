@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -14,7 +14,6 @@ import (
 	"golang.org/x/mod/module"
 )
 
-// isBuiltinTypeName проверяет, является ли имя типа встроенным.
 func isBuiltinTypeName(typeName string) (isBuiltin bool) {
 
 	builtinTypes := map[string]bool{
@@ -28,7 +27,6 @@ func isBuiltinTypeName(typeName string) (isBuiltin bool) {
 	return
 }
 
-// GoProjectPath возвращает путь к корню проекта (директория с go.mod).
 func GoProjectPath(from string) (projectPath string) {
 
 	var modPath string
@@ -40,7 +38,6 @@ func GoProjectPath(from string) (projectPath string) {
 	return
 }
 
-// PkgModPath возвращает путь к модулю для пакета.
 func PkgModPath(pkgName string) (modPathResult string) {
 
 	var modPath string
@@ -78,7 +75,17 @@ func PkgModPath(pkgName string) (modPathResult string) {
 	return
 }
 
-// parseMod парсит go.mod файл и возвращает map пакет -> путь.
+func moduleCacheRoot() (root string) {
+
+	if root = os.Getenv("GOMODCACHE"); root != "" {
+		return
+	}
+	if gopath := os.Getenv("GOPATH"); gopath != "" {
+		root = filepath.Join(gopath, "pkg", "mod")
+	}
+	return
+}
+
 func parseMod(modPath string) (pkgPath map[string]string) {
 
 	var fileBytes []byte
@@ -90,18 +97,30 @@ func parseMod(modPath string) (pkgPath map[string]string) {
 	if mod, err = modfile.Parse(modPath, fileBytes, nil); err != nil {
 		return
 	}
-	goPath := os.Getenv("GOPATH")
 	pkgPath = make(map[string]string)
 	if mod.Module != nil {
 		pkgPath[mod.Module.Mod.Path] = filepath.Dir(modPath)
 	}
+	modRoot := moduleCacheRoot()
+	if modRoot == "" {
+		return
+	}
 	for _, require := range mod.Require {
-		pkgPath[require.Mod.Path] = filepath.Join(goPath, "pkg", "mod", fmt.Sprintf("%s@%s", require.Mod.Path, require.Mod.Version))
+		escapedPath, escapeErr := module.EscapePath(require.Mod.Path)
+		if escapeErr != nil {
+			escapedPath = require.Mod.Path
+		}
+		pkgPath[require.Mod.Path] = filepath.Join(modRoot, fmt.Sprintf("%s@%s", escapedPath, require.Mod.Version))
 	}
 	return
 }
 
-// splitTypeID разбивает typeID на части (pkgPath, typeName).
+func makeTypeID(pkgPath string, typeName string) (id string) {
+
+	id = pkgPath + ":" + typeName
+	return
+}
+
 func splitTypeID(typeID string) (parts []string) {
 
 	idx := strings.LastIndex(typeID, ":")
@@ -113,7 +132,6 @@ func splitTypeID(typeID string) (parts []string) {
 	return
 }
 
-// isReceiverForStruct проверяет, является ли receiver для указанной структуры.
 func isReceiverForStruct(recvType ast.Expr, structName string) (isReceiver bool) {
 
 	switch rt := recvType.(type) {

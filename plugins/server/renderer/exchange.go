@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -16,7 +16,6 @@ import (
 	"tgp/plugins/server/renderer/types"
 )
 
-// RenderExchange генерирует структуры обмена данными (request/response).
 func (r *contractRenderer) RenderExchange() error {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
@@ -35,16 +34,15 @@ func (r *contractRenderer) RenderExchange() error {
 	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-exchange.go"))
 }
 
-// exchangeStruct генерирует структуру для обмена данными.
 func (r *contractRenderer) exchangeStruct(typeGen *types.Generator, name string, fields []exchangeField) Code {
 
 	if len(fields) == 0 {
 		return Type().Id(name).Struct()
 	}
 
-	template := "%s,omitempty"
-	if r.contract.Annotations.Contains(TagNoOmitempty) {
-		template = "%s"
+	template := "%s"
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagOmitemptyAll) {
+		template = "%s,omitempty"
 	}
 
 	return Type().Id(name).StructFunc(func(gr *Group) {
@@ -55,7 +53,6 @@ func (r *contractRenderer) exchangeStruct(typeGen *types.Generator, name string,
 	})
 }
 
-// exchangeField представляет поле структуры обмена.
 type exchangeField struct {
 	name             string
 	typeID           string
@@ -70,21 +67,18 @@ type exchangeField struct {
 	tags             map[string]string
 }
 
-// fieldsArgument возвращает поля для аргументов метода.
 func (r *contractRenderer) fieldsArgument(method *model.Method) []exchangeField {
 
 	vars := argsWithoutContext(method)
 	return r.varsToFields(vars, method.Annotations)
 }
 
-// fieldsResult возвращает поля для результатов метода.
 func (r *contractRenderer) fieldsResult(method *model.Method) []exchangeField {
 
 	vars := resultsWithoutError(method)
 	return r.varsToFields(vars, method.Annotations)
 }
 
-// varsToFields конвертирует переменные в поля структуры.
 func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.DocTags) []exchangeField {
 
 	fields := make([]exchangeField, 0, len(vars))
@@ -103,8 +97,6 @@ func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.
 			tags:             make(map[string]string),
 		}
 
-		// Обрабатываем теги из аннотаций метода
-		// Используем отсортированные пары для детерминированного порядка
 		for key, value := range common.SortedPairs(methodTags.Sub(v.Name)) {
 			if key == "tag" {
 				// Формат: tag:json:fieldName,omitempty|tag:xml:fieldName
@@ -127,14 +119,11 @@ func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.
 	return fields
 }
 
-// structField генерирует поле структуры.
 func (r *contractRenderer) structField(typeGen *types.Generator, field exchangeField, template string) *Statement {
 
 	var isInlined bool
 	tags := map[string]string{"json": fmt.Sprintf(template, field.name)}
-	// Используем отсортированные пары для детерминированного порядка
 	for tag, value := range common.SortedPairs(field.tags) {
-		// Пропускаем "json", так как он уже добавлен выше
 		if tag == "json" {
 			if strings.Contains(value, "inline") {
 				isInlined = true
@@ -151,7 +140,6 @@ func (r *contractRenderer) structField(typeGen *types.Generator, field exchangeF
 		s.Tag(map[string]string{"json": ",inline"})
 	} else {
 		s = Id(toCamel(field.name))
-		// Проверяем, есть ли информация о массивах/map
 		if field.isSlice || field.arrayLen > 0 || field.mapKeyID != "" {
 			// Создаем временный Variable для передачи в FieldTypeFromVariable
 			v := &model.Variable{

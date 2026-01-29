@@ -1,8 +1,10 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package sequence
 
 import "fmt"
 
-// NotePosition is a note position.
 type NotePosition string
 
 const (
@@ -14,19 +16,16 @@ const (
 	NotePositionLeft NotePosition = "left of"
 )
 
-// NoteOver add a note to the sequence diagram.
 func (d *Diagram) NoteOver(participant, message string) *Diagram {
 	d.body = append(d.body, fmt.Sprintf("    note over %s: %s", participant, message))
 	return d
 }
 
-// NoteRightOf add a note to the sequence diagram.
 func (d *Diagram) NoteRightOf(participant, message string) *Diagram {
 	d.body = append(d.body, fmt.Sprintf("    note right of %s: %s", participant, message))
 	return d
 }
 
-// NoteLeftOf add a note to the sequence diagram.
 func (d *Diagram) NoteLeftOf(participant, message string) *Diagram {
 	d.body = append(d.body, fmt.Sprintf("    note left of %s: %s", participant, message))
 	return d

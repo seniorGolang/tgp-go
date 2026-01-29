@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 // Package flowchart provides a simple way to create flowcharts in mermaid syntax.
 package flowchart
 

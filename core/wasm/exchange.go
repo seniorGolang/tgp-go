@@ -53,5 +53,5 @@ type interactiveSelectConfig struct {
 
 // interactiveSelectResponse представляет ответ интерактивного выбора.
 type interactiveSelectResponse struct {
-	Selected []interface{} `json:"selected"` // Может быть []string после преобразования
+	Selected []any `json:"selected"` // Может быть []string после преобразования
 }

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -17,14 +17,12 @@ import (
 //go:embed pkg/context pkg/logger pkg/tracer pkg/viewer
 var pkgFiles embed.FS
 
-// baseRenderer содержит общую функциональность для всех рендереров.
 type baseRenderer struct {
 	project  *model.Project
 	contract *model.Contract
 	outDir   string
 }
 
-// newBaseRenderer создает базовый рендерер.
 func newBaseRenderer(project *model.Project, contract *model.Contract, outDir string) *baseRenderer {
 	return &baseRenderer{
 		project:  project,
@@ -33,18 +31,12 @@ func newBaseRenderer(project *model.Project, contract *model.Contract, outDir st
 	}
 }
 
-// pkgPath возвращает путь пакета для указанной директории.
 func (r *baseRenderer) pkgPath(dir string) string {
 
-	// В WASM файловая система монтируется в корень "/", поэтому используем относительные пути
-	// dir уже является относительным путем от корня файловой системы
-	// Преобразуем относительный путь в путь пакета
 	pkgDir := filepath.ToSlash(dir)
 
-	// Убираем ведущий "./" если есть
 	pkgDir = strings.TrimPrefix(pkgDir, "./")
 
-	// Если pkgDir не пустой, добавляем "/" в начало для формирования пути пакета
 	if pkgDir != "" && !strings.HasPrefix(pkgDir, "/") {
 		pkgDir = "/" + pkgDir
 	}
@@ -52,7 +44,6 @@ func (r *baseRenderer) pkgPath(dir string) string {
 	return r.project.ModulePath + pkgDir
 }
 
-// pkgCopyTo копирует встроенные пакеты в выходную директорию.
 func (r *baseRenderer) pkgCopyTo(pkg, dst string) (err error) {
 
 	pkgPath := path.Join("pkg", pkg)
@@ -76,74 +67,55 @@ func (r *baseRenderer) pkgCopyTo(pkg, dst string) (err error) {
 	return
 }
 
-// hasJsonRPC проверяет, есть ли контракты с JSON-RPC.
 func (r *baseRenderer) hasJsonRPC() bool {
 
 	for _, contract := range r.project.Contracts {
-		if contract.Annotations.Contains(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			return true
 		}
 	}
 	return false
 }
 
-// hasHTTPService проверяет, есть ли контракты с HTTP сервисом.
-func (r *baseRenderer) hasHTTPService() bool {
-
-	for _, contract := range r.project.Contracts {
-		if contract.Annotations.Contains(TagServerHTTP) {
-			return true
-		}
-	}
-	return false
-}
-
-// hasMetrics проверяет, есть ли контракты с метриками.
 func (r *baseRenderer) hasMetrics() bool {
 
 	for _, contract := range r.project.Contracts {
-		if contract.Annotations.Contains(TagMetrics) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 			return true
 		}
 	}
 	return false
 }
 
-// hasTrace проверяет, есть ли контракты с трейсингом.
 func (r *baseRenderer) hasTrace() bool {
 
 	for _, contract := range r.project.Contracts {
-		if contract.Annotations.Contains(TagTrace) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagTrace) {
 			return true
 		}
 	}
 	return false
 }
 
-// getPackageJSON возвращает путь к JSON пакету из аннотаций с учетом наследования.
 func (r *baseRenderer) getPackageJSON() string {
 
 	return model.GetAnnotationValue(r.project, r.contract, nil, nil, TagPackageJSON, PackageStdJSON)
 }
 
-// contractRenderer рендерер для конкретного контракта.
 type contractRenderer struct {
 	*baseRenderer
 }
 
-// NewContractRenderer создает рендерер для конкретного контракта.
 func NewContractRenderer(project *model.Project, contract *model.Contract, outDir string) Renderer {
 	return &contractRenderer{
 		baseRenderer: newBaseRenderer(project, contract, outDir),
 	}
 }
 
-// transportRenderer рендерер для транспортных файлов (генерируются один раз).
 type transportRenderer struct {
 	*baseRenderer
 }
 
-// NewTransportRenderer создает рендерер для транспортных файлов.
 func NewTransportRenderer(project *model.Project, outDir string) Renderer {
 	return &transportRenderer{
 		baseRenderer: newBaseRenderer(project, nil, outDir),

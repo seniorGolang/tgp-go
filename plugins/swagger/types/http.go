@@ -1,12 +1,11 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package types
 
 import (
 	"fmt"
 )
 
-// CodeToText возвращает текстовое описание HTTP статус кода.
 func CodeToText(code int) (result string) {
 	var found bool
 	if result, found = statusText[code]; found {
@@ -15,7 +14,6 @@ func CodeToText(code int) (result string) {
 	return fmt.Sprintf("unknown error %d", code)
 }
 
-// IsValidHTTPCode проверяет, является ли код валидным HTTP статус кодом.
 func IsValidHTTPCode(code int) (valid bool) {
 	_, valid = statusText[code]
 	return
@@ -83,7 +81,6 @@ var statusText = map[int]string{
 	511: "Network Authentication Required",
 }
 
-// JSONRPCSchema создает схему для JSON-RPC запроса/ответа.
 func JSONRPCSchema(key string, schema Schema) (result Schema) {
 	return Schema{
 		Type: "object",
@@ -104,7 +101,6 @@ func JSONRPCSchema(key string, schema Schema) (result Schema) {
 	}
 }
 
-// JSONRPCErrorSchema создает схему для JSON-RPC ошибки.
 func JSONRPCErrorSchema() (result Schema) {
 	return Schema{
 		Type: "object",

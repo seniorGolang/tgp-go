@@ -1,7 +1,8 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package sequence
 
-// config is the configuration for the sequence diagram.
-// Ref. https://mermaid.js.org/syntax/sequenceDiagram.html
 type config struct {
 	// mirrorActors turns on/off the rendering of actors
 	// below the diagram as well as above it.
@@ -43,7 +44,6 @@ type config struct {
 	messageFontWeight string
 }
 
-// newConfig returns a new Config with default values.
 func newConfig() *config {
 	return &config{
 		mirrorActors:            false,
@@ -61,87 +61,74 @@ func newConfig() *config {
 	}
 }
 
-// Option sets the options for the Diagram struct.
 type Option func(*config)
 
-// WithMirrorActors sets the mirrorActors configuration.
 func WithMirrorActors(mirrorActors bool) Option {
 	return func(c *config) {
 		c.mirrorActors = mirrorActors
 	}
 }
 
-// WithBottomMariginAdjustment sets the bottomMariginAdjustment configuration.
 func WithBottomMariginAdjustment(bottomMariginAdjustment uint) Option {
 	return func(c *config) {
 		c.bottomMariginAdjustment = bottomMariginAdjustment
 	}
 }
 
-// WithActorFontSize sets the actorFontSize configuration.
 func WithActorFontSize(actorFontSize uint) Option {
 	return func(c *config) {
 		c.actorFontSize = actorFontSize
 	}
 }
 
-// WithActorFontFamily sets the actorFontFamily configuration.
 func WithActorFontFamily(actorFontFamily string) Option {
 	return func(c *config) {
 		c.actorFontFamily = actorFontFamily
 	}
 }
 
-// WithActorFontWeight sets the actorFontWeight configuration.
 func WithActorFontWeight(actorFontWeight string) Option {
 	return func(c *config) {
 		c.actorFontWeight = actorFontWeight
 	}
 }
 
-// WithNoteFontSize sets the noteFontSize configuration.
 func WithNoteFontSize(noteFontSize uint) Option {
 	return func(c *config) {
 		c.noteFontSize = noteFontSize
 	}
 }
 
-// WithNoteFontFamily sets the noteFontFamily configuration.
 func WithNoteFontFamily(noteFontFamily string) Option {
 	return func(c *config) {
 		c.noteFontFamily = noteFontFamily
 	}
 }
 
-// WithNoteFontWeight sets the noteFontWeight configuration.
 func WithNoteFontWeight(noteFontWeight string) Option {
 	return func(c *config) {
 		c.noteFontWeight = noteFontWeight
 	}
 }
 
-// WithNoteAlign sets the noteAlign configuration.
 func WithNoteAlign(noteAlign string) Option {
 	return func(c *config) {
 		c.noteAlign = noteAlign
 	}
 }
 
-// WithMessageFontSize sets the messageFontSize configuration.
 func WithMessageFontSize(messageFontSize uint) Option {
 	return func(c *config) {
 		c.messageFontSize = messageFontSize
 	}
 }
 
-// WithMessageFontFamily sets the messageFontFamily configuration.
 func WithMessageFontFamily(messageFontFamily string) Option {
 	return func(c *config) {
 		c.messageFontFamily = messageFontFamily
 	}
 }
 
-// WithMessageFontWeight sets the messageFontWeight configuration.
 func WithMessageFontWeight(messageFontWeight string) Option {
 	return func(c *config) {
 		c.messageFontWeight = messageFontWeight

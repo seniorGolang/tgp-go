@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,7 +9,6 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// RenderTransportFiber генерирует транспортный fiber файл.
 func (r *transportRenderer) RenderTransportFiber() error {
 
 	fiberPath := path.Join(r.outDir, "fiber.go")
@@ -70,7 +69,6 @@ func (r *transportRenderer) RenderTransportFiber() error {
 	return srcFile.Save(fiberPath)
 }
 
-// renderFiberLogger генерирует middleware для логирования в Fiber.
 func (r *transportRenderer) renderFiberLogger(srcFile *GoFile) {
 
 	srcFile.Line().Func().Params(Id("srv").Op("*").Id("Server")).
@@ -110,7 +108,6 @@ func (r *transportRenderer) renderFiberLogger(srcFile *GoFile) {
 		})
 }
 
-// renderFiberRecover генерирует middleware для восстановления после panic в Fiber.
 func (r *transportRenderer) renderFiberRecover(srcFile *GoFile) {
 
 	srcFile.Line().Func().Id("recoverHandler").

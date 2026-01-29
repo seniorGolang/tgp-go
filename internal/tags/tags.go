@@ -1,5 +1,4 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file (tags.go at 14.05.2020, 3:45) is subject to the terms and
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
 // conditions defined in file 'LICENSE', which is part of this project source code.
 package tags
 
@@ -24,9 +23,8 @@ func (tags DocTags) MarshalJSON() (bytes []byte, err error) {
 	if len(tags) == 0 {
 		return json.Marshal(nil)
 	}
-	// Преобразуем map[string]string в map[string]interface{}
-	// Пустые строки заменяем на true (булево значение)
-	result := make(map[string]interface{})
+	// Пустые строки в тегах сериализуем как true (булево значение в JSON).
+	result := make(map[string]any)
 	for k, v := range tags {
 		if v == "" {
 			result[k] = true
@@ -38,8 +36,8 @@ func (tags DocTags) MarshalJSON() (bytes []byte, err error) {
 }
 
 func (tags *DocTags) UnmarshalJSON(data []byte) error {
-	// Десериализуем в map[string]interface{}, чтобы обработать булевы значения
-	var raw map[string]interface{}
+	// Булевы true из JSON обратно в пустую строку в DocTags.
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
@@ -51,8 +49,6 @@ func (tags *DocTags) UnmarshalJSON(data []byte) error {
 		*tags = make(DocTags)
 	}
 
-	// Преобразуем обратно в map[string]string
-	// Булевы true заменяем на пустую строку
 	for k, v := range raw {
 		switch val := v.(type) {
 		case bool:
@@ -64,7 +60,6 @@ func (tags *DocTags) UnmarshalJSON(data []byte) error {
 		case string:
 			(*tags)[k] = val
 		default:
-			// Для других типов преобразуем в строку
 			(*tags)[k] = fmt.Sprintf("%v", val)
 		}
 	}

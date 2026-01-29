@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -14,7 +14,6 @@ import (
 	"tgp/plugins/server/renderer/types"
 )
 
-// RenderTrace генерирует middleware для трейсинга.
 func (r *contractRenderer) RenderTrace() error {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
@@ -67,7 +66,6 @@ func (r *contractRenderer) RenderTrace() error {
 	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-trace.go"))
 }
 
-// methodFullName возвращает полное имя метода в формате "serviceName.methodName".
 func (r *contractRenderer) methodFullName(method *model.Method) string {
 	return fmt.Sprintf("%s.%s", toLowerCamel(r.contract.Name), toLowerCamel(method.Name))
 }

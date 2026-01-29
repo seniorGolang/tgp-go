@@ -1,36 +1,37 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package generator
 
 import (
+	"fmt"
 	"log/slog"
 
 	"tgp/core/i18n"
-	"tgp/internal/common"
 	"tgp/internal/model"
+	"tgp/internal/validate"
 	"tgp/plugins/client-go/renderer"
 )
 
-// DocOptions содержит опции для генерации документации
 type DocOptions struct {
 	Enabled  bool   // Включена ли генерация документации (по умолчанию true)
 	FilePath string // Полный путь к файлу документации (пусто = outDir/readme.md)
 }
 
-// IsEnabled возвращает, включена ли генерация документации.
 func (d DocOptions) IsEnabled() bool {
 
 	return d.Enabled
 }
 
-// GetFilePath возвращает путь к файлу документации.
 func (d DocOptions) GetFilePath() string {
 
 	return d.FilePath
 }
 
-// GenerateClient генерирует клиент для всех контрактов.
 func GenerateClient(project *model.Project, outDir string, docOpts DocOptions) error {
+
+	if err := validate.ValidateProject(project); err != nil {
+		return fmt.Errorf("invalid project: %w", err)
+	}
 
 	slog.Debug(i18n.Msg("generating Go client"), slog.String("outDir", outDir))
 
@@ -57,7 +58,12 @@ type generator struct {
 
 func (g *generator) generate(docOpts DocOptions) error {
 
-	// Генерируем базовые файлы клиента один раз для всех контрактов
+	for _, contract := range g.project.Contracts {
+		if err := validate.ValidateContract(contract, g.project); err != nil {
+			return fmt.Errorf("validate contract %q: %w", contract.Name, err)
+		}
+	}
+
 	if g.renderer.HasJsonRPC() || g.renderer.HasHTTP() {
 		if err := g.renderer.RenderClientOptions(); err != nil {
 			return err
@@ -78,27 +84,20 @@ func (g *generator) generate(docOpts DocOptions) error {
 		}
 	}
 
-	// Собираем typeID типов из всех контрактов перед генерацией
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
-	allCollectedTypeIDs := make(map[string]bool)
+	contractsForClient := make([]*model.Contract, 0, len(g.project.Contracts))
 	for _, contractName := range g.renderer.ContractKeys() {
 		contract := g.renderer.FindContract(contractName)
 		if contract == nil {
 			continue
 		}
-		if contract.Annotations.IsSet(renderer.TagServerJsonRPC) || contract.Annotations.IsSet(renderer.TagServerHTTP) {
-			contractTypeIDs := g.renderer.CollectTypeIDsForExchange(contract)
-			// Объединяем typeID из всех контрактов
-			// Используем отсортированные ключи для детерминированного порядка
-			for typeID := range common.SortedPairs(contractTypeIDs) {
-				allCollectedTypeIDs[typeID] = true
-			}
+		if model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerHTTP) {
+			contractsForClient = append(contractsForClient, contract)
 		}
 	}
+	allCollectedTypeIDs := g.renderer.CollectTypeIDsForExchangeFromContracts(contractsForClient)
 
 	slog.Debug(i18n.Msg("generator.generate: collected typeIDs"), slog.Int("totalTypeIDs", len(allCollectedTypeIDs)), slog.Int("projectTypes", len(g.project.Types)))
 
-	// Генерируем локальные версии типов один раз для всех контрактов
 	if len(allCollectedTypeIDs) > 0 {
 		if err := g.renderer.RenderClientTypes(allCollectedTypeIDs); err != nil {
 			return err
@@ -107,24 +106,19 @@ func (g *generator) generate(docOpts DocOptions) error {
 		slog.Debug(i18n.Msg("generator.generate: no typeIDs collected, skipping RenderClientTypes"))
 	}
 
-	// Генерируем клиент для каждого контракта
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
 	for _, contractName := range g.renderer.ContractKeys() {
 		contract := g.renderer.FindContract(contractName)
 		if contract == nil {
 			continue
 		}
-		if contract.Annotations.IsSet(renderer.TagServerJsonRPC) || contract.Annotations.IsSet(renderer.TagServerHTTP) {
-			// Генерируем exchange для клиента
+		if model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerHTTP) {
 			if err := g.renderer.RenderExchange(contract); err != nil {
 				return err
 			}
-			// Генерируем service-client
 			if err := g.renderer.RenderServiceClient(contract); err != nil {
 				return err
 			}
-			// Генерируем метрики, если нужно
-			if g.renderer.HasMetrics() && contract.Annotations.IsSet(renderer.TagMetrics) {
+			if g.renderer.HasMetrics() && model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagMetrics) {
 				if err := g.renderer.RenderClientMetrics(); err != nil {
 					return err
 				}
@@ -132,7 +126,6 @@ func (g *generator) generate(docOpts DocOptions) error {
 		}
 	}
 
-	// Генерируем документацию
 	if docOpts.Enabled && (g.renderer.HasJsonRPC() || g.renderer.HasHTTP()) {
 		if err := g.renderer.RenderReadmeGo(docOpts); err != nil {
 			return err

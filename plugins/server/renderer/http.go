@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -8,9 +8,10 @@ import (
 	"strings"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/model"
 )
 
-// RenderHTTP генерирует HTTP обработчики для контракта.
 func (r *contractRenderer) RenderHTTP() error {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
@@ -30,7 +31,6 @@ func (r *contractRenderer) RenderHTTP() error {
 	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-http.go"))
 }
 
-// renderHTTPTypes генерирует типы для HTTP обработчика.
 func (r *contractRenderer) renderHTTPTypes(srcFile *GoFile) {
 
 	fields := []Code{
@@ -40,13 +40,12 @@ func (r *contractRenderer) renderHTTPTypes(srcFile *GoFile) {
 		Id("svc").Op("*").Id("server" + r.contract.Name),
 		Id("base").Qual(r.contract.PkgPath, r.contract.Name),
 	}
-	if r.contract.Annotations.Contains(TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerJsonRPC) {
 		fields = append(fields, Id("srv").Op("*").Id("Server"))
 	}
 	srcFile.Type().Id("http" + r.contract.Name).Struct(fields...)
 }
 
-// renderHTTPNewFunc генерирует функцию создания HTTP обработчика.
 func (r *contractRenderer) renderHTTPNewFunc(srcFile *GoFile) {
 
 	srcFile.Line().Func().Id("new"+r.contract.Name).
@@ -61,7 +60,6 @@ func (r *contractRenderer) renderHTTPNewFunc(srcFile *GoFile) {
 		)
 }
 
-// renderHTTPServiceFunc генерирует функцию получения сервиса.
 func (r *contractRenderer) renderHTTPServiceFunc(srcFile *GoFile) {
 
 	srcFile.Line().Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
@@ -73,30 +71,28 @@ func (r *contractRenderer) renderHTTPServiceFunc(srcFile *GoFile) {
 		)
 }
 
-// renderHTTPWithFuncs генерирует функции With* для HTTP обработчика.
 func (r *contractRenderer) renderHTTPWithFuncs(srcFile *GoFile) {
 
 	srcFile.Line().Add(r.httpWithLogFunc())
-	if r.contract.Annotations.Contains(TagTrace) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagTrace) {
 		srcFile.Line().Add(r.httpWithTraceFunc())
 	}
-	if r.contract.Annotations.Contains(TagMetrics) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagMetrics) {
 		srcFile.Line().Add(r.httpWithMetricsFunc())
 	}
 	srcFile.Line().Add(r.httpWithErrorHandler())
-	if r.contract.Annotations.Contains(TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerHTTP) {
 		srcFile.Line().Add(r.httpWithRedirectFunc())
 	}
 }
 
-// renderHTTPSetRoutes генерирует функцию установки маршрутов.
 func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 
 	srcFile.Line().Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("SetRoutes").
 		Params(Id("route").Op("*").Qual(PackageFiber, "App")).
 		BlockFunc(func(bg *Group) {
-			if r.contract.Annotations.Contains(TagServerJsonRPC) {
+			if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerJsonRPC) {
 				bg.Id("route").Dot("Post").Call(Lit(r.batchPath()), Id("http").Dot("serveBatch"))
 				for _, method := range r.contract.Methods {
 					if !r.methodIsJsonRPC(method) {
@@ -105,12 +101,12 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 					bg.Id("route").Dot("Post").Call(Lit(r.methodJsonRPCPath(method)), Id("http").Dot("serve"+method.Name))
 				}
 			}
-			if r.contract.Annotations.Contains(TagServerHTTP) {
+			if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerHTTP) {
 				for _, method := range r.contract.Methods {
 					if !r.methodIsHTTP(method) {
 						continue
 					}
-					if method.Annotations.Contains(TagHandler) {
+					if model.IsAnnotationSet(r.project, r.contract, method, nil, TagHandler) {
 						handlerQual := r.methodHandlerQual(srcFile, method)
 						bg.Id("route").Dot(toCamel(r.methodHTTPMethod(method))).
 							Call(Lit(r.methodHTTPPath(method)), Func().Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).Params(Err().Error()).Block(
@@ -125,7 +121,6 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 		})
 }
 
-// httpWithErrorHandler генерирует функцию WithErrorHandler.
 func (r *contractRenderer) httpWithErrorHandler() Code {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
@@ -138,7 +133,6 @@ func (r *contractRenderer) httpWithErrorHandler() Code {
 		})
 }
 
-// httpWithLogFunc генерирует функцию WithLog.
 func (r *contractRenderer) httpWithLogFunc() Code {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
@@ -151,7 +145,6 @@ func (r *contractRenderer) httpWithLogFunc() Code {
 		})
 }
 
-// httpWithTraceFunc генерирует функцию WithTrace.
 func (r *contractRenderer) httpWithTraceFunc() Code {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
@@ -164,7 +157,6 @@ func (r *contractRenderer) httpWithTraceFunc() Code {
 		})
 }
 
-// httpWithMetricsFunc генерирует функцию WithMetrics.
 func (r *contractRenderer) httpWithMetricsFunc() Code {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
@@ -177,7 +169,6 @@ func (r *contractRenderer) httpWithMetricsFunc() Code {
 		})
 }
 
-// httpWithRedirectFunc генерирует функцию WithRedirect.
 func (r *contractRenderer) httpWithRedirectFunc() Code {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).

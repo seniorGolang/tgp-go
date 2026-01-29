@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -20,14 +20,12 @@ import (
 	"tgp/plugins/astg/parser/utils"
 )
 
-// structInfo содержит информацию о структуре из AST.
 type structInfo struct {
 	Name   string
 	Fields []*ast.Field
 	Doc    *ast.CommentGroup
 }
 
-// findImplementations находит все имплементации контрактов в проекте.
 func findImplementations(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
 	for _, contract := range project.Contracts {
@@ -111,8 +109,6 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 		return
 	}
 
-	// Обрабатываем все пакеты и проверяем все контракты
-
 	for pkgPath, goFiles := range packages {
 		if len(goFiles) == 0 {
 			continue
@@ -143,24 +139,19 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 		mergedFile := ast.MergePackageFiles(astPkg, ast.FilterUnassociatedComments|ast.FilterImportDuplicates)
 
 		structs := findStructsInFile(mergedFile)
+		structMethods := buildStructMethodsMap(structs, parsedFiles)
 
 		var implPkgInfo *PackageInfo
 		pkgLoaded := false
 
 		for _, structType := range structs {
+			structMethodSet := structMethods[structType.Name]
 			for _, contract := range project.Contracts {
 				methodNames := contractMethodNames[contract.ID]
-				allFoundMethods := make(map[string]bool)
-				for _, file := range parsedFiles {
-					foundInFile := findMethodsInAST(file, structType.Name, methodNames)
-					for methodName := range foundInFile {
-						allFoundMethods[methodName] = true
-					}
-				}
-				hasMethods := len(allFoundMethods) >= len(methodNames)
+				hasMethods := len(methodNames) <= len(structMethodSet)
 				if hasMethods {
 					for methodName := range methodNames {
-						if !allFoundMethods[methodName] {
+						if !structMethodSet[methodName] {
 							hasMethods = false
 							break
 						}
@@ -273,7 +264,52 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 	return
 }
 
-// findStructsInFile находит все структуры в файле.
+func findAllReceiverMethodNames(file *ast.File, structName string) (methodNames map[string]bool) {
+
+	methodNames = make(map[string]bool)
+	if file == nil {
+		return
+	}
+	for _, decl := range file.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if !ok || funcDecl.Recv == nil || len(funcDecl.Recv.List) == 0 {
+			continue
+		}
+		recv := funcDecl.Recv.List[0]
+		var recvTypeName string
+		switch rt := recv.Type.(type) {
+		case *ast.Ident:
+			recvTypeName = rt.Name
+		case *ast.StarExpr:
+			if ident, ok := rt.X.(*ast.Ident); ok {
+				recvTypeName = ident.Name
+			}
+		}
+		if recvTypeName != structName {
+			continue
+		}
+		if funcDecl.Name != nil {
+			methodNames[funcDecl.Name.Name] = true
+		}
+	}
+	return
+}
+
+func buildStructMethodsMap(structs []structInfo, parsedFiles []*ast.File) (structMethods map[string]map[string]bool) {
+
+	structMethods = make(map[string]map[string]bool, len(structs))
+	for _, st := range structs {
+		allMethods := make(map[string]bool)
+		for _, file := range parsedFiles {
+			for name := range findAllReceiverMethodNames(file, st.Name) {
+				allMethods[name] = true
+			}
+		}
+		structMethods[st.Name] = allMethods
+	}
+	return
+}
+
 func findStructsInFile(file *ast.File) (structs []structInfo) {
 
 	structs = make([]structInfo, 0)
@@ -301,63 +337,6 @@ func findStructsInFile(file *ast.File) (structs []structInfo) {
 	return
 }
 
-// findMethodsInAST находит методы структуры в AST файла и возвращает map найденных методов.
-func findMethodsInAST(file *ast.File, structName string, contractMethodNames map[string]bool) (foundMethods map[string]bool) {
-
-	foundMethods = make(map[string]bool)
-
-	if len(contractMethodNames) == 0 {
-		return foundMethods
-	}
-
-	totalMethodsInFile := 0
-	methodsWithReceiver := 0
-
-	// Ищем методы структуры в AST
-	for _, decl := range file.Decls {
-		funcDecl, ok := decl.(*ast.FuncDecl)
-		if !ok {
-			continue
-		}
-
-		totalMethodsInFile++
-
-		// Проверяем receiver
-		if funcDecl.Recv == nil || len(funcDecl.Recv.List) == 0 {
-			continue
-		}
-
-		methodsWithReceiver++
-
-		recv := funcDecl.Recv.List[0]
-		var recvTypeName string
-
-		switch rt := recv.Type.(type) {
-		case *ast.Ident:
-			recvTypeName = rt.Name
-		case *ast.StarExpr:
-			if ident, ok := rt.X.(*ast.Ident); ok {
-				recvTypeName = ident.Name
-			}
-		}
-
-		if recvTypeName != structName {
-			continue
-		}
-
-		// Проверяем имя метода
-		if funcDecl.Name != nil {
-			methodName := funcDecl.Name.Name
-			if contractMethodNames[methodName] {
-				foundMethods[methodName] = true
-			}
-		}
-	}
-
-	return
-}
-
-// implementsContract проверяет, реализует ли структура контракт.
 func implementsContract(structType structInfo, contract *model.Contract, file *ast.File, filePath string, pkgPath string, project *model.Project, loader *AutonomousPackageLoader, implPkgInfo *PackageInfo, methodSetCache map[string]*types.MethodSet, pointerMethodSetCache map[string]*types.MethodSet, methodSetCacheMu *sync.RWMutex) (implements bool) {
 
 	var contractPkgInfo *PackageInfo
@@ -391,8 +370,6 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 		return
 	}
 
-	// Пакет имплементации уже загружен заранее (передан как параметр)
-	// Находим тип структуры
 	structObj := implPkgInfo.Types.Scope().Lookup(structType.Name)
 	if structObj == nil {
 		return
@@ -416,21 +393,12 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 		pointerType := types.NewPointer(structType_)
 		pointerMset = types.NewMethodSet(pointerType)
 
-		if mset.Len() == 0 && pointerMset.Len() == 0 {
-			slog.Info(i18n.Msg("Method set is empty for type"),
-				slog.String("type", structType.Name),
-				slog.String("pkgPath", pkgPath),
-				slog.String("contract", contract.Name))
-		}
-
 		methodSetCacheMu.Lock()
 		methodSetCache[methodSetKey] = mset
 		pointerMethodSetCache[methodSetKey] = pointerMset
 		methodSetCacheMu.Unlock()
 	}
 
-	// Проверяем наличие всех методов контракта в method set
-	// Вместо полной проверки интерфейса проверяем только методы контракта
 	contractMethodCount := contractIface.NumMethods()
 	if contractMethodCount == 0 {
 		implements = true
@@ -454,13 +422,6 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 		}
 
 		if found == nil {
-			slog.Info(i18n.Msg("Method not found in method set"),
-				slog.String("method", methodName),
-				slog.String("type", structType.Name),
-				slog.String("pkgPath", pkgPath),
-				slog.String("contract", contract.Name),
-				slog.Int("valueMethods", mset.Len()),
-				slog.Int("pointerMethods", pointerMset.Len()))
 			return
 		}
 
@@ -499,7 +460,6 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 	return
 }
 
-// findMethodInFile находит метод в файле по имени структуры и имени метода.
 func findMethodInFile(file *ast.File, structName string, methodName string) (method *ast.FuncDecl) {
 
 	for _, decl := range file.Decls {
@@ -525,17 +485,13 @@ func findMethodInFile(file *ast.File, structName string, methodName string) (met
 	return
 }
 
-// findErrorTypesInMethodBody анализирует AST тела функции для поиска типов ошибок.
 func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath string) (errorTypes []*model.ErrorTypeReference) {
 
 	errorTypes = make([]*model.ErrorTypeReference, 0)
 	errorTypesMap := make(map[string]bool)
-	returnCount := 0
-	assignCount := 0
 
 	ast.Inspect(body, func(n ast.Node) bool {
 		if retStmt, ok := n.(*ast.ReturnStmt); ok {
-			returnCount++
 			for _, result := range retStmt.Results {
 				extractErrorTypeFromExpr(result, file, pkgPath, errorTypesMap, &errorTypes)
 			}
@@ -545,7 +501,6 @@ func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath str
 		if assignStmt, ok := n.(*ast.AssignStmt); ok {
 			for i, lhs := range assignStmt.Lhs {
 				if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "err" {
-					assignCount++
 					if i < len(assignStmt.Rhs) {
 						extractErrorTypeFromExpr(assignStmt.Rhs[i], file, pkgPath, errorTypesMap, &errorTypes)
 					}
@@ -560,7 +515,6 @@ func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath str
 	return
 }
 
-// extractErrorTypeFromExpr извлекает тип ошибки из выражения.
 func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, errorTypesMap map[string]bool, errorTypes *[]*model.ErrorTypeReference) {
 	if expr == nil {
 		return
@@ -568,32 +522,23 @@ func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, err
 
 	switch e := expr.(type) {
 	case *ast.UnaryExpr:
-		// Обрабатываем &CustomError{} или *CustomError{}
 		if e.Op == token.AND || e.Op == token.MUL {
 			extractErrorTypeFromExpr(e.X, file, pkgPath, errorTypesMap, errorTypes)
 		}
 	case *ast.CompositeLit:
-		// Обрабатываем CustomError{} или dto.CustomError{}
 		if e.Type == nil {
 			return
 		}
 		extractErrorTypeFromTypeExpr(e.Type, file, pkgPath, errorTypesMap, errorTypes)
 	case *ast.CallExpr:
-		// Обрабатываем вызовы функций, например errors.New(...)
 		for _, arg := range e.Args {
 			extractErrorTypeFromExpr(arg, file, pkgPath, errorTypesMap, errorTypes)
 		}
-		// Также проверяем саму функцию, если она возвращает ошибку
 		extractErrorTypeFromExpr(e.Fun, file, pkgPath, errorTypesMap, errorTypes)
 	case *ast.SelectorExpr:
-		// Обрабатываем dto.CustomError напрямую
 		extractErrorTypeFromTypeExpr(e, file, pkgPath, errorTypesMap, errorTypes)
 	case *ast.Ident:
-		// Обрабатываем локальные типы ошибок
-		// Проверяем, есть ли этот тип в текущем пакете
-		// (это может быть тип ошибки из текущего пакета)
 		if !isBuiltinTypeName(e.Name) {
-			// Это может быть тип ошибки из текущего пакета
 			key := fmt.Sprintf("%s:%s", pkgPath, e.Name)
 			if !errorTypesMap[key] {
 				errorTypesMap[key] = true
@@ -607,7 +552,6 @@ func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, err
 	}
 }
 
-// extractErrorTypeFromTypeExpr извлекает тип ошибки из выражения типа.
 func extractErrorTypeFromTypeExpr(typeExpr ast.Expr, file *ast.File, pkgPath string, errorTypesMap map[string]bool, errorTypes *[]*model.ErrorTypeReference) {
 	if typeExpr == nil {
 		return
@@ -615,37 +559,23 @@ func extractErrorTypeFromTypeExpr(typeExpr ast.Expr, file *ast.File, pkgPath str
 
 	switch t := typeExpr.(type) {
 	case *ast.SelectorExpr:
-		// Обрабатываем dto.CustomError
 		if x, ok := t.X.(*ast.Ident); ok {
 			pkgName := x.Name
 			typeName := t.Sel.Name
-
-			for _, imp := range file.Imports {
-				impPath := strings.Trim(imp.Path.Value, "\"")
-				var impName string
-				if imp.Name != nil {
-					impName = imp.Name.Name
-				} else {
-					parts := strings.Split(impPath, "/")
-					impName = parts[len(parts)-1]
-				}
-
-				if impName == pkgName {
-					key := fmt.Sprintf("%s:%s", impPath, typeName)
-					if !errorTypesMap[key] {
-						errorTypesMap[key] = true
-						*errorTypes = append(*errorTypes, &model.ErrorTypeReference{
-							PkgPath:  impPath,
-							TypeName: typeName,
-							FullName: fmt.Sprintf("%s.%s", impPath, typeName),
-						})
-					}
-					break
+			importAliases := collectImports([]*ast.File{file})
+			if impPath, ok := importAliases[pkgName]; ok {
+				key := fmt.Sprintf("%s:%s", impPath, typeName)
+				if !errorTypesMap[key] {
+					errorTypesMap[key] = true
+					*errorTypes = append(*errorTypes, &model.ErrorTypeReference{
+						PkgPath:  impPath,
+						TypeName: typeName,
+						FullName: fmt.Sprintf("%s.%s", impPath, typeName),
+					})
 				}
 			}
 		}
 	case *ast.Ident:
-		// Обрабатываем локальные типы
 		if !isBuiltinTypeName(t.Name) {
 			key := fmt.Sprintf("%s:%s", pkgPath, t.Name)
 			if !errorTypesMap[key] {

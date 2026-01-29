@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -8,7 +8,6 @@ import (
 	"tgp/plugins/client-ts/tsg"
 )
 
-// RenderClientBatch генерирует файл batch.ts.
 func (r *ClientRenderer) RenderClientBatch() error {
 
 	outDir := r.outDir
@@ -18,13 +17,11 @@ func (r *ClientRenderer) RenderClientBatch() error {
 	// Импорты
 	file.ImportType("./jsonrpc/utils/jsonrpc", "RequestRPC", "ResponseRPC")
 
-	// Генерируем тип BatchRequest (аналогично Go клиенту)
 	// retHandler опциональный, так как устанавливается только если передан callback
 	stmt := tsg.NewStatement()
 	stmt.Export().Type("BatchRequest")
 	stmt.Op("=")
 	stmt.Values(func(vg *tsg.Group) {
-		// Используем union тип для опционального поля: RpcCallback | undefined
 		retHandlerType := tsg.NewStatement()
 		retHandlerType.Id("RpcCallback").Op("|").Id("undefined")
 		vg.Add(tsg.NewStatement().ObjectField("retHandler", retHandlerType))
@@ -33,7 +30,6 @@ func (r *ClientRenderer) RenderClientBatch() error {
 	file.Add(stmt.Semicolon())
 	file.Line()
 
-	// Генерируем тип RpcCallback (экспортируемый, аналогично Go клиенту)
 	stmt2 := tsg.NewStatement()
 	stmt2.Export().Type("RpcCallback")
 	stmt2.Op("=")
@@ -46,7 +42,6 @@ func (r *ClientRenderer) RenderClientBatch() error {
 	file.Add(stmt2)
 	file.Line()
 
-	// Генерируем импорты
 	file.GenerateImports()
 
 	return file.Save(path.Join(outDir, "batch.ts"))

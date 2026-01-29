@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -11,16 +11,12 @@ import (
 	"tgp/internal/model"
 )
 
-// convertTypeFromGoTypes конвертирует types.Type в Type.
-// Основано на подходе из gopls: работаем напрямую с go/types.
-// processingTypes используется для защиты от рекурсии при циклических зависимостях.
 func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]string, project *model.Project, loader *AutonomousPackageLoader, processingTypes ...map[string]bool) (coreType *model.Type) {
 
 	if typ == nil {
 		return
 	}
 
-	// Создаем или используем существующий set обрабатываемых типов
 	var processingSet map[string]bool
 	if len(processingTypes) > 0 && processingTypes[0] != nil {
 		processingSet = processingTypes[0]
@@ -28,7 +24,6 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 		processingSet = make(map[string]bool)
 	}
 
-	// Генерируем typeID для проверки рекурсии
 	typeID := generateTypeIDFromGoTypes(typ)
 	if typeID == "" {
 		if basic, ok := typ.(*types.Basic); ok {
@@ -46,10 +41,8 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 		}
 	}
 
-	// Проверяем, не обрабатываем ли мы уже этот тип (рекурсивный случай)
 	if typeID != "" && !isBuiltinTypeName(typeID) {
 		if processingSet[typeID] {
-			// Уже обрабатываем этот тип - возвращаем уже созданный или создаем минимальный
 			var existingType *model.Type
 			var exists bool
 			if existingType, exists = project.Types[typeID]; exists {
@@ -205,7 +198,6 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 					// Пока пропускаем, так как loader не передается в эту функцию
 					basePkgInfo, ok := loader.GetPackage(basePkgPath)
 					if ok && basePkgInfo != nil {
-						// Обрабатываем базовый тип рекурсивно
 						// Важно: используем тот же processingSet для защиты от рекурсии
 						baseCoreType := convertTypeFromGoTypes(named, basePkgPath, basePkgInfo.Imports, project, loader, processingSet)
 						if baseCoreType != nil {
@@ -213,18 +205,13 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 							// так как он нужен для правильной обработки алиаса
 							// Проверка isExcludedType применяется только при сохранении через saveTypeFromGoTypes
 							project.Types[baseTypeID] = baseCoreType
-							slog.Debug(i18n.Msg("Saved base type for alias"), slog.String("baseType", baseTypeID))
-							// Поля базового типа уже обработаны в convertTypeFromGoTypes через fillStructFields
-							// Базовый тип будет обработан рекурсивно в expandTypesRecursively через collectTypeFromID
 						} else {
 							slog.Debug(i18n.Msg("Failed to convert base type"), slog.String("baseType", baseTypeID))
 						}
 					} else {
 						slog.Debug(i18n.Msg("Package info is nil for base type"), slog.String("baseType", baseTypeID))
-						// Базовый тип будет обработан позже в expandTypesRecursively через ensureTypeLoaded
 					}
 				}
-				// Базовый тип уже существует - убеждаемся, что он обработан рекурсивно
 				// Это произойдет в expandTypesRecursively через collectTypeFromID
 			}
 		} else if basic, ok := underlying.(*types.Basic); ok {
@@ -253,7 +240,6 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 	return
 }
 
-// convertBasicKind конвертирует types.BasicKind в model.TypeKind.
 func convertBasicKind(kind types.BasicKind) (typeKind model.TypeKind) {
 
 	switch kind {
@@ -317,7 +303,6 @@ func convertBasicKind(kind types.BasicKind) (typeKind model.TypeKind) {
 	}
 }
 
-// resolveKindFromUnderlying определяет Kind из underlying типа.
 func resolveKindFromUnderlying(underlying types.Type) (kind model.TypeKind) {
 
 	switch t := underlying.(type) {

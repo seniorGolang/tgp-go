@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package helper
 
 import (
@@ -9,9 +9,6 @@ import (
 	"tgp/core/data"
 )
 
-// ParseStringList парсит строку из request по указанному ключу в список строк.
-// Поддерживает разделители: запятая, пробел, табуляция.
-// Возвращает пустой слайс, если ключ не найден или значение пустое.
 func ParseStringList(request data.Storage, key string) (result []string, err error) {
 
 	var value string

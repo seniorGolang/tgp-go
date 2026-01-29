@@ -1,0 +1,18 @@
+package errs
+
+import (
+	"github.com/gofiber/fiber/v2"
+)
+
+var (
+	NotFound       = makeError("not found", "notFound", fiber.ErrNotFound.Code)
+	Internal       = makeError("internal error", "internal", fiber.ErrInternalServerError.Code)
+	Conflict       = makeError("conflict on input data", "conflict", fiber.ErrConflict.Code)
+	Forbidden      = makeError("forbidden", "forbidden", fiber.ErrForbidden.Code)
+	BadRequest     = makeError("bad request", "badRequest", fiber.ErrBadRequest.Code)
+	Deprecated     = makeError("deprecated", "deprecated", fiber.ErrNotImplemented.Code)
+	AlreadyExist   = makeError("already exist", "alreadyExist", fiber.ErrConflict.Code)
+	AccessDenied   = makeError("access denied", "accessDenied", fiber.ErrUnauthorized.Code)
+	Unauthorized   = makeError("you are not authorized", "unauthorized", fiber.ErrUnauthorized.Code)
+	NotImplemented = makeError("not implemented", "notImplemented", fiber.ErrNotImplemented.Code)
+)

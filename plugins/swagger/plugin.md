@@ -147,8 +147,9 @@ tg plugin swagger --out api-docs/openapi.json
 
 ## Опции командной строки
 
-- `out`, `-o` (string, опциональная) - путь к выходному файлу (поддерживаются .json и .yaml/.yml)
-- `contracts`, `-c` (string, опциональная) - список контрактов через запятую для фильтрации (например: "UserService,OrderService")
+- `out` (string, опциональная) - путь к выходному файлу (поддерживаются .json и .yaml/.yml)
+- `serve` (string, опциональная) - запустить HTTP-сервер с Swagger UI по указанному адресу (например: `:8080` или `localhost:3000`)
+- `contracts` (string, опциональная) - список контрактов через запятую для фильтрации (например: "UserService,OrderService")
 
 ## Примеры использования
 

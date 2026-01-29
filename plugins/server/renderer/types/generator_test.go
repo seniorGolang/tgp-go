@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package types
 
 import (
@@ -10,7 +10,6 @@ import (
 	"tgp/internal/model"
 )
 
-// mockSrcFile реализует интерфейс SrcFile для тестирования.
 type mockSrcFile struct {
 	imports map[string]string
 }
@@ -61,7 +60,6 @@ func TestGenerator_FieldType_Caching(t *testing.T) {
 		t.Error("FieldType should return cached result for same parameters")
 	}
 
-	// Проверяем, что кэш работает
 	if len(gen.typeCache) == 0 {
 		t.Error("typeCache should not be empty after FieldType call")
 	}
@@ -72,7 +70,6 @@ func TestGenerator_FieldType_Caching(t *testing.T) {
 		t.Error("FieldType should return different result for different parameters")
 	}
 
-	// Проверяем, что в кэше два элемента
 	if len(gen.typeCache) != 2 {
 		t.Errorf("Expected 2 cache entries, got %d", len(gen.typeCache))
 	}

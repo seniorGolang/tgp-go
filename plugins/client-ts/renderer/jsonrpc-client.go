@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -15,8 +15,6 @@ import (
 	"tgp/internal/model"
 )
 
-// renderJsonRPCClient генерирует JSON-RPC клиент для контракта
-// RenderJsonRPCClientClass генерирует JSON-RPC клиент для контракта
 func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err error) {
 
 	// Отладка: проверяем входные данные
@@ -48,12 +46,10 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	// Сначала собираем все типы, вызывая walkVariable для всех методов
 	// Это заполнит typeDefTs всеми необходимыми типами
 	for _, method := range contract.Methods {
-		// Собираем типы из аргументов
 		args := r.argsWithoutContext(method)
 		for _, arg := range args {
 			_ = r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true)
 		}
-		// Собираем типы из результатов
 		results := r.resultsWithoutError(method)
 		for _, ret := range results {
 			_ = r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false)
@@ -94,7 +90,6 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		file.ImportType(exchangePath, exchangeTypes...)
 	}
 	// Импортируем namespace dto для использования dto.SomeStruct и т.д.
-	// Проверяем, есть ли типы из namespace dto
 	hasDtoTypes := false
 	for _, def := range common.SortedPairs(r.typeDefTs) {
 		if def.importPkg == "dto" {
@@ -106,18 +101,14 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		file.ImportAll(exchangePath, "dto")
 	}
 
-	// Генерируем импорты
 	file.GenerateImports()
 	file.Line()
 
-	// Генерируем типы данных (константы, enums, интерфейсы)
-	// Пропускаем типы, которые импортируются из exchange файла
 	importedTypes := make(map[string]bool)
 	for _, typeName := range exchangeTypes {
 		importedTypes[typeName] = true
 	}
 	for _, def := range common.SortedPairs(r.typeDefTs) {
-		// Пропускаем типы, которые импортируются из exchange
 		typeName := def.importName
 		if typeName == "" {
 			typeName = def.name
@@ -125,7 +116,6 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		if importedTypes[typeName] {
 			continue
 		}
-		// Пропускаем типы из namespace dto, так как они импортируются из exchange
 		if def.importPkg == "dto" {
 			continue
 		}
@@ -133,7 +123,6 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		file.Line()
 	}
 
-	// Собираем все ошибки для всех методов и генерируем их типы
 	allErrorsMap := make(map[string]errorInfo)
 	for _, method := range contract.Methods {
 		methodErrors := r.collectMethodErrors(method, contract)
@@ -144,13 +133,11 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		}
 	}
 
-	// Генерируем типы ошибок
 	for _, errInfo := range common.SortedPairs(allErrorsMap) {
 		file.Add(r.renderErrorType(errInfo))
 		file.Line()
 	}
 
-	// Генерируем union типы для ошибок каждого метода
 	for _, method := range contract.Methods {
 		methodErrors := r.collectMethodErrors(method, contract)
 		if len(methodErrors) > 0 {
@@ -162,7 +149,6 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		}
 	}
 
-	// Генерируем типы для callback функций (только для JSON-RPC методов) - ВНЕ класса
 	for _, method := range contract.Methods {
 		if r.methodIsJsonRPC(contract, method) {
 			// Тип callback функции: (results... | null, error: Error | null) => void
@@ -188,7 +174,6 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		}
 	}
 
-	// Генерируем класс клиента
 	clientClass := r.renderJsonRPCClientClass(contract)
 	file.Add(clientClass)
 	file.Line()
@@ -197,7 +182,6 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	return file.Save(outFilename)
 }
 
-// renderJsonRPCClientClass генерирует класс JSON-RPC клиента
 func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) *tsg.Statement {
 	// Сохраняем contract в локальную переменную для использования в замыкании
 	// Это гарантирует, что contract не будет изменен между установкой r.contract и использованием в замыкании
@@ -226,20 +210,17 @@ func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) *tsg
 		})
 		constructorStmt.BlockFunc(func(cg *tsg.Group) {
 			cg.Add(tsg.NewStatement().This().Dot("baseClient").Op("=").Id("_baseClient").Semicolon())
-			// Используем RPC клиент из базового клиента
 			cg.Add(tsg.NewStatement().This().Dot("client").Op("=").Id("_baseClient").Dot("getRpcClient").Call().Semicolon())
 		})
 		grp.Add(constructorStmt)
 		grp.Line()
 
 		// Методы для каждого JSON-RPC метода контракта
-		// Используем currentContract и убеждаемся, что r.contract установлен
 		if r.contract == nil {
 			slog.Error(i18n.Msg("renderJsonRPCClientClass: r.contract is nil in closure"))
 			return
 		}
 
-		// Генерируем методы для каждого JSON-RPC метода контракта
 		for _, method := range currentContract.Methods {
 			if r.methodIsJsonRPC(currentContract, method) {
 				r.renderJsonRPCMethod(grp, currentContract, method)
@@ -254,7 +235,6 @@ func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) *tsg
 	return stmt
 }
 
-// renderJsonRPCMethod генерирует метод JSON-RPC клиента
 func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Contract, method *model.Method) {
 	// JSDoc комментарий
 	filteredDocs := r.filterDocsComments(method.Docs)
@@ -267,7 +247,6 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 	args := r.argsWithoutContext(method)
 	results := r.resultsWithoutError(method)
 
-	// Создаём параметры метода
 	methodParams := tsg.NewStatement()
 	methodParams.Params(func(pg *tsg.Group) {
 		if len(args) > 0 {
@@ -275,7 +254,7 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 				typeStr := r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true).typeLink()
 				paramStmt := tsg.NewStatement()
 				paramStmt.Id(arg.Name)
-				if method.Annotations.IsSet("nullable") {
+				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					paramStmt.Optional()
 				}
 				paramStmt.Colon()
@@ -288,15 +267,12 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 	// Тип возвращаемого значения
 	returnType := r.resultToTypeStatement(method, results)
 
-	// Получаем типы из exchange для внутреннего использования
 	requestTypeName := r.requestTypeName(contract, method)
 	responseTypeName := r.responseTypeName(contract, method)
 
-	// Создаём async метод (публичный метод класса)
 	methodStmt := tsg.NewStatement()
 	methodStmt.Public()
 	methodStmt.AsyncMethodWithParams(r.lcName(method.Name), methodParams, returnType, func(mg *tsg.Group) {
-		// Собираем объект params из отдельных параметров
 		if len(args) > 0 {
 			paramsObj := tsg.NewStatement()
 			paramsObj.Const("params").Colon().Id(requestTypeName).Op("=")
@@ -328,7 +304,6 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 				Semicolon(),
 		)
 
-		// Обработка ошибок с типизацией
 		methodErrors := r.collectMethodErrors(method, contract)
 		if len(methodErrors) > 0 {
 			// Есть типизированные ошибки - используем type guards
@@ -361,7 +336,6 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 			)
 		}
 
-		// Преобразуем response в формат возвращаемого значения
 		if len(results) == 0 {
 			mg.Return()
 		} else {
@@ -384,7 +358,6 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 	grp.Line()
 }
 
-// renderJsonRPCRequestMethod генерирует метод reqMethodName для создания RequestRPC с callback
 func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *model.Contract, method *model.Method) {
 	// JSDoc комментарий
 	filteredDocs := r.filterDocsComments(method.Docs)
@@ -396,19 +369,16 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 
 	args := r.argsWithoutContext(method)
 
-	// Параметры метода: callback и параметры метода
 	methodParams := tsg.NewStatement()
 	methodParams.Params(func(pg *tsg.Group) {
-		// Callback функция
 		callbackTypeName := "ret" + contract.Name + method.Name
 		pg.Add(tsg.NewStatement().Id("callback").Colon().Id(callbackTypeName))
-		// Параметры метода
 		if len(args) > 0 {
 			for _, arg := range args {
 				typeStr := r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true).typeLink()
 				paramStmt := tsg.NewStatement()
 				paramStmt.Id(arg.Name)
-				if method.Annotations.IsSet("nullable") {
+				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					paramStmt.Optional()
 				}
 				paramStmt.Colon()
@@ -422,26 +392,20 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 	returnType := tsg.NewStatement()
 	returnType.Id("BatchRequest")
 
-	// Получаем типы из exchange для внутреннего использования
 	requestTypeName := r.requestTypeName(contract, method)
 
-	// Создаём метод вручную
 	methodStmt := tsg.NewStatement()
 	methodStmt.Id("req" + method.Name)
-	// Добавляем параметры
 	if methodParams != nil {
 		// methodParams уже содержит (), просто добавляем его
 		methodStmt.Add(methodParams)
 	} else {
 		methodStmt.Id("()")
 	}
-	// Добавляем возвращаемый тип
 	if returnType != nil {
 		methodStmt.Colon().Add(returnType)
 	}
-	// Добавляем тело метода
 	methodStmt.BlockFunc(func(bg *tsg.Group) {
-		// Создаём объект params из отдельных параметров
 		if len(args) > 0 {
 			paramsObj := tsg.NewStatement()
 			paramsObj.Const("params").Colon().Id(requestTypeName).Op("=")
@@ -456,7 +420,6 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 			bg.Add(tsg.NewStatement().Const("params").Colon().Id("Record").Generic("string", "never").Op("=").Values(nil).Semicolon())
 		}
 
-		// Создаём BatchRequest
 		requestStmt := tsg.NewStatement()
 		requestStmt.Const("_request").Colon().Id("BatchRequest").Op("=")
 		requestStmt.Values(func(vg *tsg.Group) {
@@ -467,7 +430,6 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 				rg.Add(tsg.NewStatement().ObjectField("jsonrpc", tsg.NewStatement().Lit("2.0")))
 				rg.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit(r.lcName(contract.Name)+"."+r.lcName(method.Name))))
 				rg.Add(tsg.NewStatement().ObjectField("params", tsg.NewStatement().Id("params")))
-				// Генерируем ID - используем публичный метод
 				idGen := tsg.NewStatement()
 				idGen.Id("id").Colon().Id("this.baseClient.getRpcClient").Call().Dot("generateId").Call()
 				rg.Add(idGen)
@@ -482,15 +444,12 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 		bg.If(
 			tsg.NewStatement().Id("callback"),
 			func(ig *tsg.Group) {
-				// Получаем типы результатов для извлечения из response
 				results := r.resultsWithoutError(method)
 				responseTypeName := r.responseTypeName(contract, method)
 
-				// Создаём retHandler функцию
 				retHandlerStmt := tsg.NewStatement()
 				retHandlerStmt.Id("_request.retHandler").Op("=")
 				retHandlerFn := tsg.NewStatement()
-				// Создаём параметры для стрелочной функции
 				arrowParams := tsg.NewStatement()
 				arrowParams.Params(func(fg *tsg.Group) {
 					fg.Add(tsg.NewStatement().Id("error").Colon().Id("Error").Op("|").Id("null"))
@@ -498,7 +457,6 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 				})
 				retHandlerFn.Add(arrowParams).Op("=>")
 				retHandlerFn.BlockFunc(func(hg *tsg.Group) {
-					// Обрабатываем ответ
 					hg.If(
 						tsg.NewStatement().Id("error").Op("===").Id("null").Op("&&").Id("rpcResponse"),
 						func(ig *tsg.Group) {
@@ -531,7 +489,6 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 											tsg.NewStatement().Id("null"),
 										).Semicolon())
 									} else {
-										// Извлекаем результат
 										sg.Add(tsg.NewStatement().Const("result").Colon().Id(responseTypeName).Op("=").Id("rpcResponse.result").Op("as").Id(responseTypeName).Semicolon())
 
 										// Вызываем callback с результатами и null error
@@ -577,7 +534,6 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 	grp.Line()
 }
 
-// renderJsonRPCBatchMethod генерирует метод для выполнения батч запросов
 func (r *ClientRenderer) renderJsonRPCBatchMethod(grp *tsg.Group, contract *model.Contract) {
 	grp.Comment("Executes a batch of JSON-RPC requests")
 	grp.Comment("@param calls - Array of JSON-RPC calls to execute")
@@ -610,7 +566,6 @@ func (r *ClientRenderer) renderJsonRPCBatchMethod(grp *tsg.Group, contract *mode
 	grp.Line()
 }
 
-// resultToTypeStatement создаёт тип для результата метода
 func (r *ClientRenderer) resultToTypeStatement(method *model.Method, vars []*model.Variable) *tsg.Statement {
 
 	if len(vars) == 0 {
@@ -625,7 +580,6 @@ func (r *ClientRenderer) resultToTypeStatement(method *model.Method, vars []*mod
 		return tsg.NewStatement().Id("any")
 	}
 
-	// Получаем pkgPath с дополнительной проверкой
 	var pkgPath string
 	if r.contract != nil {
 		pkgPath = r.contract.PkgPath
@@ -654,7 +608,7 @@ func (r *ClientRenderer) resultToTypeStatement(method *model.Method, vars []*mod
 			typeStr := schema.typeLink()
 			field := tsg.NewStatement()
 			field.Id(ret.Name)
-			if method.Annotations.IsSet("nullable") {
+			if model.IsAnnotationSet(r.project, r.contract, method, nil, "nullable") {
 				field.Optional()
 			}
 			field.Colon()

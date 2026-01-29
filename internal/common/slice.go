@@ -1,9 +1,7 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file (slice.go at 14.05.2020, 2:13) is subject to the terms and
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
 // conditions defined in file 'LICENSE', which is part of this project source code.
 package common
 
-// convert slice of strings to map[string]int
 func SliceStringToMap(slice []string) (m map[string]int) {
 
 	m = make(map[string]int)

@@ -1,5 +1,4 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
 // conditions defined in file 'LICENSE', which is part of this project source code.
 package utils
 
@@ -25,7 +24,6 @@ var (
 
 func GetPkgPath(fName string, isDir bool) (pkgPath string, err error) {
 
-	// find go.mod file
 	var goModPath string
 	if goModPath, err = GoModPath(fName, isDir); err != nil {
 		log.Error(i18n.Msg("cannot find go.mod"), slog.Any("error", errors.Wrap(err, "cannot find go.mod because of")))
@@ -62,7 +60,6 @@ func GoModPath(fName string, isDir bool) (goModPath string, err error) {
 		goModPathCache[root] = goModPath
 	}()
 
-	// Используем @go разрешение (монтируется хостом как корень файловой системы)
 	// @go монтируется так, что go.mod находится в корне: "/go.mod"
 	candidatePath := "/go.mod"
 	if _, err = os.Stat(candidatePath); err != nil {
@@ -129,7 +126,6 @@ func GetModulePath(goModPath string) (pkgPath string) {
 
 	line := data[i:]
 
-	// Cut line at \n, drop trailing \r if present.
 	var j int
 	if j = bytes.IndexByte(line, '\n'); j >= 0 {
 		line = line[:j]
@@ -191,7 +187,6 @@ func filePathToPackagePath(path string) (pkgPath string) {
 
 func GetDefaultGoPath() (gopath string, err error) {
 
-	// Используем переменную окружения (хост передает её в WASM)
 	if gopath = os.Getenv("GOPATH"); gopath != "" {
 		return
 	}

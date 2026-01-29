@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -11,7 +11,6 @@ import (
 	"tgp/internal/model"
 )
 
-// renderBatchSection генерирует секцию Batch запросов для JSON-RPC
 func (r *ClientRenderer) renderBatchSection(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
 	batchAnchor := generateAnchor("Batch запросы (JSON-RPC)")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", batchAnchor))
@@ -27,7 +26,6 @@ func (r *ClientRenderer) renderBatchSection(md *markdown.Markdown, contracts []*
 	md.HorizontalRule()
 }
 
-// renderErrorsSection генерирует секцию обработки ошибок
 func (r *ClientRenderer) renderErrorsSection(md *markdown.Markdown) {
 	errorsAnchor := generateAnchor("Обработка ошибок")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", errorsAnchor))
@@ -61,11 +59,9 @@ func main() {
 
     result, err := jsonRpcService.SomeMethod(context.Background(), "example")
     if err != nil {
-        // Проверяем тип ошибки, если используется декодер ошибок
         fmt.Printf("Error: %%v\n", err)
         return
     }
-    // Используем result
 }`, pkgPath, pkgName))
 
 	md.PlainText(markdown.Bold("Коды ошибок JSON-RPC 2.0:"))
@@ -103,22 +99,19 @@ func main() {
         fmt.Printf("HTTP Error: %%v\n", err)
         return
     }
-    // Используем result
 }`, pkgPath, pkgName))
 
 	md.PlainText("HTTP клиент автоматически проверяет статус код ответа и возвращает ошибку, если код не соответствует ожидаемому успешному коду для метода.")
 }
 
-// renderBatchExample генерирует пример использования batch запросов
 func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
-	// Находим первые два JSON-RPC метода из разных контрактов для примера
 	var exampleMethods []struct {
 		contract *model.Contract
 		method   *model.Method
 	}
 
 	for _, contract := range contracts {
-		if !contract.Annotations.IsSet(TagServerJsonRPC) {
+		if !model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			continue
 		}
 		for _, method := range contract.Methods {
@@ -148,7 +141,6 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 		return
 	}
 
-	// Собираем уникальные сервисы
 	servicesUsed := make(map[string]string)
 	for _, em := range exampleMethods {
 		serviceVar := ToLowerCamel(em.contract.Name)
@@ -157,7 +149,6 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 		}
 	}
 
-	// Подготавливаем данные для шаблона
 	type ServiceInfo struct {
 		Name string
 		Var  string
@@ -205,10 +196,8 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 		callbackInfo.ContractName = em.contract.Name
 		callbackInfo.MethodName = em.method.Name
 
-		// Проверяем, есть ли error в конце результатов
 		callbackInfo.HasError = r.isErrorLast(em.method.Results)
 
-		// Формируем список результатов: сначала все результаты без error, потом error (если есть)
 		allResults := em.method.Results
 		callbackInfo.Results = make([]struct {
 			Name string
@@ -238,7 +227,6 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 				Type: resultTypeStr,
 			})
 
-			// Проверяем, нужен ли импорт dto (тип из текущего проекта)
 			if !callbackInfo.NeedsDto {
 				if typ, ok := r.project.Types[result.TypeID]; ok && typ.ImportPkgPath != "" {
 					if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
@@ -263,7 +251,6 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 
 		if len(resultsWithoutErr) > 0 {
 			callbackInfo.HasResult = true
-			// Используем имя первого результата из Results, если оно есть
 			if len(callbackInfo.Results) > 0 && callbackInfo.Results[0].Name != "" {
 				callbackInfo.ResultVar = callbackInfo.Results[0].Name
 			} else {
@@ -294,7 +281,6 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 		requests = append(requests, requestInfo)
 	}
 
-	// Проверяем, нужен ли импорт dto
 	needsDto := false
 	for _, cb := range callbacks {
 		if cb.NeedsDto {
@@ -303,7 +289,7 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 		}
 	}
 
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"PkgPath":   pkgPath,
 		"PkgName":   pkgName,
 		"Services":  services,

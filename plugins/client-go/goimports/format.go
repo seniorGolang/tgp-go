@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package goimports
 
 import (
@@ -18,8 +21,6 @@ const (
 	indent    = '\t'
 )
 
-// standardPackages содержит список стандартных пакетов Go
-// Основано на go1.25rc1
 var standardPackages = map[string]struct{}{
 	"archive/tar":            {},
 	"archive/zip":            {},
@@ -208,12 +209,6 @@ type importSpec struct {
 	original   []byte
 }
 
-// formatImports форматирует импорты в файле согласно эталону:
-// 1. Стандартная библиотека (отсортирована)
-// 2. Пустая строка
-// 3. Локальные пакеты (с префиксом modulePath, отсортированы)
-// 4. Пустая строка
-// 5. Внешние пакеты (отсортированы)
 func formatImports(src []byte, filename string, modulePath string) ([]byte, error) {
 
 	fileSet := token.NewFileSet()
@@ -226,7 +221,6 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 		return src, nil
 	}
 
-	// Находим границы блока импортов
 	var headEnd, tailStart int
 	var hasImports bool
 
@@ -244,13 +238,11 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 		return src, nil
 	}
 
-	// Парсим импорты
 	var imports []importSpec
 	for _, decl := range f.Decls {
 		if genDecl, ok := decl.(*ast.GenDecl); ok && genDecl.Tok == token.IMPORT {
 			for _, spec := range genDecl.Specs {
 				imp := spec.(*ast.ImportSpec)
-				// Пропускаем import "C"
 				if imp.Path.Value == `"C"` {
 					continue
 				}
@@ -277,13 +269,11 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 		return src, nil
 	}
 
-	// Определяем модуль из go.mod, если не передан
 	localModulePath := modulePath
 	if localModulePath == "" {
 		localModulePath = findLocalModule(filename)
 	}
 
-	// Классифицируем импорты
 	var standard, local, external []importSpec
 
 	for _, imp := range imports {
@@ -297,7 +287,6 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 		}
 	}
 
-	// Сортируем каждую группу
 	sortImports(standard)
 	sortImports(local)
 	sortImports(external)
@@ -353,16 +342,13 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 		body = append(body, linebreak)
 	}
 
-	// Собираем результат
 	head := make([]byte, 0, headEnd+20) // предварительно выделяем память
 	head = append(head, src[:headEnd]...)
 	tail := make([]byte, len(src)-tailStart)
 	copy(tail, src[tailStart:])
 
-	// Добавляем начало блока импортов
 	head = append(head, []byte("import (")...)
 	head = append(head, linebreak)
-	// Добавляем конец блока импортов
 	body = append(body, []byte{')', linebreak}...)
 
 	// Создаем result с нужной емкостью и копируем данные
@@ -371,7 +357,6 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 	result = append(result, body...)
 	result = append(result, tail...)
 
-	// Удаляем \r\n (Windows line breaks)
 	result = bytes.ReplaceAll(result, []byte{'\r', '\n'}, []byte{'\n'})
 
 	// Форматируем через go/format
@@ -461,7 +446,6 @@ func findLocalModule(filename string) string {
 				}
 			}
 		}
-		// Проверяем, не вышли ли за пределы файловой системы
 		parentDir := filepath.Dir(dir)
 		if parentDir == dir {
 			break

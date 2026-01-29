@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -10,7 +10,6 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// RenderTransportJsonRPC генерирует транспортный JSON-RPC файл.
 func (r *transportRenderer) RenderTransportJsonRPC() error {
 
 	jsonrpcPath := path.Join(r.outDir, "jsonrpc.go")
@@ -26,7 +25,6 @@ func (r *transportRenderer) RenderTransportJsonRPC() error {
 	return srcFile.Save(jsonrpcPath)
 }
 
-// renderJsonRPCImports генерирует импорты для JSON-RPC файла.
 func (r *transportRenderer) renderJsonRPCImports(srcFile *GoFile) {
 
 	srcFile.ImportName(PackageFiber, "fiber")
@@ -41,22 +39,25 @@ func (r *transportRenderer) renderJsonRPCImports(srcFile *GoFile) {
 	srcFile.ImportName(contextPkgPath, "context")
 }
 
-// renderJsonRPCTypes генерирует типы для JSON-RPC файла.
 func (r *transportRenderer) renderJsonRPCTypes(srcFile *GoFile) {
 
 	srcFile.Line().Add(r.jsonrpcConstants())
 	srcFile.Add(r.idJsonRPC()).Line()
 	srcFile.Add(r.baseJsonRPC()).Line()
 	srcFile.Add(r.errorJsonRPC()).Line()
+	srcFile.Line()
+	srcFile.Add(r.requestOverlayKeyType()).Line()
+	srcFile.Add(r.requestOverlayStructType()).Line()
+	srcFile.Add(r.requestOverlayGetMethod()).Line()
+	srcFile.Add(r.requestOverlayFromFiberFunc())
+	srcFile.Add(r.requestOverlayMiddlewareFunc())
 }
 
-// renderJsonRPCConstants генерирует константы для JSON-RPC файла.
 func (r *transportRenderer) renderJsonRPCConstants(srcFile *GoFile) {
 
 	// Константы уже добавлены в renderJsonRPCTypes
 }
 
-// renderJsonRPCFunctions генерирует функции для JSON-RPC файла.
 func (r *transportRenderer) renderJsonRPCFunctions(srcFile *GoFile) {
 
 	srcFile.Add(r.jsonBufferPools())
@@ -71,7 +72,7 @@ func (r *transportRenderer) renderJsonRPCFunctions(srcFile *GoFile) {
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requestBase").Id("baseJsonRPC")).
 		Params(Id("responseBase").Op("*").Id("baseJsonRPC"))
 	srcFile.Line()
-	srcFile.Line().Add(r.jsonRPCMethodMap())
+	srcFile.Line().Add(r.initJsonRPCMethodMap())
 	srcFile.Line()
 	srcFile.Add(r.serveBatchFunc())
 	srcFile.Add(r.batchFunc())
@@ -85,7 +86,6 @@ func (r *transportRenderer) renderJsonRPCFunctions(srcFile *GoFile) {
 	srcFile.Line().Add(r.makeErrorResponseJsonRPCFunc())
 }
 
-// jsonrpcConstants генерирует константы для JSON-RPC.
 func (r *transportRenderer) jsonrpcConstants() Code {
 
 	return Const().Op("(").
@@ -102,14 +102,12 @@ func (r *transportRenderer) jsonrpcConstants() Code {
 		Op(")")
 }
 
-// idJsonRPC генерирует тип idJsonRPC.
 func (r *transportRenderer) idJsonRPC() Code {
 
 	jsonPkg := r.getPackageJSON()
 	return Type().Id("idJsonRPC").Op("=").Qual(jsonPkg, "RawMessage")
 }
 
-// baseJsonRPC генерирует тип baseJsonRPC.
 func (r *transportRenderer) baseJsonRPC() Code {
 
 	jsonPkg := r.getPackageJSON()
@@ -123,13 +121,12 @@ func (r *transportRenderer) baseJsonRPC() Code {
 	})
 }
 
-// errorJsonRPC генерирует тип errorJsonRPC.
 func (r *transportRenderer) errorJsonRPC() Code {
 
 	return Type().Id("errorJsonRPC").Struct(
 		Id("Code").Id("int").Tag(map[string]string{"json": "code"}),
 		Id("Message").Id("string").Tag(map[string]string{"json": "message"}),
-		Id("Data").Id("interface{}").Tag(map[string]string{"json": "data,omitempty"}),
+		Id("Data").Id("any").Tag(map[string]string{"json": "data,omitempty"}),
 	).Line().Func().Params(Err().Id("errorJsonRPC")).
 		Id("Error").
 		Params().
@@ -137,4 +134,76 @@ func (r *transportRenderer) errorJsonRPC() Code {
 		Block(
 			Return(Err().Dot("Message")),
 		)
+}
+
+func (r *transportRenderer) requestOverlayKeyType() Code {
+
+	return Line().
+		Type().Id("requestOverlayKey").Struct().Line().
+		Var().Id("keyRequestOverlay").Op("=").Id("requestOverlayKey").Values()
+}
+
+func (r *transportRenderer) requestOverlayStructType() Code {
+
+	headerNames, cookieNames := r.jsonRPCUsedOverlayKeys()
+	return Type().Id("requestOverlay").StructFunc(func(tg *Group) {
+		for _, name := range headerNames {
+			tg.Id(overlayKeyToFieldName(name)).String()
+		}
+		for _, name := range cookieNames {
+			tg.Id(overlayKeyToFieldName(name)).String()
+		}
+	})
+}
+
+func (r *transportRenderer) requestOverlayGetMethod() Code {
+
+	headerNames, cookieNames := r.jsonRPCUsedOverlayKeys()
+	cases := make([]Code, 0, len(headerNames)+len(cookieNames)+1)
+	for _, name := range headerNames {
+		cases = append(cases, Case(Lit(name)).Block(Return(Id("o").Dot(overlayKeyToFieldName(name)))))
+	}
+	for _, name := range cookieNames {
+		cases = append(cases, Case(Lit(name)).Block(Return(Id("o").Dot(overlayKeyToFieldName(name)))))
+	}
+	cases = append(cases, Default().Block(Return(Lit(""))))
+	return Func().Params(Id("o").Id("requestOverlay")).Id("Get").Params(Id("key").String()).Params(String()).Block(
+		Switch(Id("key")).Block(cases...),
+	)
+}
+
+func (r *transportRenderer) requestOverlayFromFiberFunc() Code {
+
+	headerNames, cookieNames := r.jsonRPCUsedOverlayKeys()
+	return Line().Func().Id("requestOverlayFromFiber").
+		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
+		Params(Id("requestOverlay")).
+		BlockFunc(func(block *Group) {
+			block.Id("o").Op(":=").Id("requestOverlay").Values()
+			for _, name := range headerNames {
+				block.Id("o").Dot(overlayKeyToFieldName(name)).Op("=").Id("string").Call(Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Lit(name)))
+			}
+			for _, name := range cookieNames {
+				block.Id("o").Dot(overlayKeyToFieldName(name)).Op("=").Id(VarNameFtx).Dot("Cookies").Call(Lit(name))
+			}
+			block.Return(Id("o"))
+		})
+}
+
+func (r *transportRenderer) requestOverlayMiddlewareFunc() Code {
+
+	contextPkgPath := fmt.Sprintf("%s/context", r.pkgPath(r.outDir))
+	return Line().Func().Id("requestOverlayMiddleware").
+		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
+		Params(Error()).
+		BlockFunc(func(bg *Group) {
+			bg.Id(VarNameFtx).Dot("SetUserContext").Call(
+				Qual(contextPkgPath, "WithValue").Call(
+					Id(VarNameFtx).Dot("UserContext").Call(),
+					Id("keyRequestOverlay"),
+					Id("requestOverlayFromFiber").Call(Id(VarNameFtx)),
+				),
+			)
+			bg.Return(Id(VarNameFtx).Dot("Next").Call())
+		})
 }

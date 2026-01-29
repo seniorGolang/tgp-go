@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -13,23 +13,19 @@ import (
 	"tgp/internal/model"
 )
 
-// expandTypesRecursively рекурсивно разбирает все типы из контрактов.
 func expandTypesRecursively(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
 	seenTypes := &typeutil.Map{}
 	msets := &typeutil.MethodSetCache{}
 
-	// Собираем все типы из контрактов
 	for _, contract := range project.Contracts {
 		for _, method := range contract.Methods {
-			// Обрабатываем аргументы
 			for _, arg := range method.Args {
 				if err = collectTypeFromID(arg.TypeID, project, seenTypes, msets, loader); err != nil {
 					return
 				}
 			}
 
-			// Обрабатываем результаты
 			for _, result := range method.Results {
 				if err = collectTypeFromID(result.TypeID, project, seenTypes, msets, loader); err != nil {
 					return
@@ -41,44 +37,29 @@ func expandTypesRecursively(project *model.Project, loader *AutonomousPackageLoa
 	return
 }
 
-// collectTypeFromID получает types.Type по typeID и рекурсивно обходит все его зависимости.
 func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeutil.Map, msets *typeutil.MethodSetCache, loader *AutonomousPackageLoader) (err error) {
 
-	// Получаем тип из project.Types (используется как кэш)
 	var typ *model.Type
 	var exists bool
 	if typ, exists = project.Types[typeID]; !exists {
-		// Тип не найден - пытаемся загрузить его из пакета
 		if err = ensureTypeLoaded(typeID, project, loader); err != nil {
 			slog.Debug(i18n.Msg("Failed to load type"), slog.String("type", typeID), slog.Any("error", err))
 			return
 		}
 		if typ, exists = project.Types[typeID]; !exists {
-			// Тип не был сохранен - возможно, это встроенный тип или ошибка загрузки
 			return
 		}
 	}
 
-	// НЕ пропускаем исключенные типы - они нужны для анализа интерфейсов
-	// isExcludedType используется только для фильтрации при сохранении в финальный результат
-
-	// Если это алиас, обрабатываем базовый тип рекурсивно
 	if typ.Kind == model.TypeKindAlias && typ.AliasOf != "" {
-		// Обрабатываем базовый тип рекурсивно
-		// collectTypeFromID загрузит базовый тип через ensureTypeLoaded, если его еще нет
 		if err = collectTypeFromID(typ.AliasOf, project, seenTypes, msets, loader); err != nil {
 			slog.Debug(i18n.Msg("Failed to collect base type for alias"), slog.String("baseType", typ.AliasOf), slog.String("alias", typeID), slog.Any("error", err))
-			// Продолжаем обработку, даже если базовый тип не загружен
 		}
-		// Продолжаем обработку текущего типа для обработки его полей (если есть)
-		// Но если это просто алиас без полей, можно вернуться
 		if len(typ.StructFields) == 0 {
-			// Это простой алиас - базовый тип уже обработан (или будет обработан), можно вернуться
 			return
 		}
 	}
 
-	// Получаем types.Type из пакета для рекурсивного обхода
 	if typ.ImportPkgPath == "" || typ.TypeName == "" {
 		return
 	}
@@ -99,15 +80,11 @@ func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeuti
 		return
 	}
 
-	// Рекурсивно обходим все типы, начиная с этого типа
 	forEachReachableType(typeNameObj.Type(), project, seenTypes, msets, loader)
 
-	// Также обрабатываем базовый тип алиаса, если он еще не обработан
 	if typ.Kind == model.TypeKindAlias && typ.AliasOf != "" {
-		// Убеждаемся, что базовый тип обработан рекурсивно
 		var baseType *model.Type
 		if baseType, exists = project.Types[typ.AliasOf]; exists {
-			// Обрабатываем базовый тип рекурсивно через forEachReachableType
 			if baseType.ImportPkgPath != "" && baseType.TypeName != "" {
 				var basePkgInfo *PackageInfo
 				if basePkgInfo, ok = loader.GetPackage(baseType.ImportPkgPath); ok && basePkgInfo != nil && basePkgInfo.Types != nil {
@@ -126,8 +103,6 @@ func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeuti
 	return
 }
 
-// forEachReachableType рекурсивно обходит все типы, достижимые из данного типа.
-// Основано на gopls/internal/typesinternal/element.go:ForEachElement
 func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeutil.Map, msets *typeutil.MethodSetCache, loader *AutonomousPackageLoader) {
 	var visit func(t types.Type, skip bool)
 	visit = func(t types.Type, skip bool) {
@@ -204,26 +179,22 @@ func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeu
 	visit(t, false)
 }
 
-// saveTypeFromGoTypes сохраняет тип из go/types в project.Types.
 func saveTypeFromGoTypes(t types.Type, project *model.Project, loader *AutonomousPackageLoader) {
 	typeID := generateTypeIDFromGoTypes(t)
 	if typeID == "" {
 		return
 	}
 
-	// Проверяем, не является ли это встроенным типом
 	if basic, ok := t.(*types.Basic); ok {
 		if isBuiltinTypeName(basic.Name()) {
 			return
 		}
 	}
 
-	// Проверяем, не сохранен ли уже тип
 	if _, exists := project.Types[typeID]; exists {
 		return
 	}
 
-	// Получаем информацию о пакете
 	var importPkgPath string
 	var typeName string
 
@@ -253,23 +224,16 @@ func saveTypeFromGoTypes(t types.Type, project *model.Project, loader *Autonomou
 		return
 	}
 
-	// Конвертируем тип через convertTypeFromGoTypes
-	// Создаем processingSet для защиты от рекурсии
 	processingSet := make(map[string]bool)
 	coreType := convertTypeFromGoTypes(t, importPkgPath, pkgInfo.Imports, project, loader, processingSet)
 	if coreType == nil {
 		return
 	}
 
-	// Определяем интерфейсы, которые реализует тип
 	detectInterfaces(t, coreType, project, loader)
-
-	// Сохраняем тип в project.Types
-	// Все типы сохраняются для полного анализа, project.Types используется как кэш
 	project.Types[typeID] = coreType
 }
 
-// generateTypeIDFromGoTypes генерирует typeID для types.Type.
 func generateTypeIDFromGoTypes(t types.Type) (typeID string) {
 
 	if t == nil {
@@ -299,10 +263,8 @@ func generateTypeIDFromGoTypes(t types.Type) (typeID string) {
 			typeID = typeName
 			return
 		}
-		// Если Obj() == nil, пытаемся получить информацию из underlying типа
 		underlying := t.Underlying()
 		if underlying != nil {
-			// Рекурсивно пытаемся получить typeID из underlying типа
 			var underlyingID string
 			if underlyingID = generateTypeIDFromGoTypes(underlying); underlyingID != "" {
 				typeID = underlyingID
@@ -322,10 +284,8 @@ func generateTypeIDFromGoTypes(t types.Type) (typeID string) {
 			typeID = typeName
 			return
 		}
-		// Если Obj() == nil, пытаемся получить информацию из underlying типа
 		underlying := types.Unalias(t)
 		if underlying != nil {
-			// Рекурсивно пытаемся получить typeID из underlying типа
 			var underlyingID string
 			if underlyingID = generateTypeIDFromGoTypes(underlying); underlyingID != "" {
 				typeID = underlyingID
@@ -335,9 +295,6 @@ func generateTypeIDFromGoTypes(t types.Type) (typeID string) {
 		return
 
 	case *types.Interface:
-		// Интерфейсы без имени не могут быть идентифицированы однозначно
-		// Но если это underlying тип именованного типа, он должен быть обработан через *types.Named
-		// Для анонимных интерфейсов возвращаем пустую строку
 		return
 
 	default:
@@ -345,7 +302,6 @@ func generateTypeIDFromGoTypes(t types.Type) (typeID string) {
 	}
 }
 
-// ensureTypeLoaded загружает тип из пакета, если его еще нет в project.Types.
 func ensureTypeLoaded(typeID string, project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
 	var existingType *model.Type
@@ -429,5 +385,3 @@ func ensureTypeLoaded(typeID string, project *model.Project, loader *AutonomousP
 
 	return
 }
-
-// splitTypeID объявлена в utils.go

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 //go:build wasip1
 
 package mod
@@ -12,7 +15,6 @@ import (
 	"tgp/core/exec"
 )
 
-// goModPath находит путь к go.mod файлу в WASM окружении через хост.
 func goModPath(root string) (string, error) {
 
 	var goModPath string
@@ -20,7 +22,6 @@ func goModPath(root string) (string, error) {
 	currentDir := root
 
 	for {
-		// Пытаемся выполнить команду через хост
 		cmd := exec.Command("go", "env", "GOMOD")
 		cmd = cmd.Dir(currentDir)
 
@@ -46,13 +47,11 @@ func goModPath(root string) (string, error) {
 			err = cmdErr
 		}
 
-		// Если команда не сработала, пытаемся найти go.mod вручную
 		goModPath := filepath.Join(currentDir, "go.mod")
 		if _, statErr := os.Stat(goModPath); statErr == nil {
 			return goModPath, nil
 		}
 
-		// Пытаемся подняться на уровень выше
 		parentDir := filepath.Dir(currentDir)
 		if parentDir == currentDir { // когда мы в корневой директории, прекращаем попытки
 			if err != nil {

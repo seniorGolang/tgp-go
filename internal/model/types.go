@@ -1,12 +1,11 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package model
 
 import (
 	"tgp/internal/tags"
 )
 
-// Project содержит всю собранную информацию о проекте.
 type Project struct {
 	Version      string `json:"version"`
 	ModulePath   string `json:"modulePath"`
@@ -26,7 +25,6 @@ type Project struct {
 	Marker    string `json:"marker,omitempty"`    // SHA256 маркер состояния проекта
 }
 
-// GitInfo содержит информацию о Git репозитории.
 type GitInfo struct {
 	Commit    string `json:"commit"`
 	Branch    string `json:"branch"`
@@ -37,14 +35,12 @@ type GitInfo struct {
 	RemoteURL string `json:"remoteUrl,omitempty"`
 }
 
-// Service представляет группу контрактов, объединенных в одном исполняемом блоке.
 type Service struct {
 	Name        string   `json:"name"`
 	MainPath    string   `json:"mainPath"`
 	ContractIDs []string `json:"contractIds,omitempty"`
 }
 
-// Contract представляет Go интерфейс с аннотациями @tg.
 type Contract struct {
 	Name            string                `json:"name"`
 	PkgPath         string                `json:"pkgPath"`
@@ -56,7 +52,6 @@ type Contract struct {
 	Implementations []*ImplementationInfo `json:"implementations,omitempty"`
 }
 
-// Method представляет метод контракта.
 type Method struct {
 	Name        string       `json:"name"`
 	ContractID  string       `json:"contractID"`
@@ -68,7 +63,6 @@ type Method struct {
 	Handler     *HandlerInfo `json:"handler,omitempty"`
 }
 
-// Variable представляет переменную (аргумент или результат метода).
 type Variable struct {
 	Name             string       `json:"name"`
 	TypeID           string       `json:"typeID,omitempty"`
@@ -84,27 +78,23 @@ type Variable struct {
 	Annotations      tags.DocTags `json:"annotations,omitempty"`
 }
 
-// HandlerInfo представляет информацию о кастомном обработчике.
 type HandlerInfo struct {
 	PkgPath string `json:"pkgPath"`
 	Name    string `json:"name"`
 }
 
-// ImplementationInfo представляет информацию об имплементации контракта.
 type ImplementationInfo struct {
 	PkgPath    string                           `json:"pkgPath"`
 	StructName string                           `json:"structName"`
 	MethodsMap map[string]*ImplementationMethod `json:"methods,omitempty"`
 }
 
-// ImplementationMethod представляет метод имплементации контракта.
 type ImplementationMethod struct {
 	Name       string                `json:"name,omitempty"`
 	FilePath   string                `json:"filePath"`
 	ErrorTypes []*ErrorTypeReference `json:"errorTypes,omitempty"`
 }
 
-// ErrorInfo представляет информацию об ошибке метода.
 type ErrorInfo struct {
 	PkgPath      string `json:"pkgPath"`
 	TypeName     string `json:"typeName"`
@@ -114,14 +104,12 @@ type ErrorInfo struct {
 	TypeID       string `json:"typeID,omitempty"`
 }
 
-// ErrorTypeReference представляет ссылку на тип ошибки.
 type ErrorTypeReference struct {
 	PkgPath  string `json:"pkgPath"`
 	TypeName string `json:"typeName"`
 	FullName string `json:"fullName"`
 }
 
-// TypeKind представляет вид типа Go.
 type TypeKind string
 
 const (
@@ -153,7 +141,6 @@ const (
 	TypeKindAlias     TypeKind = "alias"
 )
 
-// Type представляет сериализуемое представление типа Go.
 type Type struct {
 	Kind TypeKind `json:"kind,omitempty"`
 
@@ -191,7 +178,6 @@ type Type struct {
 	ImplementsInterfaces []string `json:"implementsInterfaces,omitempty"`
 }
 
-// StructField представляет поле структуры.
 type StructField struct {
 	Name             string              `json:"name"`
 	TypeID           string              `json:"typeID,omitempty"`
@@ -207,7 +193,6 @@ type StructField struct {
 	Docs             []string            `json:"docs,omitempty"`
 }
 
-// Function представляет функцию или метод.
 type Function struct {
 	Name    string      `json:"name"`
 	Args    []*Variable `json:"args,omitempty"`

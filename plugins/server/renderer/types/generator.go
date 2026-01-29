@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package types
 
 import (
@@ -13,14 +13,12 @@ import (
 	"tgp/internal/model"
 )
 
-// Generator генерирует типы для Go кода.
 type Generator struct {
 	project   *model.Project
 	srcFile   SrcFile
 	typeCache map[string]*Statement
 }
 
-// NewGenerator создает новый генератор типов.
 func NewGenerator(project *model.Project, srcFile SrcFile) *Generator {
 	return &Generator{
 		project:   project,
@@ -29,20 +27,22 @@ func NewGenerator(project *model.Project, srcFile SrcFile) *Generator {
 	}
 }
 
-// FieldTypeFromVariable конвертирует тип из Variable в код jennifer.
 func (g *Generator) FieldTypeFromVariable(variable *model.Variable, allowEllipsis bool) *Statement {
 	c := &Statement{}
 
-	// Обрабатываем ellipsis
 	if variable.IsEllipsis && allowEllipsis {
 		c.Op("...")
 		if variable.TypeID != "" {
 			return c.Add(g.FieldType(variable.TypeID, variable.NumberOfPointers, false))
 		}
+		if variable.MapKeyID != "" && variable.MapValueID != "" {
+			keyType := g.FieldType(variable.MapKeyID, variable.MapKeyPointers, false)
+			valueType := g.FieldType(variable.MapValueID, variable.ElementPointers, false)
+			return c.Map(keyType).Add(valueType)
+		}
 		return c
 	}
 
-	// Обрабатываем массивы и слайсы
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		for i := 0; i < variable.NumberOfPointers; i++ {
 			c.Op("*")
@@ -55,10 +55,14 @@ func (g *Generator) FieldTypeFromVariable(variable *model.Variable, allowEllipsi
 		if variable.TypeID != "" {
 			return c.Add(g.FieldType(variable.TypeID, variable.ElementPointers, false))
 		}
+		if variable.MapKeyID != "" && variable.MapValueID != "" {
+			keyType := g.FieldType(variable.MapKeyID, variable.MapKeyPointers, false)
+			valueType := g.FieldType(variable.MapValueID, variable.ElementPointers, false)
+			return c.Map(keyType).Add(valueType)
+		}
 		return c
 	}
 
-	// Обрабатываем map
 	if variable.MapKeyID != "" && variable.MapValueID != "" {
 		for i := 0; i < variable.NumberOfPointers; i++ {
 			c.Op("*")
@@ -68,14 +72,11 @@ func (g *Generator) FieldTypeFromVariable(variable *model.Variable, allowEllipsi
 		return c.Map(keyType).Add(valueType)
 	}
 
-	// Базовый тип
 	return c.Add(g.FieldType(variable.TypeID, variable.NumberOfPointers, false))
 }
 
-// FieldType конвертирует тип из core в код jennifer.
 func (g *Generator) FieldType(typeID string, numberOfPointers int, allowEllipsis bool) *Statement {
 
-	// Проверяем кэш
 	cacheKey := fmt.Sprintf("%s:%d:%v", typeID, numberOfPointers, allowEllipsis)
 	if cached, ok := g.typeCache[cacheKey]; ok {
 		if cacheLogger != nil {
@@ -89,7 +90,6 @@ func (g *Generator) FieldType(typeID string, numberOfPointers int, allowEllipsis
 		cacheLogger.OnCacheMiss()
 	}
 
-	// Генерируем тип
 	result := g.fieldTypeImpl(typeID, numberOfPointers, allowEllipsis)
 
 	// Сохраняем в кэш
@@ -97,23 +97,19 @@ func (g *Generator) FieldType(typeID string, numberOfPointers int, allowEllipsis
 	return result
 }
 
-// fieldTypeImpl реализует генерацию типа без кэширования.
 func (g *Generator) fieldTypeImpl(typeID string, numberOfPointers int, allowEllipsis bool) *Statement {
 
 	c := &Statement{}
 
-	// Добавляем указатели
 	for i := 0; i < numberOfPointers; i++ {
 		c.Op("*")
 	}
 
-	// Получаем тип из проекта
 	typ, ok := g.project.Types[typeID]
 	if !ok {
 		return g.fieldTypeFromID(typeID, c)
 	}
 
-	// Обрабатываем ellipsis
 	if typ.IsEllipsis && allowEllipsis {
 		c.Op("...")
 		if typ.ArrayOfID != "" {
@@ -122,7 +118,6 @@ func (g *Generator) fieldTypeImpl(typeID string, numberOfPointers int, allowElli
 		return c
 	}
 
-	// Обрабатываем в зависимости от вида типа
 	switch typ.Kind {
 	case model.TypeKindArray:
 		return g.fieldTypeArray(typ, c)
@@ -143,7 +138,6 @@ func (g *Generator) fieldTypeImpl(typeID string, numberOfPointers int, allowElli
 	}
 }
 
-// fieldTypeFromID извлекает тип из typeID, если он не найден в project.Types.
 func (g *Generator) fieldTypeFromID(typeID string, c *Statement) *Statement {
 	if strings.Contains(typeID, ":") {
 		parts := strings.SplitN(typeID, ":", 2)
@@ -157,7 +151,6 @@ func (g *Generator) fieldTypeFromID(typeID string, c *Statement) *Statement {
 	return c.Id(typeID)
 }
 
-// fieldTypeArray генерирует код для массива или слайса.
 func (g *Generator) fieldTypeArray(typ *model.Type, c *Statement) *Statement {
 	// Если это именованный тип, который определен как массив
 	if typ.TypeName != "" && (typ.ImportPkgPath != "" || typ.PkgName != "") {
@@ -179,7 +172,6 @@ func (g *Generator) fieldTypeArray(typ *model.Type, c *Statement) *Statement {
 	return c
 }
 
-// fieldTypeMap генерирует код для map.
 func (g *Generator) fieldTypeMap(typ *model.Type, c *Statement) *Statement {
 	if typ.MapKeyID != "" && typ.MapValueID != "" {
 		keyType := g.FieldType(typ.MapKeyID, typ.MapKeyPointers, false)
@@ -189,7 +181,6 @@ func (g *Generator) fieldTypeMap(typ *model.Type, c *Statement) *Statement {
 	return c
 }
 
-// fieldTypeChan генерирует код для канала.
 func (g *Generator) fieldTypeChan(typ *model.Type, c *Statement) *Statement {
 	switch typ.ChanDirection {
 	case 1: // send only
@@ -205,17 +196,14 @@ func (g *Generator) fieldTypeChan(typ *model.Type, c *Statement) *Statement {
 	return c
 }
 
-// fieldTypeStruct генерирует код для структуры.
 func (g *Generator) fieldTypeStruct(typ *model.Type, c *Statement) *Statement {
 	return g.fieldTypeNamed(typ, c)
 }
 
-// fieldTypeInterface генерирует код для интерфейса.
 func (g *Generator) fieldTypeInterface(typ *model.Type, c *Statement) *Statement {
 	return g.fieldTypeNamed(typ, c)
 }
 
-// fieldTypeFunction генерирует код для функционального типа.
 func (g *Generator) fieldTypeFunction(typ *model.Type, c *Statement) *Statement {
 	args := make([]Code, 0, len(typ.FunctionArgs))
 	for _, arg := range typ.FunctionArgs {
@@ -230,7 +218,6 @@ func (g *Generator) fieldTypeFunction(typ *model.Type, c *Statement) *Statement 
 	return c.Func().Params(args...).Params(results...)
 }
 
-// fieldTypeAlias генерирует код для алиаса типа.
 func (g *Generator) fieldTypeAlias(typ *model.Type, numberOfPointers int, allowEllipsis bool, c *Statement) *Statement {
 	if typ.AliasOf != "" {
 		return g.FieldType(typ.AliasOf, numberOfPointers, allowEllipsis)
@@ -238,7 +225,6 @@ func (g *Generator) fieldTypeAlias(typ *model.Type, numberOfPointers int, allowE
 	return c.Id(typ.TypeName)
 }
 
-// fieldTypePrimitive генерирует код для примитивных типов.
 func (g *Generator) fieldTypePrimitive(typ *model.Type, typeID string, c *Statement) *Statement {
 	// Если у типа есть ImportPkgPath и TypeName, это именованный тип из другого пакета
 	if typ.ImportPkgPath != "" && typ.TypeName != "" {
@@ -252,7 +238,6 @@ func (g *Generator) fieldTypePrimitive(typ *model.Type, typeID string, c *Statem
 	return c.Id(typeID)
 }
 
-// fieldTypeNamed генерирует код для именованного типа.
 func (g *Generator) fieldTypeNamed(typ *model.Type, c *Statement) *Statement {
 	if typ.ImportPkgPath != "" {
 		packageName := typ.PkgName
@@ -269,7 +254,6 @@ func (g *Generator) fieldTypeNamed(typ *model.Type, c *Statement) *Statement {
 	return c.Id(typ.TypeName)
 }
 
-// FuncDefinitionParams генерирует параметры или результаты метода.
 func (g *Generator) FuncDefinitionParams(vars []*model.Variable) *Statement {
 	c := &Statement{}
 	c.ListFunc(func(gr *Group) {
@@ -287,13 +271,11 @@ func (g *Generator) FuncDefinitionParams(vars []*model.Variable) *Statement {
 	return c
 }
 
-// toLowerCamel конвертирует строку в lowerCamelCase.
 func toLowerCamel(s string) string {
 
 	if s == "" {
 		return s
 	}
-	// Проверяем, все ли символы в верхнем регистре
 	allUpper := true
 	for _, r := range s {
 		if r >= 'a' && r <= 'z' {

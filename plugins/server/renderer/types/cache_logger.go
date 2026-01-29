@@ -1,8 +1,7 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package types
 
-// CacheLogger интерфейс для логирования использования кэша.
 type CacheLogger interface {
 	OnCacheHit()
 	OnCacheMiss()
@@ -10,7 +9,6 @@ type CacheLogger interface {
 
 var cacheLogger CacheLogger
 
-// SetCacheLogger устанавливает логгер для отслеживания использования кэша.
 func SetCacheLogger(logger CacheLogger) {
 
 	cacheLogger = logger

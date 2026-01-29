@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -13,16 +13,14 @@ import (
 	"tgp/plugins/client-ts/tsg"
 )
 
-// isHTTP проверяет, является ли метод HTTP методом.
 func (r *ClientRenderer) isHTTP(method *model.Method, contract *model.Contract) bool {
-	if method == nil || method.Annotations == nil {
+
+	if method == nil {
 		return false
 	}
-	// Проверяем, есть ли аннотация http-method
-	return method.Annotations.IsSet(TagMethodHTTP)
+	return model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
 }
 
-// renderHTTPMethod генерирует HTTP метод клиента
 func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, contract *model.Contract) {
 	args := r.argsWithoutContext(method)
 	results := r.resultsWithoutError(method)
@@ -35,11 +33,9 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		grp.Comment(fmt.Sprintf("Вызывает HTTP метод %s", method.Name))
 	}
 
-	// Добавляем информацию о возможных ошибках в JSDoc
 	methodErrors := r.collectMethodErrors(method, contract)
 	if len(methodErrors) > 0 {
 		grp.Comment("@throws {Error} - Possible errors:")
-		// Сортируем ошибки для детерминированного порядка: сначала по HTTP коду, затем по имени типа
 		errorsList := make([]errorInfo, 0, len(methodErrors))
 		for _, errInfo := range common.SortedPairs(methodErrors) {
 			errorsList = append(errorsList, errInfo)
@@ -69,22 +65,16 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		}
 	}
 
-	// Определяем HTTP метод
-	httpMethod := "POST"
-	if method.Annotations.IsSet(TagMethodHTTP) {
-		httpMethod = strings.ToUpper(annotationValue(method.Annotations, TagMethodHTTP, "POST"))
-	}
+	httpMethod := strings.ToUpper(model.GetAnnotationValue(r.project, contract, method, nil, TagMethodHTTP, "POST"))
 
-	// Создаём параметры метода - отдельные параметры как в оригинальном интерфейсе
 	methodParams := tsg.NewStatement()
 	methodParams.Params(func(pg *tsg.Group) {
 		if len(args) > 0 {
-			// Генерируем отдельные параметры для каждого аргумента
 			for _, arg := range args {
 				typeStr := r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true).typeLink()
 				paramStmt := tsg.NewStatement()
 				paramStmt.Id(arg.Name)
-				if method.Annotations.IsSet("nullable") {
+				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					paramStmt.Optional()
 				}
 				paramStmt.Colon()
@@ -97,7 +87,6 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 	// Тип возвращаемого значения
 	returnType := r.resultToTypeStatement(method, results)
 
-	// Получаем типы из exchange только если они нужны
 	var requestTypeName string
 	if len(args) > 0 {
 		requestTypeName = r.requestTypeName(contract, method)
@@ -107,11 +96,9 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		responseTypeName = r.responseTypeName(contract, method)
 	}
 
-	// Создаём async метод (публичный метод класса)
 	methodStmt := tsg.NewStatement()
 	methodStmt.Public()
 	methodStmt.AsyncMethodWithParams(r.lcName(method.Name), methodParams, returnType, func(mg *tsg.Group) {
-		// Собираем объект params из отдельных параметров с типизацией через exchange тип
 		if len(args) > 0 {
 			paramsObj := tsg.NewStatement()
 			paramsObj.Const("params").Colon().Id(requestTypeName).Op("=")
@@ -123,12 +110,10 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 			mg.Add(paramsObj.Semicolon())
 		}
 
-		// Формируем URL
 		urlStmt := tsg.NewStatement()
 		urlStmt.Const("baseURL").Op("=").Id("this").Dot("baseClient").Dot("getEndpoint").Call().Semicolon()
 		mg.Add(urlStmt)
 
-		// Определяем путь
 		path := r.httpPath(method, contract)
 		urlStmt2 := tsg.NewStatement()
 		urlStmt2.Var("url").Op("=").Id("baseURL")
@@ -138,7 +123,6 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		urlStmt2.Op("+").Lit(strings.TrimPrefix(path, "/"))
 		mg.Add(urlStmt2.Semicolon())
 
-		// Формируем тело запроса
 		bodyStmt := tsg.NewStatement()
 		if len(args) > 0 {
 			bodyObj := tsg.NewStatement()
@@ -153,7 +137,6 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		}
 		mg.Add(bodyStmt.Semicolon())
 
-		// Получаем заголовки из базового клиента (поддерживает статичные и динамические)
 		headersVar := tsg.NewStatement().
 			Const("clientHeaders").
 			Colon().
@@ -164,14 +147,12 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 			Semicolon()
 		mg.Add(headersVar)
 
-		// Формируем заголовки
 		headersStmt := tsg.NewStatement()
 		headersStmt.Const("headers").Op("=").Id("new Headers").Call().Semicolon()
 		mg.Add(headersStmt)
 		mg.Add(tsg.NewStatement().Id("headers").Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Lit("application/json")).Semicolon())
 		mg.Add(tsg.NewStatement().Id("headers").Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("application/json")).Semicolon())
 
-		// Добавляем заголовки из клиента
 		mg.Add(tsg.NewStatement().
 			ForOf("[key, value]", "Object.entries(clientHeaders)", func(fg *tsg.Group) {
 				fg.Add(tsg.NewStatement().Id("headers").Dot("set").Call(tsg.NewStatement().Id("key"), tsg.NewStatement().Id("value")))
@@ -189,10 +170,9 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		fetchStmt.Const("response").Op("=").Await(tsg.NewStatement().Id("fetch").Call(tsg.NewStatement().Id("url"), fetchOptions))
 		mg.Add(fetchStmt.Semicolon())
 
-		// Проверяем статус код
 		successCode := 200
-		if method.Annotations.IsSet(TagHttpSuccess) {
-			if code, err := strconv.Atoi(annotationValue(method.Annotations, TagHttpSuccess, "200")); err == nil {
+		if model.IsAnnotationSet(r.project, contract, method, nil, TagHttpSuccess) {
+			if code, err := strconv.Atoi(model.GetAnnotationValue(r.project, contract, method, nil, TagHttpSuccess, "200")); err == nil {
 				successCode = code
 			}
 		}
@@ -225,7 +205,6 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 			}
 		})
 
-		// Обрабатываем ответ с типизацией через exchange тип
 		if len(results) == 0 {
 			mg.Return()
 		} else {
@@ -248,12 +227,10 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 	grp.Line()
 }
 
-// httpPath возвращает путь для HTTP метода
 func (r *ClientRenderer) httpPath(method *model.Method, contract *model.Contract) string {
-	// Проверяем аннотацию http-path
-	if method.Annotations.IsSet(TagHttpPath) {
-		return annotationValue(method.Annotations, TagHttpPath, "")
+
+	if model.IsAnnotationSet(r.project, contract, method, nil, TagHttpPath) {
+		return model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
 	}
-	// По умолчанию используем имя метода в lowerCamelCase
 	return "/" + r.lcName(method.Name)
 }

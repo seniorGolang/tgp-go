@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package goimports
 
 import (
@@ -60,7 +63,6 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 		}
 	}
 
-	// Используем собственную реализацию форматирования импортов
 	// Порядок: стандартная библиотека -> локальные пакеты -> внешние пакеты
 	res, err := formatImports(src, file.Name, modulePath)
 	if err != nil {
@@ -152,7 +154,6 @@ func buildFile(path string) (files []File, err error) {
 	return
 }
 
-// GetModulePath возвращает путь модуля из go.mod файла, начиная с указанного пути.
 func GetModulePath(filePath string) string {
 
 	// Ищем go.mod, начиная с директории файла
@@ -173,7 +174,6 @@ func GetModulePath(filePath string) string {
 				}
 			}
 		}
-		// Проверяем, не вышли ли за пределы файловой системы
 		parentDir := filepath.Dir(dir)
 		if parentDir == dir {
 			break

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -16,7 +16,6 @@ import (
 	"tgp/core/i18n"
 )
 
-// parsePackageFiles парсит все .go файлы в директории пакета с учетом build tags.
 func (l *AutonomousPackageLoader) parsePackageFiles(pkgDir string, buildCtx *build.Context) (files []*ast.File, err error) {
 
 	var entries []os.DirEntry
@@ -57,7 +56,6 @@ func (l *AutonomousPackageLoader) parsePackageFiles(pkgDir string, buildCtx *bui
 	return
 }
 
-// ParsePackageFilesOnly парсит файлы пакета без type checking (только AST).
 func (l *AutonomousPackageLoader) ParsePackageFilesOnly(pkgPath string) (files []*ast.File, fset *token.FileSet, err error) {
 
 	var pkgDir string
@@ -66,16 +64,7 @@ func (l *AutonomousPackageLoader) ParsePackageFilesOnly(pkgPath string) (files [
 		return
 	}
 
-	buildCtx := build.Default
-	var goos string
-	if goos = os.Getenv("GOOS"); goos != "" {
-		buildCtx.GOOS = goos
-	}
-	var goarch string
-	if goarch = os.Getenv("GOARCH"); goarch != "" {
-		buildCtx.GOARCH = goarch
-	}
-
+	buildCtx := buildContext()
 	if files, err = l.parsePackageFiles(pkgDir, &buildCtx); err != nil {
 		err = fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
 		return

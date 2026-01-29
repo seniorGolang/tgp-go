@@ -47,7 +47,7 @@ func main() {
     
     // Создаем транспортный сервер
     srv := transport.NewServer(
-        transport.WithUserService(contracts.NewUserService(svc)),
+        transport.UserService(contracts.NewUserService(svc)),
     )
     
     // Настраиваем middleware
@@ -143,9 +143,9 @@ Middleware применяются в следующем порядке:
 
 Если включена аннотация `@tg metrics`, генерируются следующие метрики Prometheus:
 
-- `request_count` - счетчик запросов с метками: `method`, `service`, `success`
-- `request_count_all` - счетчик всех запросов
-- `request_latency` - гистограмма задержек запросов
+- `service_requests_count` - счетчик запросов с метками: `service`, `method`, `success`, `errCode`
+- `service_requests_all_count` - счетчик всех запросов
+- `service_requests_latency_microseconds` - гистограмма задержек запросов в микросекундах
 
 ### Трассировка
 
@@ -166,9 +166,9 @@ Middleware применяются в следующем порядке:
 
 ## Опции командной строки
 
-- `output`, `-o` (string, обязательная) - путь к выходной директории
-- `contracts`, `-c` (string, опциональная) - путь к директории с контрактами (по умолчанию: "contracts")
-- `ifaces` (string, опциональная) - список интерфейсов через запятую для фильтрации (например: "UserService,OrderService")
+- `out`, `-o` (string, обязательная) - путь к выходной директории
+- `contracts-dir` (string, опциональная) - путь к директории с контрактами (по умолчанию: "contracts")
+- `contracts` (string, опциональная) - список имён контрактов через запятую для фильтрации (например: "UserService,OrderService")
 
 ## Примеры использования
 
@@ -187,7 +187,7 @@ Middleware применяются в следующем порядке:
 
 // Использование
 srv := transport.NewServer(
-    transport.WithUserService(contracts.NewUserService(&userService{})),
+    transport.UserService(contracts.NewUserService(&userService{})),
 )
 srv.WithLog()
 srv.Listen(":8080")
@@ -205,7 +205,7 @@ srv.Listen(":8080")
 
 // Использование
 srv := transport.NewServer(
-    transport.WithUserService(contracts.NewUserService(&userService{})),
+    transport.UserService(contracts.NewUserService(&userService{})),
 )
 srv.WithLog()
 srv.Listen(":8080")
@@ -231,7 +231,7 @@ srv.Listen(":8080")
 
 // Использование
 srv := transport.NewServer(
-    transport.WithUserService(contracts.NewUserService(&userService{})),
+    transport.UserService(contracts.NewUserService(&userService{})),
 )
 srv.WithLog()
 srv.WithMetrics(transport.NewMetrics())
@@ -245,7 +245,7 @@ srv.Listen(":8080")
 
 ```go
 srv := transport.NewServer(
-    transport.WithUserService(contracts.NewUserService(&userService{})),
+    transport.UserService(contracts.NewUserService(&userService{})),
     transport.WithErrorHandler(func(ctx *fiber.Ctx, err error) error {
         // Кастомная обработка ошибок
         code := fiber.StatusInternalServerError

@@ -1,11 +1,13 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package generator
 
 import (
+	"fmt"
 	"strings"
 
 	"tgp/internal/model"
+	"tgp/internal/validate"
 	"tgp/plugins/swagger/types"
 )
 
@@ -25,19 +27,28 @@ func newGenerator(project *model.Project) (gen *generator) {
 	}
 }
 
-// GenerateDoc генерирует swagger документацию на основе проекта.
-func GenerateDoc(project *model.Project, ifaces ...string) (swaggerDoc types.Object) {
+func GenerateDoc(project *model.Project, ifaces ...string) (swaggerDoc types.Object, err error) {
+
+	if err = validate.ValidateProject(project); err != nil {
+		return swaggerDoc, fmt.Errorf("invalid project: %w", err)
+	}
+
+	for _, contract := range project.Contracts {
+		if err = validate.ValidateContract(contract, project); err != nil {
+			return swaggerDoc, fmt.Errorf("validate contract %q: %w", contract.Name, err)
+		}
+	}
 
 	gen := newGenerator(project)
 
 	swaggerDoc.OpenAPI = openAPIVersion
-	swaggerDoc.Info.Title = project.Annotations.Value(tagTitle, project.ModulePath)
-	swaggerDoc.Info.Version = project.Annotations.Value(tagAppVersion, defaultVersion)
-	swaggerDoc.Info.Description = project.Annotations.Value(tagDesc, "")
+	swaggerDoc.Info.Title = model.GetAnnotationValue(project, nil, nil, nil, tagTitle, project.ModulePath)
+	swaggerDoc.Info.Version = model.GetAnnotationValue(project, nil, nil, nil, tagAppVersion, defaultVersion)
+	swaggerDoc.Info.Description = model.GetAnnotationValue(project, nil, nil, nil, tagDesc, "")
 	swaggerDoc.Paths = make(map[string]types.Path)
 
 	var servers string
-	if servers = project.Annotations.Value(tagServers, ""); servers != "" {
+	if servers = model.GetAnnotationValue(project, nil, nil, nil, tagServers, ""); servers != "" {
 		serverList := strings.Split(servers, "|")
 		for _, server := range serverList {
 			serverValues := strings.Split(server, ";")
@@ -54,12 +65,12 @@ func GenerateDoc(project *model.Project, ifaces ...string) (swaggerDoc types.Obj
 	}
 
 	var security string
-	if security = project.Annotations.Value(tagSecurity, ""); security != "" {
+	if security = model.GetAnnotationValue(project, nil, nil, nil, tagSecurity, ""); security != "" {
 		securityList := strings.Split(security, "|")
 		for _, sec := range securityList {
 			if strings.EqualFold(sec, bearerSecuritySchema) {
 				swaggerDoc.Security = append(swaggerDoc.Security, types.Security{
-					BearerAuth: []interface{}{},
+					BearerAuth: []any{},
 				})
 				swaggerDoc.Components.SecuritySchemes = &types.SecuritySchemes{
 					BearerAuth: types.BearerAuth{

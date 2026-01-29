@@ -1,12 +1,12 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package er
 
-// config is the configuration for the entity relationship diagram.
 type config struct{}
 
-// newConfig returns a new config.
 func newConfig() *config {
 	return &config{}
 }
 
-// Option sets the options for the Diagram struct.
 type Option func(*config)

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,14 +9,12 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// RenderClientError генерирует файл error.go.
 func (r *ClientRenderer) RenderClientError() error {
 
 	outDir := r.outDir
 	srcFile := NewSrcFile(filepath.Base(outDir))
 	srcFile.PackageComment(DoNotEdit)
 
-	// Используем кастомный JSON пакет, если указан
 	jsonPkg := r.getPackageJSON(nil)
 	srcFile.ImportName(jsonPkg, "json")
 

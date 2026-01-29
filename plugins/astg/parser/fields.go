@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -12,7 +12,6 @@ import (
 	"tgp/internal/model"
 )
 
-// fillStructFields заполняет поля структуры из go/types.
 func fillStructFields(structType *types.Struct, pkgPath string, imports map[string]string, project *model.Project, coreType *model.Type, loader *AutonomousPackageLoader, processingTypes ...map[string]bool) {
 
 	if structType == nil {
@@ -21,7 +20,6 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 
 	coreType.StructFields = make([]*model.StructField, 0)
 
-	// Создаем или используем существующий set обрабатываемых типов
 	var processingSet map[string]bool
 	if len(processingTypes) > 0 && processingTypes[0] != nil {
 		processingSet = processingTypes[0]
@@ -29,7 +27,6 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 		processingSet = make(map[string]bool)
 	}
 
-	// Получаем AST структуру для извлечения тегов
 	var astStructType *ast.StructType
 	if pkgInfo, ok := loader.GetPackage(pkgPath); ok && pkgInfo != nil {
 		// Ищем структуру в файлах пакета
@@ -52,7 +49,6 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 
 		typeInfo := convertFieldType(fieldType, pkgPath, imports, project, loader, processingSet)
 
-		// Извлекаем теги из go/types.Struct.Tag или из AST
 		tags := make(map[string][]string)
 		// Сначала пробуем получить из go/types
 		if fieldTag := structType.Tag(i); fieldTag != "" {
@@ -67,7 +63,6 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 			}
 		}
 
-		// Извлекаем комментарии из AST
 		docs := []string{}
 		if astStructType != nil {
 			astDocs := extractDocsFromASTStruct(astStructType, fieldName)
@@ -95,7 +90,6 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 	}
 }
 
-// fieldTypeInfo содержит информацию о типе поля.
 type fieldTypeInfo struct {
 	TypeID           string
 	NumberOfPointers int
@@ -108,11 +102,8 @@ type fieldTypeInfo struct {
 	MapKeyPointers   int
 }
 
-// convertFieldType конвертирует тип поля в fieldTypeInfo.
-// processingTypes используется для защиты от рекурсии при циклических зависимостях.
 func convertFieldType(typ types.Type, pkgPath string, imports map[string]string, project *model.Project, loader *AutonomousPackageLoader, processingTypes ...map[string]bool) (info fieldTypeInfo) {
 
-	// Создаем или используем существующий set обрабатываемых типов
 	var processingSet map[string]bool
 	if len(processingTypes) > 0 && processingTypes[0] != nil {
 		processingSet = processingTypes[0]
@@ -175,13 +166,11 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 		}
 
 	default:
-		// Генерируем typeID для типа
 		typeID := generateTypeIDFromGoTypes(typ)
 		//nolint:staticcheck // QF1003: проверка пустой строки более читаема через if
 		if typeID == "" {
 			if basic, ok := typ.(*types.Basic); ok {
 				typeID = basic.Name()
-				// Проверяем, не является ли это "invalid type"
 				if typeID == "invalid type" {
 					typeID = ""
 				}
@@ -228,19 +217,16 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 		}
 		info.TypeID = typeID
 
-		// Обрабатываем именованные типы и алиасы
 		if typeID != "" && !isBuiltinTypeName(typeID) {
 			// Если тип уже существует в project.Types, просто возвращаем его
 			if _, exists := project.Types[typeID]; exists {
 				return info
 			}
 
-			// Обрабатываем алиасы
 			if alias, ok := typ.(*types.Alias); ok {
 				underlying := types.Unalias(alias)
 				underlyingInfo := convertFieldType(underlying, pkgPath, imports, project, loader, processingSet)
 				info = underlyingInfo
-				// Генерируем typeID для алиаса
 				if alias.Obj() != nil && alias.Obj().Pkg() != nil {
 					typeID := fmt.Sprintf("%s:%s", alias.Obj().Pkg().Path(), alias.Obj().Name())
 					info.TypeID = typeID
@@ -250,7 +236,6 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 						if ok && pkgInfo != nil {
 							coreType := convertTypeFromGoTypes(typ, alias.Obj().Pkg().Path(), pkgInfo.Imports, project, loader, processingSet)
 							if coreType != nil {
-								// Определяем интерфейсы для типа
 								detectInterfaces(typ, coreType, project, loader)
 								// Обновляем тип в project.Types, чтобы сохранить интерфейсы
 								project.Types[typeID] = coreType
@@ -267,7 +252,6 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 						if ok && pkgInfo != nil {
 							coreType := convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet)
 							if coreType != nil {
-								// Определяем интерфейсы для типа
 								detectInterfaces(typ, coreType, project, loader)
 								// Обновляем тип в project.Types, чтобы сохранить интерфейсы
 								project.Types[typeID] = coreType
@@ -284,7 +268,6 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 						}
 					} else if named.Obj() != nil {
 						// Тип без пакета - возможно, это встроенный тип или тип из текущего пакета
-						// Используем имя типа как typeID, но только если typeID пустой
 						if typeID == "" {
 							typeID = named.Obj().Name()
 							info.TypeID = typeID
@@ -298,7 +281,6 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 	return
 }
 
-// findASTStructType находит AST структуру по имени типа.
 func findASTStructType(file *ast.File, typeName string, typeInfo *types.Info) (foundStruct *ast.StructType) {
 
 	if file == nil {
@@ -327,7 +309,6 @@ func findASTStructType(file *ast.File, typeName string, typeInfo *types.Info) (f
 	return
 }
 
-// extractTagsFromASTStruct извлекает теги полей из AST структуры.
 func extractTagsFromASTStruct(structType *ast.StructType, fieldName string) (tags map[string][]string) {
 
 	if structType == nil || structType.Fields == nil {
@@ -336,7 +317,6 @@ func extractTagsFromASTStruct(structType *ast.StructType, fieldName string) (tag
 	}
 
 	for _, field := range structType.Fields.List {
-		// Проверяем, совпадает ли имя поля
 		for _, name := range field.Names {
 			if name.Name == fieldName {
 				if field.Tag != nil {
@@ -355,7 +335,6 @@ func extractTagsFromASTStruct(structType *ast.StructType, fieldName string) (tag
 	return
 }
 
-// extractDocsFromASTStruct извлекает комментарии полей из AST структуры.
 func extractDocsFromASTStruct(structType *ast.StructType, fieldName string) (docs []string) {
 
 	if structType == nil || structType.Fields == nil {
@@ -363,10 +342,8 @@ func extractDocsFromASTStruct(structType *ast.StructType, fieldName string) (doc
 	}
 
 	for _, field := range structType.Fields.List {
-		// Проверяем, совпадает ли имя поля
 		for _, name := range field.Names {
 			if name.Name == fieldName {
-				// Извлекаем комментарии из Doc и Comment
 				docs = extractComments(field.Doc, field.Comment)
 				return
 			}
@@ -376,8 +353,6 @@ func extractDocsFromASTStruct(structType *ast.StructType, fieldName string) (doc
 	return
 }
 
-// parseStructTag парсит теги структуры в формате `json:"name,omitempty" xml:"name"`.
-// Возвращает map, где ключ - имя тега (например, "json"), значение - массив значений тега.
 func parseStructTag(tag string) (result map[string][]string) {
 
 	result = make(map[string][]string)
@@ -385,11 +360,9 @@ func parseStructTag(tag string) (result map[string][]string) {
 		return
 	}
 
-	// Используем reflect.StructTag для парсинга
 	// Но так как мы не можем использовать reflect в core, парсим вручную
 	// Формат: `key1:"value1" key2:"value2" key3:"value3,option1,option2"`
 	for tag != "" {
-		// Пропускаем пробелы
 		i := 0
 		for i < len(tag) && tag[i] == ' ' {
 			i++
@@ -410,7 +383,6 @@ func parseStructTag(tag string) (result map[string][]string) {
 		key := tag[:keyEnd]
 		tag = tag[keyEnd+1:]
 
-		// Пропускаем пробелы после ':'
 		i = 0
 		for i < len(tag) && tag[i] == ' ' {
 			i++

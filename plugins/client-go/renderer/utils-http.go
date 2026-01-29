@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -11,10 +11,10 @@ import (
 	"tgp/internal/model"
 )
 
-// varHeaderMap возвращает маппинг переменных на HTTP заголовки.
-func (r *ClientRenderer) varHeaderMap(method *model.Method) map[string]string {
+func (r *ClientRenderer) varHeaderMap(contract *model.Contract, method *model.Method) map[string]string {
+
 	headers := make(map[string]string)
-	if httpHeaders, ok := method.Annotations[TagHttpHeader]; ok && httpHeaders != "" {
+	if httpHeaders := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpHeader, ""); httpHeaders != "" {
 		headerPairs := strings.Split(httpHeaders, ",")
 		for _, pair := range headerPairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -27,10 +27,10 @@ func (r *ClientRenderer) varHeaderMap(method *model.Method) map[string]string {
 	return headers
 }
 
-// varCookieMap возвращает маппинг переменных на HTTP cookies.
-func (r *ClientRenderer) varCookieMap(method *model.Method) map[string]string {
+func (r *ClientRenderer) varCookieMap(contract *model.Contract, method *model.Method) map[string]string {
+
 	cookies := make(map[string]string)
-	if httpCookies, ok := method.Annotations[TagHttpCookies]; ok && httpCookies != "" {
+	if httpCookies := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpCookies, ""); httpCookies != "" {
 		cookiePairs := strings.Split(httpCookies, ",")
 		for _, pair := range cookiePairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -43,10 +43,10 @@ func (r *ClientRenderer) varCookieMap(method *model.Method) map[string]string {
 	return cookies
 }
 
-// argPathMap возвращает маппинг аргументов на path параметры.
-func (r *ClientRenderer) argPathMap(method *model.Method) map[string]string {
+func (r *ClientRenderer) argPathMap(contract *model.Contract, method *model.Method) map[string]string {
+
 	paths := make(map[string]string)
-	if urlPath, ok := method.Annotations[TagHttpPath]; ok && urlPath != "" {
+	if urlPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, ""); urlPath != "" {
 		urlTokens := strings.Split(urlPath, "/")
 		for _, token := range urlTokens {
 			if strings.HasPrefix(token, ":") {
@@ -58,10 +58,10 @@ func (r *ClientRenderer) argPathMap(method *model.Method) map[string]string {
 	return paths
 }
 
-// argParamMap возвращает маппинг аргументов на query параметры.
-func (r *ClientRenderer) argParamMap(method *model.Method) map[string]string {
+func (r *ClientRenderer) argParamMap(contract *model.Contract, method *model.Method) map[string]string {
+
 	params := make(map[string]string)
-	if urlArgs, ok := method.Annotations[TagHttpArg]; ok && urlArgs != "" {
+	if urlArgs := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpArg, ""); urlArgs != "" {
 		paramPairs := strings.Split(urlArgs, ",")
 		for _, pair := range paramPairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -74,7 +74,6 @@ func (r *ClientRenderer) argParamMap(method *model.Method) map[string]string {
 	return params
 }
 
-// argByName находит аргумент по имени.
 func (r *ClientRenderer) argByName(method *model.Method, argName string) *model.Variable {
 	argName = strings.TrimPrefix(argName, "!")
 	for _, arg := range method.Args {
@@ -85,9 +84,7 @@ func (r *ClientRenderer) argByName(method *model.Method, argName string) *model.
 	return nil
 }
 
-// varToString генерирует код для конвертации переменной в строку.
 func (r *ClientRenderer) varToString(ctx context.Context, variable *model.Variable) Code {
-	// Проверяем, является ли тип строкой
 	if variable.TypeID == "string" {
 		return Id(ToLowerCamel(variable.Name))
 	}
@@ -95,7 +92,6 @@ func (r *ClientRenderer) varToString(ctx context.Context, variable *model.Variab
 	return Qual(PackageFmt, "Sprint").Call(Id(ToLowerCamel(variable.Name)))
 }
 
-// contractNameToLowerCamel возвращает имя контракта в lowerCamelCase.
 func (r *ClientRenderer) contractNameToLowerCamel(contract *model.Contract) string {
 	if contract == nil {
 		return ""
@@ -103,7 +99,6 @@ func (r *ClientRenderer) contractNameToLowerCamel(contract *model.Contract) stri
 	return ToLowerCamel(contract.Name)
 }
 
-// methodNameToLowerCamel возвращает имя метода в lowerCamelCase.
 func (r *ClientRenderer) methodNameToLowerCamel(method *model.Method) string {
 	if method == nil {
 		return ""
@@ -111,7 +106,6 @@ func (r *ClientRenderer) methodNameToLowerCamel(method *model.Method) string {
 	return ToLowerCamel(method.Name)
 }
 
-// contractNameToLower возвращает имя контракта в lowercase (для JSON-RPC).
 func (r *ClientRenderer) contractNameToLower(contract *model.Contract) string {
 	if contract == nil {
 		return ""
@@ -119,7 +113,6 @@ func (r *ClientRenderer) contractNameToLower(contract *model.Contract) string {
 	return strings.ToLower(contract.Name)
 }
 
-// methodNameToLower возвращает имя метода в lowercase (для JSON-RPC).
 func (r *ClientRenderer) methodNameToLower(method *model.Method) string {
 	if method == nil {
 		return ""

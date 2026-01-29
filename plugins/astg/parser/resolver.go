@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -15,7 +15,6 @@ import (
 	"tgp/internal"
 )
 
-// PackageResolver разрешает пути пакетов в файловые пути.
 type PackageResolver struct {
 	modulePath        string
 	modFile           *modfile.File
@@ -25,7 +24,6 @@ type PackageResolver struct {
 	modulePathCacheMu sync.RWMutex
 }
 
-// NewPackageResolver создает новый PackageResolver.
 func NewPackageResolver(modFile *modfile.File) (resolver *PackageResolver, err error) {
 
 	var modulePath string
@@ -42,10 +40,8 @@ func NewPackageResolver(modFile *modfile.File) (resolver *PackageResolver, err e
 	return
 }
 
-// Resolve разрешает путь пакета в файловый путь.
 func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 
-	// Проверяем кэш
 	r.resolveCacheMu.RLock()
 	var cached string
 	var ok bool
@@ -84,8 +80,6 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 		}
 	}
 
-	// 2. Стандартная библиотека (проверяем ПЕРЕД поиском в модулях, чтобы не тратить время)
-	// Стандартные библиотеки не должны искаться в модулях
 	var goroot string
 	if goroot = os.Getenv("GOROOT"); goroot != "" {
 		stdPath := filepath.Join(goroot, "src", filepath.FromSlash(pkgPath))
@@ -117,8 +111,6 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 			}
 		}
 
-		// Если не нашли в Require, ищем модуль по пути пакета в GOPATH/pkg/mod
-		// Это нужно для транзитивных зависимостей
 		var modDir string
 		if modDir, err = r.findModuleByPackagePath(pkgPath); err == nil {
 			result = modDir
@@ -134,10 +126,8 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 	return
 }
 
-// findModuleDir находит директорию модуля в GOPATH/pkg/mod или GOMODCACHE.
 func (r *PackageResolver) findModuleDir(modulePath string, version string) (modDir string, err error) {
 
-	// Пробуем GOMODCACHE
 	var gomodcache string
 	if gomodcache = os.Getenv("GOMODCACHE"); gomodcache != "" {
 		// Экранируем путь модуля для файловой системы (например, KimMachineGun -> !kim!machine!gun)
@@ -152,7 +142,6 @@ func (r *PackageResolver) findModuleDir(modulePath string, version string) (modD
 		}
 	}
 
-	// Пробуем GOPATH/pkg/mod
 	var gopath string
 	if gopath = os.Getenv("GOPATH"); gopath != "" {
 		// Экранируем путь модуля для файловой системы (например, KimMachineGun -> !kim!machine!gun)
@@ -171,11 +160,8 @@ func (r *PackageResolver) findModuleDir(modulePath string, version string) (modD
 	return
 }
 
-// findModuleByPackagePath находит модуль по пути пакета, сканируя GOPATH/pkg/mod.
-// Например, для golang.org/x/crypto/cryptobyte найдет модуль golang.org/x/crypto.
 func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string, err error) {
 
-	// Проверяем кэш
 	r.modulePathCacheMu.RLock()
 	var cached string
 	var ok bool
@@ -186,14 +172,12 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 	}
 	r.modulePathCacheMu.RUnlock()
 
-	// Определяем возможные пути модулей
 	// Для golang.org/x/crypto/cryptobyte пробуем:
 	// - golang.org/x/crypto
 	// - golang.org/x
 	// - golang.org
 	parts := strings.Split(pkgPath, "/")
 
-	// Получаем директории кэша модулей
 	modCacheDirs := []string{}
 
 	if gomodcache := os.Getenv("GOMODCACHE"); gomodcache != "" {
@@ -221,14 +205,12 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 
 		for _, modCacheDir := range modCacheDirs {
 			// Ищем директории модуля с паттерном escapedPath@*
-			// Используем filepath.Glob для эффективного поиска
 			pattern := filepath.Join(modCacheDir, escapedPath+"@*")
 			var matches []string
 			if matches, err = filepath.Glob(pattern); err != nil || len(matches) == 0 {
 				continue
 			}
 
-			// Выбираем самую новую версию (последнюю по алфавиту)
 			var bestModDir string
 			for _, match := range matches {
 				var info os.FileInfo
@@ -240,7 +222,6 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 			}
 
 			if bestModDir != "" {
-				// Проверяем, что подпакет существует
 				var resultDir string
 				if relPath != "" {
 					pkgDir := filepath.Join(bestModDir, filepath.FromSlash(relPath))
@@ -249,7 +230,6 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 						resultDir = pkgDir
 					}
 				} else {
-					// Это корневой пакет модуля
 					var info os.FileInfo
 					if info, err = os.Stat(bestModDir); err == nil && info.IsDir() {
 						resultDir = bestModDir

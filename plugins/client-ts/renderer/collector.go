@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,17 +9,12 @@ import (
 	"tgp/internal/model"
 )
 
-// CollectTypeIDsForExchange собирает все typeID типов, используемых в exchange структурах контракта.
-// Возвращает set typeID для всех типов, которые используются в контракте.
-// ВАЖНО: для TS нужно собирать ВСЕ типы, включая внешние либы, так как они должны быть сгенерированы.
 func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map[string]bool {
 
 	collectedTypeIDs := make(map[string]bool)
 	processedTypes := make(map[string]bool)
 
-	// Собираем typeID из всех методов контракта
 	for _, method := range contract.Methods {
-		// Собираем типы из аргументов
 		for _, arg := range r.argsWithoutContext(method) {
 			r.collectTypeIDRecursive(arg.TypeID, collectedTypeIDs, processedTypes)
 			if arg.MapKeyID != "" {
@@ -30,7 +25,6 @@ func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map
 			}
 		}
 
-		// Собираем типы из результатов
 		for _, result := range r.resultsWithoutError(method) {
 			r.collectTypeIDRecursive(result.TypeID, collectedTypeIDs, processedTypes)
 			if result.MapKeyID != "" {
@@ -41,7 +35,6 @@ func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map
 			}
 		}
 
-		// Собираем типы ошибок из аннотаций методов
 		// Ошибки могут быть указаны через @tg 400=, @tg 401= и т.д., а также через defaultError
 		for _, errInfo := range method.Errors {
 			if errInfo.TypeID != "" {
@@ -49,8 +42,7 @@ func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map
 			}
 		}
 
-		// Собираем тип ошибки по умолчанию из аннотации defaultError
-		if defaultError, ok := method.Annotations["defaultError"]; ok && defaultError != "" && defaultError != "skip" {
+		if defaultError := model.GetAnnotationValue(r.project, contract, method, nil, "defaultError", ""); defaultError != "" && defaultError != "skip" {
 			// Парсим формат "pkgPath:TypeName"
 			if tokens := strings.Split(defaultError, ":"); len(tokens) == 2 {
 				pkgPath := tokens[0]
@@ -64,26 +56,20 @@ func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map
 	return collectedTypeIDs
 }
 
-// collectTypeIDRecursive рекурсивно собирает все typeID типов, используемых в контракте.
-// ВАЖНО: для TS собираем ВСЕ типы, включая внешние либы, так как они должны быть сгенерированы.
 func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
 
-	// Пропускаем уже обработанные типы
 	if processedTypes[typeID] {
 		return
 	}
 	processedTypes[typeID] = true
 
-	// Пропускаем встроенные типы
 	if r.isBuiltinType(typeID) {
 		return
 	}
 
 	// ВАЖНО: для TS НЕ пропускаем исключаемые типы на этапе сбора,
 	// так как они должны быть обработаны при генерации (например, time.Time -> Date)
-	// Проверяем только явные исключения, которые не нужно обрабатывать вообще
 
-	// Получаем тип из project.Types (Core уже собрал все типы рекурсивно)
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		// Тип не найден - возможно это встроенный тип или исключаемый тип
@@ -160,7 +146,6 @@ func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs 
 	}
 }
 
-// isBuiltinType проверяет, является ли тип встроенным типом Go.
 func (r *ClientRenderer) isBuiltinType(typeID string) bool {
 	builtinTypes := map[string]bool{
 		"string":  true,
@@ -185,8 +170,6 @@ func (r *ClientRenderer) isBuiltinType(typeID string) bool {
 	return builtinTypes[typeID]
 }
 
-// isExplicitlyExcludedType проверяет явные исключения для известных типов.
-// ВАЖНО: для TS эти типы не исключаются полностью, а преобразуются (например, time.Time -> Date).
 func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) bool {
 	if typ == nil {
 		return false

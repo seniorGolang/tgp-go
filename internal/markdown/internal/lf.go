@@ -1,9 +1,10 @@
-// Package internal package is used to store the internal implementation of the mermaid package.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package internal
 
 import "runtime"
 
-// LineFeed return line feed for current OS.
 func LineFeed() string {
 	if runtime.GOOS == "windows" {
 		return "\r\n"

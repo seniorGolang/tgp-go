@@ -1,8 +1,8 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 //go:build !wasip1
 
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file (pkgpath.go at 14.05.2020, 2:21) is subject to the terms and
-// conditions defined in file 'LICENSE', which is part of this project source code.
 package common
 
 import (

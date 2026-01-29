@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,19 +9,16 @@ import (
 	"tgp/internal/model"
 )
 
-// requestStructName возвращает имя структуры request для метода.
 func requestStructName(contractName string, methodName string) string {
 
 	return "request" + contractName + methodName
 }
 
-// responseStructName возвращает имя структуры response для метода.
 func responseStructName(contractName string, methodName string) string {
 
 	return "response" + contractName + methodName
 }
 
-// argsWithoutContext возвращает аргументы без первого context.Context, если он есть.
 func argsWithoutContext(method *model.Method) []*model.Variable {
 
 	if len(method.Args) == 0 {
@@ -33,7 +30,6 @@ func argsWithoutContext(method *model.Method) []*model.Variable {
 	return method.Args
 }
 
-// resultsWithoutError возвращает результаты без последнего error, если он есть.
 func resultsWithoutError(method *model.Method) []*model.Variable {
 
 	if len(method.Results) == 0 {
@@ -45,7 +41,6 @@ func resultsWithoutError(method *model.Method) []*model.Variable {
 	return method.Results
 }
 
-// removeSkippedFields удаляет поля из списка, которые указаны в skipFields.
 func removeSkippedFields(vars []*model.Variable, skipFields []string) []*model.Variable {
 
 	result := make([]*model.Variable, 0, len(vars))
@@ -64,7 +59,6 @@ func removeSkippedFields(vars []*model.Variable, skipFields []string) []*model.V
 	return result
 }
 
-// toCamel конвертирует строку в CamelCase.
 func toCamel(s string) string {
 
 	if s == "" {
@@ -98,13 +92,11 @@ func toCamel(s string) string {
 	return result.String()
 }
 
-// toLowerCamel конвертирует строку в lowerCamelCase.
 func toLowerCamel(s string) string {
 
 	if s == "" {
 		return s
 	}
-	// Проверяем, все ли символы в верхнем регистре
 	allUpper := true
 	for _, r := range s {
 		if r >= 'a' && r <= 'z' {

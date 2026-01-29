@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -11,41 +11,30 @@ import (
 	"tgp/internal/model"
 )
 
-// CollectTypeIDsForExchange собирает все typeID типов, используемых в exchange структурах контракта.
-// Возвращает set typeID для всех типов, которые используются в контракте.
-// При генерации будем использовать project.Types напрямую, проверяя для каждого типа,
-// нужно ли его генерировать локально (если из текущего проекта) или использовать через импорт.
 func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map[string]bool {
 
 	collectedTypeIDs := make(map[string]bool)
 	processedTypes := make(map[string]bool)
+	r.collectTypeIDsFromContract(contract, collectedTypeIDs, processedTypes)
+	return collectedTypeIDs
+}
 
-	slog.Debug(i18n.Msg("CollectTypeIDsForExchange: starting"), slog.String("contract", contract.Name), slog.Int("methods", len(contract.Methods)), slog.Int("projectTypes", len(r.project.Types)))
-	// Логируем первые 10 типов из project.Types для отладки
-	typeCount := 0
-	for typeID := range r.project.Types {
-		if typeCount < 10 {
-			slog.Debug(i18n.Msg("CollectTypeIDsForExchange: available type in project.Types"), slog.String("typeID", typeID))
-			typeCount++
-		}
+func (r *ClientRenderer) CollectTypeIDsForExchangeFromContracts(contracts []*model.Contract) map[string]bool {
+
+	collectedTypeIDs := make(map[string]bool)
+	processedTypes := make(map[string]bool)
+	for _, contract := range contracts {
+		r.collectTypeIDsFromContract(contract, collectedTypeIDs, processedTypes)
 	}
+	slog.Debug(i18n.Msg("CollectTypeIDsForExchange: completed"), slog.Int("contracts", len(contracts)), slog.Int("collectedTypeIDs", len(collectedTypeIDs)))
+	return collectedTypeIDs
+}
 
-	// Собираем typeID из всех методов контракта
-	slog.Debug(i18n.Msg("CollectTypeIDsForExchange: processing methods"), slog.Int("methodCount", len(contract.Methods)))
-	for i, method := range contract.Methods {
-		if i < 3 { // Логируем только первые 3 метода для отладки
-			slog.Debug(i18n.Msg("CollectTypeIDsForExchange: processing method"), slog.Int("index", i), slog.String("methodName", method.Name), slog.Int("argsCount", len(method.Args)), slog.Int("resultsCount", len(method.Results)))
-		}
+func (r *ClientRenderer) collectTypeIDsFromContract(contract *model.Contract, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
 
-		// Собираем типы из аргументов
+	for _, method := range contract.Methods {
 		argsWithoutCtx := r.argsWithoutContext(method)
-		if i < 3 {
-			slog.Debug(i18n.Msg("CollectTypeIDsForExchange: args without context"), slog.Int("count", len(argsWithoutCtx)))
-		}
-		for j, arg := range argsWithoutCtx {
-			if i < 3 && j < 2 {
-				slog.Debug(i18n.Msg("CollectTypeIDsForExchange: processing arg"), slog.Int("index", j), slog.String("typeID", arg.TypeID), slog.String("mapKeyID", arg.MapKeyID), slog.String("mapValueID", arg.MapValueID))
-			}
+		for _, arg := range argsWithoutCtx {
 			r.collectTypeIDRecursive(arg.TypeID, collectedTypeIDs, processedTypes)
 			if arg.MapKeyID != "" {
 				r.collectTypeIDRecursive(arg.MapKeyID, collectedTypeIDs, processedTypes)
@@ -55,15 +44,8 @@ func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map
 			}
 		}
 
-		// Собираем типы из результатов
 		resultsWithoutErr := r.resultsWithoutError(method)
-		if i < 3 {
-			slog.Debug(i18n.Msg("CollectTypeIDsForExchange: results without error"), slog.Int("count", len(resultsWithoutErr)))
-		}
-		for j, result := range resultsWithoutErr {
-			if i < 3 && j < 2 {
-				slog.Debug(i18n.Msg("CollectTypeIDsForExchange: processing result"), slog.Int("index", j), slog.String("typeID", result.TypeID), slog.String("mapKeyID", result.MapKeyID), slog.String("mapValueID", result.MapValueID))
-			}
+		for _, result := range resultsWithoutErr {
 			r.collectTypeIDRecursive(result.TypeID, collectedTypeIDs, processedTypes)
 			if result.MapKeyID != "" {
 				r.collectTypeIDRecursive(result.MapKeyID, collectedTypeIDs, processedTypes)
@@ -73,53 +55,36 @@ func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map
 			}
 		}
 
-		// Собираем типы ошибок из аннотаций методов
-		// Ошибки могут быть указаны через @tg 400=, @tg 401= и т.д., а также через defaultError
 		for _, errInfo := range method.Errors {
 			if errInfo.TypeID != "" {
 				r.collectTypeIDRecursive(errInfo.TypeID, collectedTypeIDs, processedTypes)
 			}
 		}
 
-		// Собираем тип ошибки по умолчанию из аннотации defaultError
-		if defaultError, ok := method.Annotations["defaultError"]; ok && defaultError != "" && defaultError != "skip" {
-			// Парсим формат "pkgPath:TypeName"
+		if defaultError := model.GetAnnotationValue(r.project, contract, method, nil, "defaultError", ""); defaultError != "" && defaultError != "skip" {
 			if tokens := strings.Split(defaultError, ":"); len(tokens) == 2 {
-				pkgPath := tokens[0]
-				typeName := tokens[1]
-				typeID := fmt.Sprintf("%s:%s", pkgPath, typeName)
+				typeID := fmt.Sprintf("%s:%s", tokens[0], tokens[1])
 				r.collectTypeIDRecursive(typeID, collectedTypeIDs, processedTypes)
 			}
 		}
 	}
-
-	slog.Debug(i18n.Msg("CollectTypeIDsForExchange: completed"), slog.String("contract", contract.Name), slog.Int("collectedTypeIDs", len(collectedTypeIDs)))
-	return collectedTypeIDs
 }
 
-// collectTypeIDRecursive рекурсивно собирает все typeID типов, используемых в контракте.
-// Core уже собрал все типы рекурсивно в project.Types, нам нужно только собрать список typeID.
-// При генерации будем использовать project.Types напрямую, проверяя для каждого типа,
-// нужно ли его генерировать локально (если из текущего проекта) или использовать через импорт.
 func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
 
-	// Пропускаем уже обработанные типы
 	if processedTypes[typeID] {
 		return
 	}
 	processedTypes[typeID] = true
 
-	// Пропускаем встроенные типы
 	if r.isBuiltinType(typeID) {
 		return
 	}
 
-	// Проверяем исключаемые типы
 	if r.isExcludedTypeID(typeID) {
 		return
 	}
 
-	// Получаем тип из project.Types (Core уже собрал все типы рекурсивно)
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		// Логируем только первые несколько пропущенных типов
@@ -139,12 +104,10 @@ func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs 
 		return
 	}
 
-	// Проверяем исключаемые типы
 	if r.isExplicitlyExcludedType(typ) {
 		return
 	}
 
-	// Добавляем typeID в список (независимо от того, из текущего проекта или внешний)
 	// При генерации будем проверять, нужно ли генерировать локально
 	collectedTypeIDs[typeID] = true
 	if len(collectedTypeIDs) <= 10 {
@@ -216,25 +179,19 @@ func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs 
 	}
 }
 
-// isBuiltinType реализован в types.go
-
-// isExcludedTypeID проверяет, является ли тип исключением по его ID.
 func (r *ClientRenderer) isExcludedTypeID(typeID string) bool {
 	if typeID == "" {
 		return false
 	}
 
-	// Проверяем встроенные типы
 	if r.isBuiltinType(typeID) {
 		return true
 	}
 
-	// Проверяем в Project.Types
 	if typ, exists := r.project.Types[typeID]; exists {
 		return r.isExcludedType(typ)
 	}
 
-	// Проверяем по typeID напрямую
 	parts := strings.SplitN(typeID, ":", 2)
 	if len(parts) != 2 {
 		return false
@@ -300,7 +257,6 @@ func (r *ClientRenderer) isExcludedTypeID(typeID string) bool {
 	return false
 }
 
-// isExcludedType проверяет, является ли тип исключением.
 func (r *ClientRenderer) isExcludedType(typ *model.Type) bool {
 	if typ == nil {
 		return false
@@ -316,7 +272,6 @@ func (r *ClientRenderer) isExcludedType(typ *model.Type) bool {
 		return true
 	}
 
-	// Проверяем, реализует ли тип json.Marshaler
 	if typ.ImportPkgPath != "" && typ.TypeName != "" {
 		for _, iface := range typ.ImplementsInterfaces {
 			if iface == "encoding/json.Marshaler" {
@@ -328,7 +283,6 @@ func (r *ClientRenderer) isExcludedType(typ *model.Type) bool {
 	return false
 }
 
-// isExplicitlyExcludedType проверяет явные исключения для известных типов.
 func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) bool {
 	if typ == nil {
 		return false

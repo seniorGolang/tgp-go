@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -12,7 +12,6 @@ import (
 	"tgp/plugins/server/renderer/types"
 )
 
-// RenderMiddleware генерирует типы middleware.
 func (r *contractRenderer) RenderMiddleware() error {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))

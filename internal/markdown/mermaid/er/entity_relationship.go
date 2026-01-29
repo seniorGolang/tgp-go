@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 // Package er is mermaid entity relationship diagram builder.
 package er
 
@@ -11,7 +14,6 @@ import (
 	"tgp/internal/markdown/internal"
 )
 
-// Diagram is a entity relationship diagram builder.
 type Diagram struct {
 	// body is entity relationship diagram body.
 	body []string
@@ -25,7 +27,6 @@ type Diagram struct {
 	entities sync.Map
 }
 
-// NewDiagram returns a new Diagram.
 func NewDiagram(w io.Writer, opts ...Option) *Diagram {
 	c := newConfig()
 
@@ -41,13 +42,12 @@ func NewDiagram(w io.Writer, opts ...Option) *Diagram {
 	}
 }
 
-// String returns the entity relationship diagram body.
 func (d *Diagram) String() string {
 	s := strings.Join(d.body, internal.LineFeed())
 	s += internal.LineFeed()
 
 	entities := make([]Entity, 0)
-	d.entities.Range(func(_, value interface{}) bool {
+	d.entities.Range(func(_, value any) bool {
 		e, ok := value.(Entity)
 		if !ok {
 			return false
@@ -66,7 +66,6 @@ func (d *Diagram) String() string {
 	return s
 }
 
-// Build writes the entity relationship body to the output destination.
 func (d *Diagram) Build() error {
 	if _, err := fmt.Fprint(d.dest, d.String()); err != nil {
 		if d.err != nil {

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,10 +9,10 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
-// RenderServer генерирует серверную обертку для контракта.
 func (r *contractRenderer) RenderServer() error {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
@@ -55,13 +55,13 @@ func (r *contractRenderer) RenderServer() error {
 			)
 	}
 
-	if r.contract.Annotations.Contains(TagTrace) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagTrace) {
 		srcFile.Line().Func().Params(Id("srv").Op("*").Id("server" + r.contract.Name)).Id("WithTrace").Params().Block(
 			Id("srv").Dot("Wrap").Call(Id("traceMiddleware" + r.contract.Name)),
 		)
 	}
 
-	if r.contract.Annotations.Contains(TagMetrics) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagMetrics) {
 		srcFile.Line().Func().Params(Id("srv").Op("*").Id("server" + r.contract.Name)).
 			Id("WithMetrics").
 			Params(Id("metrics").Op("*").Id("Metrics")).
@@ -72,7 +72,7 @@ func (r *contractRenderer) RenderServer() error {
 			)
 	}
 
-	if r.contract.Annotations.Contains(TagLogger) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagLogger) {
 		srcFile.Line().Func().Params(Id("srv").Op("*").Id("server" + r.contract.Name)).Id("WithLog").Params().Block(
 			Id("srv").Dot("Wrap").Call(Id("loggerMiddleware" + r.contract.Name).Call()),
 		)
@@ -81,7 +81,6 @@ func (r *contractRenderer) RenderServer() error {
 	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-server.go"))
 }
 
-// serverType генерирует тип сервера.
 func (r *contractRenderer) serverType(typeGen *types.Generator) Code {
 
 	return Type().Id("server" + r.contract.Name).StructFunc(func(sg *Group) {
@@ -92,7 +91,6 @@ func (r *contractRenderer) serverType(typeGen *types.Generator) Code {
 	})
 }
 
-// middlewareSetType генерирует интерфейс для набора middleware.
 func (r *contractRenderer) middlewareSetType(typeGen *types.Generator) Code {
 
 	return Type().Id("MiddlewareSet" + r.contract.Name).InterfaceFunc(func(ig *Group) {
@@ -101,19 +99,18 @@ func (r *contractRenderer) middlewareSetType(typeGen *types.Generator) Code {
 			ig.Id("Wrap" + method.Name).Params(Id("m").Id("Middleware" + r.contract.Name + method.Name))
 		}
 		ig.Line()
-		if r.contract.Annotations.IsSet(TagTrace) {
+		if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagTrace) {
 			ig.Id("WithTrace").Params()
 		}
-		if r.contract.Annotations.IsSet(TagMetrics) {
+		if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagMetrics) {
 			ig.Id("WithMetrics").Params(Id("metrics").Op("*").Id("Metrics"))
 		}
-		if r.contract.Annotations.IsSet(TagLogger) {
+		if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagLogger) {
 			ig.Id("WithLog").Params()
 		}
 	})
 }
 
-// newServerFunc генерирует функцию создания сервера.
 func (r *contractRenderer) newServerFunc(typeGen *types.Generator) Code {
 
 	return Func().Id("newServer" + r.contract.Name).
@@ -129,7 +126,6 @@ func (r *contractRenderer) newServerFunc(typeGen *types.Generator) Code {
 		)
 }
 
-// wrapFunc генерирует функцию обертки middleware.
 func (r *contractRenderer) wrapFunc(typeGen *types.Generator) Code {
 
 	return Func().Params(Id("srv").Op("*").Id("server" + r.contract.Name)).

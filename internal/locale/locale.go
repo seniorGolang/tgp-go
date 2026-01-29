@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package locale
 
 import (
@@ -8,7 +8,6 @@ import (
 	"sync"
 )
 
-// Language represents supported languages
 type Language string
 
 const (
@@ -21,22 +20,16 @@ var (
 	detectLanguageOnce sync.Once
 )
 
-// DetectLanguage detects language from TG_LANG environment variable.
-// Returns "ru" if Russian locale is detected, "en" otherwise.
-// Defaults to English if TG_LANG is not set or cannot be determined.
-// Result is cached after first call (runOnce).
+// DetectLanguage читает TG_LANG; результат кэшируется после первого вызова.
 func DetectLanguage() Language {
 
 	detectLanguageOnce.Do(func() {
-		// Check TG_LANG environment variable
 		tgLang := os.Getenv("TG_LANG")
 		if tgLang == "" {
-			// Default to English if TG_LANG is not set
 			detectedLanguage = LanguageEN
 			return
 		}
 
-		// Extract language code (e.g., "ru" -> "ru", "en" -> "en")
 		tgLang = strings.ToLower(tgLang)
 		if strings.HasPrefix(tgLang, "ru") {
 			detectedLanguage = LanguageRU
@@ -47,7 +40,6 @@ func DetectLanguage() Language {
 			return
 		}
 
-		// Default to English if code cannot be determined
 		detectedLanguage = LanguageEN
 	})
 	return detectedLanguage

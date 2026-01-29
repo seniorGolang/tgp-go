@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -11,7 +11,6 @@ import (
 	"tgp/plugins/client-ts/tsg"
 )
 
-// RenderClient генерирует базовый Client класс
 func (r *ClientRenderer) RenderClient() error {
 
 	outDir := r.outDir
@@ -27,7 +26,6 @@ func (r *ClientRenderer) RenderClient() error {
 	}
 
 	// Импорты клиентов контрактов
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
 	contracts := make([]*model.Contract, len(r.project.Contracts))
 	copy(contracts, r.project.Contracts)
 	slices.SortFunc(contracts, func(a, b *model.Contract) int {
@@ -40,32 +38,28 @@ func (r *ClientRenderer) RenderClient() error {
 		return 0
 	})
 	for _, contract := range contracts {
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			clientClassName := contract.Name + "Client"
 			file.ImportNamed("./"+r.tsFileName(contract), clientClassName)
 		}
-		if contract.Annotations.IsSet(TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 			httpClientClassName := contract.Name + "HTTPClient"
 			file.ImportNamed("./"+r.tsFileName(contract)+"-http", httpClientClassName)
 		}
 	}
 
-	// Генерируем импорты
 	file.GenerateImports()
 	file.Line()
 
-	// Генерируем базовый Client класс
 	file.Add(r.renderBaseClientClass())
 	file.Line()
 
-	// Генерируем функцию New для создания базового клиента
 	file.Add(r.renderNewClientFunction())
 	file.Line()
 
 	return file.Save(path.Join(outDir, "client.ts"))
 }
 
-// renderBaseClientClass генерирует базовый Client класс
 func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 	stmt := tsg.NewStatement()
 	stmt.Comment("Base client for all services")
@@ -132,7 +126,6 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 		grp.Add(tsg.NewStatement().
 			Comment("Gets headers for the request, supporting both static headers and dynamic header functions").
 			AsyncMethodWithParams("getHeaders", nil, tsg.NewStatement().Id("Record").Generic("string", "string"), func(mg *tsg.Group) {
-				// Проверяем, является ли headers функцией
 				mg.If(
 					tsg.NewStatement().Id("this").Dot("options").Dot("headers").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("this").Dot("options").Dot("headers")).Op("===").Lit("function"),
 					func(ig *tsg.Group) {
@@ -141,7 +134,6 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 					},
 				)
 				// Иначе возвращаем статичные заголовки или пустой объект
-				// Проверяем, что это не функция (для type safety)
 				mg.If(
 					tsg.NewStatement().Id("this").Dot("options").Dot("headers").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("this").Dot("options").Dot("headers")).Op("!==").Lit("function"),
 					func(ig *tsg.Group) {
@@ -159,8 +151,6 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 			grp.Line()
 		}
 
-		// Добавляем методы для получения клиентов контрактов
-		// Используем отсортированный список контрактов для гарантии детерминированного порядка
 		contracts := make([]*model.Contract, len(r.project.Contracts))
 		copy(contracts, r.project.Contracts)
 		slices.SortFunc(contracts, func(a, b *model.Contract) int {
@@ -173,7 +163,7 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 			return 0
 		})
 		for _, contract := range contracts {
-			if contract.Annotations.IsSet(TagServerJsonRPC) || contract.Annotations.IsSet(TagServerHTTP) {
+			if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) || model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 				grp.Add(r.renderContractClientMethod(contract))
 				grp.Line()
 			}
@@ -182,7 +172,6 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 	return stmt
 }
 
-// renderNewClientFunction генерирует функцию New для создания базового клиента
 func (r *ClientRenderer) renderNewClientFunction() *tsg.Statement {
 	stmt := tsg.NewStatement()
 	stmt.Comment("Creates a new base client")
@@ -204,12 +193,9 @@ func (r *ClientRenderer) renderNewClientFunction() *tsg.Statement {
 	return stmt
 }
 
-// renderContractClientMethod генерирует метод на базовом Client для получения клиента контракта
 func (r *ClientRenderer) renderContractClientMethod(contract *model.Contract) *tsg.Statement {
 	stmt := tsg.NewStatement()
-	// Используем tsFileName для консистентности с именами файлов (snake_case -> lowerCamelCase)
 	fileName := r.tsFileName(contract)
-	// Преобразуем snake_case в lowerCamelCase для имени метода
 	// Например: "http_service" -> "httpService", "json_rpc_service" -> "jsonRpcService"
 	methodName := ""
 	parts := strings.Split(fileName, "_")
@@ -223,7 +209,7 @@ func (r *ClientRenderer) renderContractClientMethod(contract *model.Contract) *t
 	clientClassName := contract.Name + "Client"
 
 	// Для JSON-RPC контрактов
-	if contract.Annotations.IsSet(TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 		stmt.Id(methodName)
 		stmt.Params(func(pg *tsg.Group) {
 			// Пустые параметры
@@ -235,8 +221,7 @@ func (r *ClientRenderer) renderContractClientMethod(contract *model.Contract) *t
 		})
 	}
 
-	// Для HTTP контрактов - отдельный метод с суффиксом HTTP
-	if contract.Annotations.IsSet(TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 		httpMethodName := methodName + "HTTP"
 		httpClientClassName := contract.Name + "HTTPClient"
 		stmt.Line()
@@ -254,7 +239,6 @@ func (r *ClientRenderer) renderContractClientMethod(contract *model.Contract) *t
 	return stmt
 }
 
-// renderBatchMethod генерирует метод Batch для класса Client
 func (r *ClientRenderer) renderBatchMethod() *tsg.Statement {
 	stmt := tsg.NewStatement()
 	stmt.Comment("Executes a batch of JSON-RPC requests")
@@ -266,12 +250,10 @@ func (r *ClientRenderer) renderBatchMethod() *tsg.Statement {
 	returnType := tsg.NewStatement()
 	returnType.Void()
 	stmt.AsyncMethodWithParams("batch", methodParams, returnType, func(bg *tsg.Group) {
-		// Собираем rpcRequests и callbacks
 		bg.Add(tsg.NewStatement().Const("rpcRequests").Colon().Id("RequestRPC").Array(nil).Op("=").Index(nil).Semicolon())
 		bg.Add(tsg.NewStatement().Const("callbacks").Colon().Id("Map").Generic("ID", "RpcCallback").Op("=").New("Map").Call().Semicolon())
 		bg.Add(tsg.NewStatement().ForOf("request", "requests", func(fbg *tsg.Group) {
 			fbg.Add(tsg.NewStatement().Id("rpcRequests").Dot("push").Call(tsg.NewStatement().Id("request").Dot("rpcRequest")).Semicolon())
-			// Добавляем callback только если он определен
 			fbg.If(
 				tsg.NewStatement().Id("request").Dot("retHandler").Op("!==").Id("undefined"),
 				func(ig *tsg.Group) {
@@ -304,7 +286,6 @@ func (r *ClientRenderer) renderBatchMethod() *tsg.Statement {
 			},
 		)
 
-		// Обрабатываем ответы из Map
 		forLoopStmt := tsg.NewStatement()
 		forLoopStmt.ForOf("[id, response]", "rpcResponses", func(fbg *tsg.Group) {
 			fbg.Add(tsg.NewStatement().Const("callback").Colon().Id("RpcCallback").Op("|").Id("undefined").Op("=").Id("callbacks").Dot("get").Call(tsg.NewStatement().Id("id")).Semicolon())
@@ -314,7 +295,6 @@ func (r *ClientRenderer) renderBatchMethod() *tsg.Statement {
 					cig.If(
 						tsg.NewStatement().Id("response").Op("!=").Id("null").Op("&&").Id("response").Dot("error"),
 						func(eg *tsg.Group) {
-							// Создаём Error из response.error.message
 							errorMsg := tsg.NewStatement()
 							errorMsg.Const("errorMsg").Colon().Id("string").Op("=")
 							errorMsg.Id("response.error").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("response.error")).Op("===").Lit("object").Op("&&").Id("response.error.message")

@@ -34,14 +34,11 @@ func main() {
     // Создаем клиент
     cli := client.New("https://api.example.com")
 
-    // Получаем клиент сервиса (для HTTP методов)
-    httpService := cli.HTTPService()
-
-    // Или для JSON-RPC методов
-    jsonrpcService := cli.JsonRPCService()
+    // Получаем клиент сервиса по имени контракта (один клиент содержит и HTTP, и JSON-RPC методы контракта)
+    userService := cli.UserService()
 
     // Вызываем метод
-    user, err := httpService.GetUser(context.Background(), "user-id-123")
+    user, err := userService.GetUser(context.Background(), "user-id-123")
     if err != nil {
         panic(err)
     }
@@ -115,8 +112,9 @@ status := "ok" // Возвращается напрямую
 
 ## Опции командной строки
 
-- `output`, `-o` (string, обязательная) - путь к выходной директории
-- `contracts`, `-c` (string, опциональная) - список контрактов через запятую для фильтрации (например: "UserService,OrderService")
+- `out` (string, обязательная) - путь к выходной директории
+- `contracts-dir` (string, опциональная) - путь к директории с контрактами (по умолчанию: "contracts")
+- `contracts` (string, опциональная) - список контрактов через запятую для фильтрации (например: "UserService,OrderService")
 - `doc-file` (string, опциональная) - путь к файлу документации (по умолчанию: `<out>/readme.md`)
 - `no-doc` (bool, опциональная) - отключить генерацию документации (по умолчанию: false)
 
@@ -133,8 +131,8 @@ type UserService interface {
 
 // Использование
 cli := client.New("https://api.example.com")
-jsonrpcService := cli.JsonRPCService()
-user, err := jsonrpcService.GetUser(ctx, "123")
+userService := cli.UserService()
+user, err := userService.GetUser(ctx, "123")
 ```
 
 ### HTTP GET запрос
@@ -151,8 +149,8 @@ type UserService interface {
 
 // Использование
 cli := client.New("https://api.example.com")
-httpService := cli.HTTPService()
-user, err := httpService.GetUser(ctx, "123")
+userService := cli.UserService()
+user, err := userService.GetUser(ctx, "123")
 // Выполнит GET /users/123
 ```
 
@@ -169,8 +167,8 @@ type UserService interface {
 
 // Использование
 cli := client.New("https://api.example.com")
-httpService := cli.HTTPService()
-id, err := httpService.CreateUser(ctx, CreateUserRequest{
+userService := cli.UserService()
+id, err := userService.CreateUser(ctx, CreateUserRequest{
     Name:  "John",
     Email: "john@example.com",
 })
@@ -181,13 +179,13 @@ id, err := httpService.CreateUser(ctx, CreateUserRequest{
 
 ```go
 cli := client.New("https://api.example.com")
-jsonrpcService := cli.JsonRPCService()
+userService := cli.UserService()
 
 // Создаем batch запросы
 // Callback функция должна соответствовать сигнатуре метода (result, err)
 requests := []client.RequestRPC{
-    jsonrpcService.ReqGetUser(nil, "1"), // Без callback
-    jsonrpcService.ReqGetUser(func(user User, err error) {
+    userService.ReqGetUser(nil, "1"), // Без callback
+    userService.ReqGetUser(func(user User, err error) {
         // Callback будет вызван автоматически при получении ответа
         if err != nil {
             log.Printf("Error: %v", err)
@@ -215,8 +213,8 @@ cli := client.New("https://api.example.com",
 ctx := context.WithValue(context.Background(), "X-Request-ID", "req-123")
 ctx = context.WithValue(ctx, "X-User-ID", "user-456")
 
-httpService := cli.HTTPService()
-user, err := httpService.GetUser(ctx, "123")
+userService := cli.UserService()
+user, err := userService.GetUser(ctx, "123")
 // Заголовки X-Request-ID и X-User-ID будут автоматически добавлены из контекста
 ```
 

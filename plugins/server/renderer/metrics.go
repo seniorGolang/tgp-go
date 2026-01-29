@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -13,7 +13,6 @@ import (
 	"tgp/plugins/server/renderer/types"
 )
 
-// RenderMetrics генерирует middleware для метрик.
 func (r *contractRenderer) RenderMetrics() error {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
@@ -28,7 +27,6 @@ func (r *contractRenderer) RenderMetrics() error {
 
 	typeGen := types.NewGenerator(r.project, &srcFile)
 
-	// Генерируем константы для service и методов, чтобы избежать аллокаций
 	srcFile.Line().Const().Defs(
 		Id("metricService" + r.contract.Name).Op("=").Lit(toLowerCamel(r.contract.Name)),
 	)
@@ -54,7 +52,6 @@ func (r *contractRenderer) RenderMetrics() error {
 	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-metrics.go"))
 }
 
-// metricsMiddleware генерирует функцию создания middleware для метрик.
 func (r *contractRenderer) metricsMiddleware() Code {
 
 	return Func().Id("metricsMiddleware"+r.contract.Name).
@@ -70,7 +67,6 @@ func (r *contractRenderer) metricsMiddleware() Code {
 		})
 }
 
-// metricFuncBody генерирует тело функции для метода с метриками.
 func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) {
 
 	return func(bg *Group) {
@@ -83,7 +79,7 @@ func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) 
 			errCodeAssignment.Id("internalError")
 		}
 
-		bg.Line().Defer().Func().Params(Id("_begin").Qual(PackageTime, "Time")).Block(
+		bg.Line().Defer().Func().Params(Id("_begin_").Qual(PackageTime, "Time")).Block(
 			// Проверка на nil для метрик
 			If(Id("m").Dot("metrics").Op("==").Nil()).Block(
 				Return(),
@@ -120,7 +116,7 @@ func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) 
 					Id("metricMethod"+r.contract.Name+method.Name),
 					Id("metricSuccessTrue"),
 					Id("metricErrCodeSuccess")).
-					Dot("Observe").Call(Id("float64").Call(Qual(PackageTime, "Since").Call(Id("_begin")).Dot("Microseconds").Call())),
+					Dot("Observe").Call(Id("float64").Call(Qual(PackageTime, "Since").Call(Id("_begin_")).Dot("Microseconds").Call())),
 			).Else().Block(
 				// Ошибочный запрос - форматируем errCode
 				Id("errCodeStr").Op(":=").Qual(PackageStrconv, "Itoa").Call(Id("errCode")),
@@ -141,7 +137,7 @@ func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) 
 					Id("metricMethod"+r.contract.Name+method.Name),
 					Id("metricSuccessFalse"),
 					Id("errCodeStr")).
-					Dot("Observe").Call(Id("float64").Call(Qual(PackageTime, "Since").Call(Id("_begin")).Dot("Microseconds").Call())),
+					Dot("Observe").Call(Id("float64").Call(Qual(PackageTime, "Since").Call(Id("_begin_")).Dot("Microseconds").Call())),
 			),
 		).Call(Qual(PackageTime, "Now").Call())
 
@@ -149,15 +145,13 @@ func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) 
 	}
 }
 
-// methodIsHTTP проверяет, является ли метод HTTP методом.
 func (r *contractRenderer) methodIsHTTP(method *model.Method) bool {
 
-	contractHasHTTP := r.contract.Annotations.Contains(TagServerHTTP)
-	methodHasHTTP := method.Annotations.Contains(TagMethodHTTP)
+	contractHasHTTP := model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerHTTP)
+	methodHasHTTP := model.IsAnnotationSet(r.project, r.contract, method, nil, TagMethodHTTP)
 	return contractHasHTTP && methodHasHTTP
 }
 
-// paramNames генерирует список имен параметров для вызова функции.
 func (r *contractRenderer) paramNames(vars []*model.Variable) *Statement {
 
 	var list = make([]Code, 0, len(vars))

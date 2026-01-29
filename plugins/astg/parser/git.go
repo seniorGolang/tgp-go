@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -13,45 +13,37 @@ import (
 	"tgp/internal/model"
 )
 
-// collectGitInfo собирает информацию о Git репозитории, читая файлы из .git напрямую.
 func collectGitInfo(project *model.Project) (err error) {
 
-	// В плагинах корень проекта - это всегда корень файловой системы
 	var gitDir string
 	if gitDir, err = findGitDir(internal.ProjectRoot); err != nil {
 		return
 	}
 
-	// Получаем корень репозитория (родитель .git)
 	repoRoot := filepath.Dir(gitDir)
 
 	gitInfo := &model.GitInfo{}
 
-	// Получаем commit
 	var commit string
 	if commit, err = getGitCommit(gitDir); err == nil {
 		gitInfo.Commit = commit
 	}
 
-	// Получаем branch
 	var branch string
 	if branch, err = getGitBranch(gitDir); err == nil {
 		gitInfo.Branch = branch
 	}
 
-	// Получаем tag
 	var tag string
 	if tag, err = getGitTag(gitDir, gitInfo.Commit); err == nil && tag != "" {
 		gitInfo.Tag = tag
 	}
 
-	// Проверяем dirty status
 	var dirty bool
 	if dirty, err = isGitDirty(gitDir, repoRoot); err == nil {
 		gitInfo.Dirty = dirty
 	}
 
-	// Получаем user и email из config
 	var user string
 	var email string
 	if user, email, err = getGitUser(gitDir); err == nil {
@@ -63,7 +55,6 @@ func collectGitInfo(project *model.Project) (err error) {
 		}
 	}
 
-	// Получаем remote URL
 	var remoteURL string
 	if remoteURL, err = getGitRemoteURL(gitDir); err == nil && remoteURL != "" {
 		gitInfo.RemoteURL = remoteURL
@@ -73,7 +64,6 @@ func collectGitInfo(project *model.Project) (err error) {
 	return
 }
 
-// findGitDir находит директорию .git репозитория.
 func findGitDir(startDir string) (gitDir string, err error) {
 
 	dir := startDir
@@ -85,7 +75,6 @@ func findGitDir(startDir string) (gitDir string, err error) {
 				gitDir = gitPath
 				return
 			}
-			// Если .git - это файл (submodule), читаем его содержимое
 			var content []byte
 			if content, err = os.ReadFile(gitPath); err == nil {
 				gitDir = strings.TrimSpace(string(content))
@@ -109,7 +98,6 @@ func findGitDir(startDir string) (gitDir string, err error) {
 	}
 }
 
-// getGitCommit получает хеш текущего коммита.
 func getGitCommit(gitDir string) (commit string, err error) {
 
 	// Читаем HEAD
@@ -139,7 +127,6 @@ func getGitCommit(gitDir string) (commit string, err error) {
 	return
 }
 
-// getGitBranch получает имя текущей ветки.
 func getGitBranch(gitDir string) (branch string, err error) {
 
 	headPath := filepath.Join(gitDir, "HEAD")
@@ -154,7 +141,6 @@ func getGitBranch(gitDir string) (branch string, err error) {
 	if strings.HasPrefix(headStr, "ref: ") {
 		refPath := strings.TrimPrefix(headStr, "ref: ")
 		refPath = strings.TrimSpace(refPath)
-		// Извлекаем имя ветки из refs/heads/master -> master
 		if strings.HasPrefix(refPath, "refs/heads/") {
 			branch = strings.TrimPrefix(refPath, "refs/heads/")
 			return
@@ -167,7 +153,6 @@ func getGitBranch(gitDir string) (branch string, err error) {
 	return
 }
 
-// getGitTag получает тег текущего коммита.
 func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 
 	if commitHash == "" {
@@ -193,13 +178,11 @@ func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 
 		tagHash := strings.TrimSpace(string(tagContent))
 
-		// Проверяем легковесный тег (напрямую указывает на коммит)
 		if tagHash == commitHash {
 			tag = entry.Name()
 			return
 		}
 
-		// Проверяем аннотированный тег (указывает на объект тега)
 		// Аннотированный тег имеет формат: object <hash>\ntype tag\n...
 		// Нужно найти объект тега и проверить, на какой коммит он указывает
 		if strings.HasPrefix(tagHash, "ref: ") {
@@ -207,7 +190,6 @@ func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 			continue
 		}
 
-		// Проверяем, является ли это аннотированным тегом
 		tagObjPath := filepath.Join(gitDir, "objects", tagHash[:2], tagHash[2:])
 		var tagObjContent []byte
 		if tagObjContent, err = os.ReadFile(tagObjPath); err == nil {
@@ -231,9 +213,6 @@ func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 	return
 }
 
-// isGitDirty проверяет, есть ли незакоммиченные изменения.
-// Реализация аналогична go-git worktree.Status().IsClean():
-// сравнивает рабочую директорию с индексом и HEAD.
 func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {
 
 	indexPath := filepath.Join(gitDir, "index")
@@ -242,13 +221,11 @@ func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {
 		return
 	}
 
-	// Парсим индекс и получаем список отслеживаемых файлов
 	var indexEntries []indexEntry
 	if indexEntries, err = parseGitIndex(indexPath); err != nil {
 		return
 	}
 
-	// Проверяем изменения в рабочей директории относительно индекса
 	for _, entry := range indexEntries {
 		filePath := filepath.Join(repoRoot, entry.path)
 		var fileInfo os.FileInfo
@@ -265,7 +242,6 @@ func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {
 		}
 	}
 
-	// Проверяем, есть ли новые файлы в рабочей директории (не в индексе)
 	// Это упрощенная проверка - не учитывает .gitignore
 	// Но для большинства случаев достаточно
 	indexFiles := make(map[string]bool)
@@ -273,24 +249,20 @@ func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {
 		indexFiles[entry.path] = true
 	}
 
-	// Проверяем только файлы в корне и основных директориях
 	// Полная проверка всех файлов может быть медленной
 	err = filepath.Walk(repoRoot, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			return nil
 		}
 
-		// Пропускаем .git директорию
 		if info.IsDir() && info.Name() == ".git" {
 			return filepath.SkipDir
 		}
 
-		// Пропускаем директории
 		if info.IsDir() {
 			return nil
 		}
 
-		// Получаем относительный путь от корня репозитория
 		var relPath string
 		if relPath, walkErr = filepath.Rel(repoRoot, path); walkErr != nil {
 			return nil
@@ -299,7 +271,6 @@ func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {
 
 		// Если файл не в индексе и не игнорируется, репозиторий dirty
 		if !indexFiles[relPath] {
-			// Пропускаем файлы в .git и служебные файлы
 			if !strings.HasPrefix(relPath, ".git/") && !strings.HasPrefix(relPath, ".git") {
 				// Это новый файл - репозиторий dirty
 				return errors.New("new file found")
@@ -318,15 +289,12 @@ func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {
 	return
 }
 
-// indexEntry представляет запись в Git индексе.
 type indexEntry struct {
 	path  string
 	size  int64
 	mtime int64
 }
 
-// parseGitIndex парсит Git index файл и возвращает список файлов.
-// Git index формат: header (12 bytes) + entries + extensions + checksum
 func parseGitIndex(indexPath string) (entries []indexEntry, err error) {
 
 	var data []byte
@@ -339,7 +307,6 @@ func parseGitIndex(indexPath string) (entries []indexEntry, err error) {
 		return
 	}
 
-	// Проверяем signature "DIRC"
 	if string(data[0:4]) != "DIRC" {
 		err = errors.New("invalid index signature")
 		return
@@ -406,7 +373,6 @@ func parseGitIndex(indexPath string) (entries []indexEntry, err error) {
 	return
 }
 
-// getGitUser получает имя пользователя и email из конфигурации Git.
 func getGitUser(gitDir string) (user string, email string, err error) {
 
 	configPath := filepath.Join(gitDir, "config")
@@ -433,7 +399,6 @@ func getGitUser(gitDir string) (user string, email string, err error) {
 	return
 }
 
-// getGitRemoteURL получает URL удаленного репозитория.
 func getGitRemoteURL(gitDir string) (url string, err error) {
 
 	configPath := filepath.Join(gitDir, "config")
@@ -448,7 +413,6 @@ func getGitRemoteURL(gitDir string) (url string, err error) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
-		// Проверяем начало секции [remote "origin"]
 		// Может быть в формате [remote "origin"] или [remote.origin]
 		if strings.HasPrefix(line, "[remote \"origin\"]") || strings.HasPrefix(line, "[remote.origin]") {
 			inOriginSection = true

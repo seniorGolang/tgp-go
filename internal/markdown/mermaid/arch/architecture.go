@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 // Package arch is mermaid architecture diagram builder.
 // The building blocks of an architecture are groups, services, edges, and junctions.
 // The arch package incorporates beta features of Mermaid, so the specifications are subject to significant changes.
@@ -11,7 +14,6 @@ import (
 	"tgp/internal/markdown/internal"
 )
 
-// Architecture is a architecture diagram builder.
 type Architecture struct {
 	// body is architecture diagram body.
 	body []string
@@ -23,7 +25,6 @@ type Architecture struct {
 	err error
 }
 
-// NewArchitecture returns a new Architecture.
 func NewArchitecture(w io.Writer, opts ...Option) *Architecture {
 	c := newConfig()
 
@@ -38,12 +39,10 @@ func NewArchitecture(w io.Writer, opts ...Option) *Architecture {
 	}
 }
 
-// String returns the architecture diagram body.
 func (a *Architecture) String() string {
 	return strings.Join(a.body, internal.LineFeed())
 }
 
-// Build writes the architecture diagram body to the output destination.
 func (a *Architecture) Build() error {
 	if _, err := a.dest.Write([]byte(a.String())); err != nil {
 		if a.err != nil {
@@ -54,12 +53,10 @@ func (a *Architecture) Build() error {
 	return nil
 }
 
-// Error returns the error that occurred during the architecture diagram building.
 func (a *Architecture) Error() error {
 	return a.err
 }
 
-// LF add a line feed to the architecture diagram body.
 func (a *Architecture) LF() *Architecture {
 	a.body = append(a.body, "")
 	return a

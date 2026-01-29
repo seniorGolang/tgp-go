@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -21,13 +21,11 @@ import (
 //go:embed templates/*.tmpl
 var templatesFS embed.FS
 
-// DocOptions содержит опции для генерации документации
 type DocOptions struct {
 	Enabled  bool   // Включена ли генерация документации (по умолчанию true)
 	FilePath string // Полный путь к файлу документации (пусто = outDir/readme.md)
 }
 
-// RenderReadmeTS генерирует readme.md для TypeScript клиента
 func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 	var err error
 	outDir := r.outDir
@@ -39,11 +37,9 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 	var buf bytes.Buffer
 	md := markdown.NewMarkdown(&buf)
 
-	// Заголовок
 	md.H1("API Документация")
 	md.PlainText("Автоматически сгенерированная документация API для TypeScript клиента.")
 
-	// Сортируем контракты по имени для консистентности
 	contracts := make([]*model.Contract, len(r.project.Contracts))
 	copy(contracts, r.project.Contracts)
 	sort.Slice(contracts, func(i, j int) bool {
@@ -52,48 +48,38 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 
 	hasJsonRPC := false
 
-	// Генерируем оглавление
 	md.H2("Оглавление")
 	md.PlainText(fmt.Sprintf("- [Описание клиента](#%s)", generateAnchor("Описание клиента")))
 	md.LF()
 	md.PlainText(markdown.Bold("Контракты:"))
 	md.LF()
 
-	// Генерируем оглавление контрактов и их методов
 	for _, contract := range contracts {
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			hasJsonRPC = true
 		}
 
-		contractAnchor := generateAnchor(contract.Name)
+		contractAnchor := contractAnchorID(contract.Name)
 		md.PlainText(fmt.Sprintf("- [%s](#%s)", contract.Name, contractAnchor))
 		md.LF()
 
-		// JSON-RPC методы
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
-					methodAnchor := generateAnchor(method.Name)
+					methodAnchor := methodAnchorID(contract.Name, method.Name)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", method.Name, methodAnchor))
 					md.LF()
 				}
 			}
 		}
 
-		// HTTP методы
-		if contract.Annotations.IsSet(TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method) {
-					httpMethod := "GET"
-					if val, ok := method.Annotations[TagMethodHTTP]; ok {
-						httpMethod = val
-					}
-					httpPath := ""
-					if val, ok := method.Annotations[TagHttpPath]; ok {
-						httpPath = val
-					}
+					httpMethod := model.GetAnnotationValue(r.project, contract, method, nil, TagMethodHTTP, "GET")
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
-					methodAnchor := generateAnchor(methodTitle)
+					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
 					md.LF()
 				}
@@ -102,29 +88,27 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 	}
 	md.LF()
 
-	// Собираем все используемые типы
 	typeUsages := r.collectStructTypesTS()
 	allTypes := make(map[string]*typeUsageTS)
-	// Используем отсортированные пары для детерминированного порядка
 	for key, usage := range common.SortedPairs(typeUsages) {
 		allTypes[key] = usage
 	}
 
-	// Сортируем типы для оглавления
-	// Используем отсортированные ключи для детерминированного порядка
+	r.typeAnchorsSet = make(map[string]bool)
+	for _, usage := range allTypes {
+		r.typeAnchorsSet[typeAnchorID(usage.fullTypeName)] = true
+	}
+
 	typeKeys := common.SortedKeys(allTypes)
 	sort.Strings(typeKeys)
 
-	// Типы данных
 	if len(allTypes) > 0 {
 		md.PlainText(markdown.Bold("Типы данных:"))
 		md.LF()
 		md.PlainText(fmt.Sprintf("- [Общие типы](#%s)", generateAnchor("Общие типы")))
 		md.LF()
 
-		// Группируем типы по namespace для оглавления
 		typesByNamespaceTOC := make(map[string][]*typeUsageTS)
-		// Используем отсортированные пары для детерминированного порядка
 		for _, usage := range common.SortedPairs(allTypes) {
 			namespace := ""
 			if strings.Contains(usage.fullTypeName, ".") {
@@ -137,33 +121,26 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 			typesByNamespaceTOC[namespace] = append(typesByNamespaceTOC[namespace], usage)
 		}
 
-		// Сортируем namespace для оглавления
 		namespaceKeysTOC := make([]string, 0, len(typesByNamespaceTOC))
 		for ns := range typesByNamespaceTOC {
 			namespaceKeysTOC = append(namespaceKeysTOC, ns)
 		}
 		sort.Strings(namespaceKeysTOC)
 
-		// Добавляем ссылки на типы, сгруппированные по namespace
 		for _, namespace := range namespaceKeysTOC {
 			types := typesByNamespaceTOC[namespace]
 			sort.Slice(types, func(i, j int) bool {
 				return types[i].fullTypeName < types[j].fullTypeName
 			})
 
-			// Если есть namespace, добавляем подзаголовок
 			if namespace != "" {
 				namespaceAnchor := generateAnchor(namespace)
 				md.PlainText(fmt.Sprintf("  - [%s](#%s)", namespace, namespaceAnchor))
 				md.LF()
 			}
 
-			// Добавляем ссылки на конкретные типы
 			for _, usage := range types {
-				// Пропускаем исключаемые типы и типы с маршалерами
-				// Ищем тип для проверки
 				var typ *model.Type
-				// Используем отсортированные пары для детерминированного порядка
 				for _, t := range common.SortedPairs(r.project.Types) {
 					if t.TypeName == usage.typeName {
 						tPkg := t.ImportPkgPath
@@ -181,7 +158,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 						continue
 					}
 				}
-				typeAnchor := generateAnchor(usage.fullTypeName)
+				typeAnchor := typeAnchorID(usage.fullTypeName)
 				md.PlainText(fmt.Sprintf("    - [%s](#%s)", usage.fullTypeName, typeAnchor))
 				md.LF()
 			}
@@ -189,7 +166,6 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 		md.LF()
 	}
 
-	// Вспомогательные разделы
 	md.PlainText(markdown.Bold("Вспомогательные разделы:"))
 	md.LF()
 	if hasJsonRPC {
@@ -200,36 +176,29 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 	md.LF()
 	md.HorizontalRule()
 
-	// Описание клиента
 	r.renderClientDescriptionTS(md)
 
-	// Генерируем контракты
 	for _, contract := range contracts {
 		r.renderContractTS(md, contract, outDir)
 	}
 
-	// Генерируем секцию "Общие типы" для всех типов
 	if len(allTypes) > 0 {
 		r.renderAllTypesTS(md, allTypes)
 	}
 
-	// Batch запросы для JSON-RPC
 	if hasJsonRPC {
 		r.renderBatchSectionTS(md, contracts, outDir)
 	}
 
-	// Обработка ошибок
 	r.renderErrorsSectionTS(md, outDir)
 
 	if err = md.Build(); err != nil {
 		return err
 	}
 
-	// Определяем путь к файлу
 	outFilename := path.Join(outDir, "readme.md")
 	if docOpts.FilePath != "" {
 		outFilename = docOpts.FilePath
-		// Создаём директорию, если её нет
 		readmeDir := path.Dir(outFilename)
 		if err = os.MkdirAll(readmeDir, 0777); err != nil {
 			return err
@@ -239,27 +208,20 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 	return os.WriteFile(outFilename, buf.Bytes(), 0600)
 }
 
-// generateAnchor создаёт якорную ссылку из заголовка для Markdown
 func generateAnchor(title string) string {
-	// Конвертируем в нижний регистр
 	anchor := strings.ToLower(title)
 
-	// Заменяем пробелы на дефисы
 	anchor = strings.ReplaceAll(anchor, " ", "-")
 
-	// Заменяем / и : на дефисы
 	anchor = strings.ReplaceAll(anchor, "/", "-")
 	anchor = strings.ReplaceAll(anchor, ":", "-")
 
-	// Заменяем _ на дефисы
 	anchor = strings.ReplaceAll(anchor, "_", "-")
 
-	// Удаляем множественные дефисы
 	for strings.Contains(anchor, "--") {
 		anchor = strings.ReplaceAll(anchor, "--", "-")
 	}
 
-	// Удаляем дефисы в начале и конце
 	anchor = strings.Trim(anchor, "-")
 
 	if anchor == "" {
@@ -269,32 +231,43 @@ func generateAnchor(title string) string {
 	return anchor
 }
 
-// methodIsJsonRPC проверяет, является ли метод JSON-RPC методом.
+func contractAnchorID(contractName string) string {
+
+	return "contract-" + generateAnchor(contractName)
+}
+
+func methodAnchorID(contractName string, methodNameOrTitle string) string {
+
+	return contractAnchorID(contractName) + "-" + generateAnchor(methodNameOrTitle)
+}
+
+func typeAnchorID(typeName string) string {
+
+	return "type-" + generateAnchor(typeName)
+}
+
 func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) bool {
-	if method == nil || method.Annotations == nil {
+
+	if method == nil {
 		return false
 	}
-	// Метод является JSON-RPC, если контракт имеет jsonRPC-server и метод НЕ имеет http-method
-	return contract != nil && contract.Annotations.IsSet(TagServerJsonRPC) && !method.Annotations.IsSet(TagMethodHTTP)
+	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
 }
 
-// methodIsHTTP проверяет, является ли метод HTTP методом.
 func (r *ClientRenderer) methodIsHTTP(method *model.Method) bool {
-	if method == nil || method.Annotations == nil {
+
+	if method == nil {
 		return false
 	}
-	// Проверяем, есть ли аннотация http-method
-	return method.Annotations.IsSet(TagMethodHTTP)
+	return model.IsAnnotationSet(r.project, nil, method, nil, TagMethodHTTP)
 }
 
-// filterDocsComments фильтрует аннотации @tg из документации
 func filterDocsComments(docs []string) []string {
 	if len(docs) == 0 {
 		return docs
 	}
 	var filtered []string
 	for _, doc := range docs {
-		// Пропускаем строки с аннотациями @tg
 		if !strings.Contains(doc, "@tg") {
 			filtered = append(filtered, doc)
 		}
@@ -302,7 +275,6 @@ func filterDocsComments(docs []string) []string {
 	return filtered
 }
 
-// renderClientDescriptionTS генерирует общее описание клиента для TypeScript
 func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	md.H2("Описание клиента")
 	md.PlainText("TypeScript клиент для работы с API. Клиент поддерживает JSON-RPC и HTTP методы.")
@@ -319,18 +291,16 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	md.BulletList(capabilities...)
 	md.LF()
 
-	// Находим первый доступный контракт и метод для примеров
 	var exampleContract *model.Contract
 	var exampleMethod *model.Method
 
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
 	contracts := make([]*model.Contract, len(r.project.Contracts))
 	copy(contracts, r.project.Contracts)
 	sort.Slice(contracts, func(i, j int) bool {
 		return contracts[i].Name < contracts[j].Name
 	})
 	for _, contract := range contracts {
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					exampleContract = contract
@@ -342,7 +312,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 				break
 			}
 		}
-		if exampleContract == nil && contract.Annotations.IsSet(TagServerHTTP) {
+		if exampleContract == nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method) {
 					exampleContract = contract
@@ -361,7 +331,6 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	md.LF()
 
 	if exampleContract != nil && exampleMethod != nil {
-		// Используем ту же логику, что и в renderContractClientMethod
 		fileName := r.tsFileName(exampleContract)
 		parts := strings.Split(fileName, "_")
 		serviceVar := ""
@@ -396,10 +365,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 			resultVar = "result"
 		}
 
-		// Получаем правильное имя метода для получения клиента контракта
 		clientMethodName := r.getClientMethodName(exampleContract)
 
-		templateData := map[string]interface{}{
+		templateData := map[string]any{
 			"ServiceVar":       serviceVar,
 			"ClientMethodName": clientMethodName,
 			"MethodCall":       methodCall,
@@ -424,7 +392,6 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	md.LF()
 
 	if exampleContract != nil && exampleMethod != nil {
-		// Используем ту же логику, что и в renderContractClientMethod
 		fileName := r.tsFileName(exampleContract)
 		parts := strings.Split(fileName, "_")
 		serviceVar := ""
@@ -459,10 +426,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 			resultVar = "result"
 		}
 
-		// Получаем правильное имя метода для получения клиента контракта
 		clientMethodName := r.getClientMethodName(exampleContract)
 
-		templateData := map[string]interface{}{
+		templateData := map[string]any{
 			"ServiceVar":       serviceVar,
 			"ClientMethodName": clientMethodName,
 			"MethodCall":       methodCall,
@@ -488,7 +454,6 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	md.LF()
 
 	if exampleContract != nil && exampleMethod != nil {
-		// Используем ту же логику, что и в renderContractClientMethod
 		fileName := r.tsFileName(exampleContract)
 		parts := strings.Split(fileName, "_")
 		serviceVar := ""
@@ -523,10 +488,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 			resultVar = "result"
 		}
 
-		// Получаем правильное имя метода для получения клиента контракта
 		clientMethodName := r.getClientMethodName(exampleContract)
 
-		templateData := map[string]interface{}{
+		templateData := map[string]any{
 			"ServiceVar":       serviceVar,
 			"ClientMethodName": clientMethodName,
 			"MethodName":       exampleMethod.Name,
@@ -555,7 +519,6 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	md.LF()
 
 	if exampleContract != nil && exampleMethod != nil {
-		// Используем ту же логику, что и в renderContractClientMethod
 		fileName := r.tsFileName(exampleContract)
 		parts := strings.Split(fileName, "_")
 		serviceVar := ""
@@ -590,10 +553,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 			resultVar = "result"
 		}
 
-		// Получаем правильное имя метода для получения клиента контракта
 		clientMethodName := r.getClientMethodName(exampleContract)
 
-		templateData := map[string]interface{}{
+		templateData := map[string]any{
 			"ServiceVar":       serviceVar,
 			"ClientMethodName": clientMethodName,
 			"MethodName":       exampleMethod.Name,
@@ -619,22 +581,19 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	md.HorizontalRule()
 }
 
-// renderContractTS генерирует документацию для контракта
 func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model.Contract, outDir string) {
-	contractAnchor := generateAnchor(contract.Name)
+	contractAnchor := contractAnchorID(contract.Name)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", contractAnchor))
 	md.LF()
 	md.H2(contract.Name)
 
-	// Описание контракта из документации
 	contractDesc := filterDocsComments(contract.Docs)
 	if len(contractDesc) > 0 {
 		md.PlainText(strings.Join(contractDesc, "\n"))
 		md.LF()
 	}
 
-	// JSON-RPC методы
-	if contract.Annotations.IsSet(TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 		for _, method := range contract.Methods {
 			if !r.methodIsJsonRPC(contract, method) {
 				continue
@@ -643,8 +602,7 @@ func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model
 		}
 	}
 
-	// HTTP методы
-	if contract.Annotations.IsSet(TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 		for _, method := range contract.Methods {
 			if !r.methodIsHTTP(method) {
 				continue
@@ -656,15 +614,13 @@ func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model
 	md.HorizontalRule()
 }
 
-// renderMethodDocTS генерирует документацию для JSON-RPC метода
 func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string) {
-	methodAnchor := generateAnchor(method.Name)
+	methodAnchor := methodAnchorID(contract.Name, method.Name)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
 	md.LF()
 	md.H3(method.Name)
 
-	// Описание метода
-	summary := method.Annotations[tagSummary]
+	summary := model.GetAnnotationValue(r.project, contract, method, nil, tagSummary, "")
 	methodDesc := filterDocsComments(method.Docs)
 	desc := ""
 	if len(methodDesc) > 0 {
@@ -686,34 +642,27 @@ func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.
 		md.LF()
 	}
 
-	// Сигнатура метода
 	r.renderMethodSignatureTS(md, method, contract, false)
 
-	// Параметры и возвращаемые значения
 	r.renderMethodParamsAndResultsTS(md, method, contract)
 
-	// Возможные ошибки
 	r.renderMethodErrorsTS(md, method, contract)
 
 	md.LF()
 }
 
-// renderHTTPMethodDocTS генерирует документацию для HTTP метода
 func (r *ClientRenderer) renderHTTPMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string) {
-	httpMethod := method.Annotations[TagMethodHTTP]
-	if httpMethod == "" {
-		httpMethod = "GET"
-	}
-	httpPath := method.Annotations[TagHttpPath]
+
+	httpMethod := model.GetAnnotationValue(r.project, contract, method, nil, TagMethodHTTP, "GET")
+	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
-	methodAnchor := generateAnchor(methodTitle)
+	methodAnchor := methodAnchorID(contract.Name, methodTitle)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
 	md.LF()
 	md.H3(methodTitle)
 
-	// Описание метода
-	summary := method.Annotations[tagSummary]
+	summary := model.GetAnnotationValue(r.project, contract, method, nil, tagSummary, "")
 	methodDesc := filterDocsComments(method.Docs)
 	desc := ""
 	if len(methodDesc) > 0 {
@@ -735,25 +684,20 @@ func (r *ClientRenderer) renderHTTPMethodDocTS(md *markdown.Markdown, method *mo
 		md.LF()
 	}
 
-	// Сигнатура метода
 	r.renderMethodSignatureTS(md, method, contract, true)
 
-	// Параметры и возвращаемые значения
 	r.renderMethodParamsAndResultsTS(md, method, contract)
 
-	// Возможные ошибки
 	r.renderMethodErrorsTS(md, method, contract)
 
 	md.LF()
 }
 
-// renderMethodSignatureTS генерирует сигнатуру метода в блоке кода
 func (r *ClientRenderer) renderMethodSignatureTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, isHTTP bool) {
 	md.PlainText(markdown.Bold("Сигнатура:"))
 	md.LF()
 
 	var sigBuilder strings.Builder
-	// Используем ту же логику, что и в renderContractClientMethod
 	fileName := r.tsFileName(contract)
 	parts := strings.Split(fileName, "_")
 	serviceVar := ""
@@ -772,7 +716,6 @@ func (r *ClientRenderer) renderMethodSignatureTS(md *markdown.Markdown, method *
 	sigBuilder.WriteString(r.lcName(method.Name))
 	sigBuilder.WriteString("(")
 
-	// Параметры
 	args := r.argsWithoutContext(method)
 	if len(args) > 0 {
 		for i, arg := range args {
@@ -788,7 +731,6 @@ func (r *ClientRenderer) renderMethodSignatureTS(md *markdown.Markdown, method *
 
 	sigBuilder.WriteString("): Promise<")
 
-	// Возвращаемые значения
 	results := r.resultsWithoutError(method)
 	if len(results) > 0 {
 		if len(results) == 1 {
@@ -821,12 +763,10 @@ func (r *ClientRenderer) renderMethodSignatureTS(md *markdown.Markdown, method *
 	md.LF()
 }
 
-// renderMethodParamsAndResultsTS генерирует таблицы параметров и возвращаемых значений
 func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, method *model.Method, contract *model.Contract) {
 	args := r.argsWithoutContext(method)
 	results := r.resultsWithoutError(method)
 
-	// Параметры
 	if len(args) > 0 {
 		md.PlainText(markdown.Bold("Параметры:"))
 		md.LF()
@@ -834,7 +774,6 @@ func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, m
 		rows := make([][]string, 0, len(args))
 		for _, arg := range args {
 			typeStr := r.tsTypeStringFromVariable(arg, contract.PkgPath)
-			// Ссылка на тип
 			typeLink := r.getTypeLinkFromVariableTS(arg, contract.PkgPath)
 
 			rows = append(rows, []string{
@@ -853,7 +792,6 @@ func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, m
 		md.LF()
 	}
 
-	// Возвращаемые значения
 	if len(results) > 0 {
 		md.PlainText(markdown.Bold("Возвращаемые значения:"))
 		md.LF()
@@ -861,7 +799,6 @@ func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, m
 		rows := make([][]string, 0, len(results))
 		for _, result := range results {
 			typeStr := r.tsTypeStringFromVariable(result, contract.PkgPath)
-			// Ссылка на тип
 			typeLink := r.getTypeLinkFromVariableTS(result, contract.PkgPath)
 
 			resultName := result.Name
@@ -886,9 +823,7 @@ func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, m
 	}
 }
 
-// renderMethodErrorsTS генерирует описание возможных ошибок метода
 func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *model.Method, contract *model.Contract) {
-	// Используем информацию об ошибках из метода
 	if len(method.Errors) == 0 {
 		return
 	}
@@ -897,7 +832,6 @@ func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *mod
 	md.PlainText(markdown.Bold("Возможные ошибки:"))
 	md.LF()
 
-	// Сортируем ошибки по HTTP коду для детерминированного порядка
 	errors := make([]*model.ErrorInfo, len(method.Errors))
 	copy(errors, method.Errors)
 	sort.Slice(errors, func(i, j int) bool {
@@ -912,9 +846,7 @@ func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *mod
 		return errors[i].HTTPCode < errors[j].HTTPCode
 	})
 
-	// Описываем все ошибки
 	for _, errInfo := range errors {
-		// Заголовок ошибки
 		if errInfo.HTTPCode != 0 {
 			errorDesc := fmt.Sprintf("%s (%d)", errInfo.HTTPCodeText, errInfo.HTTPCode)
 			md.PlainText(fmt.Sprintf("- %s - %s", markdown.Code(fmt.Sprintf("%d", errInfo.HTTPCode)), errorDesc))
@@ -925,7 +857,6 @@ func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *mod
 	}
 }
 
-// renderBatchSectionTS генерирует секцию Batch запросов для JSON-RPC
 func (r *ClientRenderer) renderBatchSectionTS(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
 	batchAnchor := generateAnchor("Batch запросы (JSON-RPC)")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", batchAnchor))
@@ -943,12 +874,10 @@ func (r *ClientRenderer) renderBatchSectionTS(md *markdown.Markdown, contracts [
 	md.HorizontalRule()
 }
 
-// renderBatchExampleTS генерирует пример использования batch для TypeScript
 func (r *ClientRenderer) renderBatchExampleTS(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
-	// Находим JSON-RPC контракты и методы для примеров
 	var jsonRPCContracts []*model.Contract
 	for _, contract := range contracts {
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			hasJsonRPCMethods := false
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
@@ -963,7 +892,6 @@ func (r *ClientRenderer) renderBatchExampleTS(md *markdown.Markdown, contracts [
 	}
 
 	if len(jsonRPCContracts) == 0 {
-		// Нет JSON-RPC контрактов - используем простой пример
 		codeExample := `import { Client } from './client';
 
 const client = new Client('http://localhost:9000');
@@ -976,7 +904,6 @@ await client.batch(
 		return
 	}
 
-	// Используем первые два метода из разных контрактов или один контракт
 	exampleContract := jsonRPCContracts[0]
 	var exampleMethod1 *model.Method
 	var exampleMethod2 *model.Method
@@ -1006,18 +933,15 @@ await client.batch(
 		}
 	}
 
-	// Генерируем пример
 	var codeBuilder strings.Builder
 	codeBuilder.WriteString("import { Client } from './client';\n\n")
 	codeBuilder.WriteString("const client = new Client('http://localhost:9000');\n\n")
 
-	// Получаем имя сервиса
 	serviceVar := r.getClientMethodName(exampleContract)
 	codeBuilder.WriteString(fmt.Sprintf("const %s = client.%s();\n\n", serviceVar, serviceVar))
 	codeBuilder.WriteString("// Создаем batch запрос с несколькими методами\n")
 	codeBuilder.WriteString("const requests = [\n")
 
-	// Первый метод
 	if exampleMethod1 != nil {
 		args1 := r.argsWithoutContext(exampleMethod1)
 		results1 := r.resultsWithoutError(exampleMethod1)
@@ -1036,7 +960,6 @@ await client.batch(
 		reqCall1 += "),"
 		codeBuilder.WriteString(reqCall1 + "\n")
 
-		// Callback функция
 		codeBuilder.WriteString("\n")
 		callbackParams1 := make([]string, 0)
 		for _, ret := range results1 {
@@ -1056,7 +979,6 @@ await client.batch(
 		codeBuilder.WriteString("}\n")
 	}
 
-	// Второй метод
 	if exampleMethod2 != nil {
 		args2 := r.argsWithoutContext(exampleMethod2)
 		results2 := r.resultsWithoutError(exampleMethod2)
@@ -1075,7 +997,6 @@ await client.batch(
 		reqCall2 += "),"
 		codeBuilder.WriteString(reqCall2 + "\n")
 
-		// Callback функция
 		codeBuilder.WriteString("\n")
 		callbackParams2 := make([]string, 0)
 		for _, ret := range results2 {
@@ -1103,24 +1024,21 @@ await client.batch(
 	md.CodeBlocks(markdown.SyntaxHighlightTypeScript, codeBuilder.String())
 }
 
-// renderErrorsSectionTS генерирует секцию обработки ошибок
 func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, outDir string) {
 	errorsAnchor := generateAnchor("Обработка ошибок")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", errorsAnchor))
 	md.LF()
 	md.H2("Обработка ошибок")
 
-	// Находим первый JSON-RPC контракт и метод для примера
 	var jsonrpcContract *model.Contract
 	var jsonrpcMethod *model.Method
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
 	contracts := make([]*model.Contract, len(r.project.Contracts))
 	copy(contracts, r.project.Contracts)
 	sort.Slice(contracts, func(i, j int) bool {
 		return contracts[i].Name < contracts[j].Name
 	})
 	for _, contract := range contracts {
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					jsonrpcContract = contract
@@ -1142,7 +1060,6 @@ func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, outDir str
 
 	var codeExample string
 	if jsonrpcContract != nil && jsonrpcMethod != nil {
-		// Используем ту же логику, что и в renderContractClientMethod
 		fileName := r.tsFileName(jsonrpcContract)
 		parts := strings.Split(fileName, "_")
 		serviceVar := ""
@@ -1177,9 +1094,7 @@ const %s = client.%s();
 
 try {
   const result = await %s;
-  // Используем result
 } catch (error) {
-  // Обрабатываем ошибку
   console.error('Error:', error);
 }`, serviceVar, clientMethodName, methodCall)
 	} else {
@@ -1190,9 +1105,7 @@ const service = client.jsonRpcService();
 
 try {
   const result = await service.someMethod({ param: 'value' });
-  // Используем result
 } catch (error) {
-  // Обрабатываем ошибку
   console.error('Error:', error);
 }`
 	}
@@ -1210,12 +1123,10 @@ try {
 	}
 	md.BulletList(errorCodes...)
 
-	// Находим первый HTTP контракт и метод для примера
 	var httpContract *model.Contract
 	var httpMethod *model.Method
-	// Переиспользуем уже отсортированный список контрактов
 	for _, contract := range contracts {
-		if contract.Annotations.IsSet(TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method) {
 					httpContract = contract
@@ -1237,7 +1148,6 @@ try {
 
 	var httpCodeExample string
 	if httpContract != nil && httpMethod != nil {
-		// Используем ту же логику, что и в renderContractClientMethod
 		fileName := r.tsFileName(httpContract)
 		parts := strings.Split(fileName, "_")
 		serviceVar := ""
@@ -1273,9 +1183,7 @@ const %s = client.%s();
 
 try {
   const result = await %s;
-  // Используем result
 } catch (error) {
-  // Обрабатываем ошибку
   console.error('HTTP Error:', error);
 }`, serviceVar, clientMethodName, methodCall)
 	} else {
@@ -1286,9 +1194,7 @@ const httpService = client.httpServiceHTTP();
 
 try {
   const result = await httpService.getItem({ id: '123' });
-  // Используем result
 } catch (error) {
-  // Обрабатываем ошибку
   console.error('HTTP Error:', error);
 }`
 	}
@@ -1300,14 +1206,12 @@ try {
 	md.HorizontalRule()
 }
 
-// tsTypeStringFromVariable возвращает строковое представление TypeScript типа из Variable
 func (r *ClientRenderer) tsTypeStringFromVariable(variable *model.Variable, pkgPath string) string {
 	schema := r.walkVariable(variable.Name, pkgPath, variable, nil, false)
 	return schema.typeLink()
 }
 
-// renderTemplate рендерит шаблон из embed FS
-func (r *ClientRenderer) renderTemplate(templatePath string, data interface{}) (string, error) {
+func (r *ClientRenderer) renderTemplate(templatePath string, data any) (string, error) {
 	contentBytes, err := templatesFS.ReadFile(templatePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read template %s: %w", templatePath, err)
@@ -1330,19 +1234,15 @@ func (r *ClientRenderer) renderTemplate(templatePath string, data interface{}) (
 	return buf.String(), nil
 }
 
-// generateExampleValueFromVariable генерирует пример значения для переменной в TypeScript
 func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variable, docs, pkgPath string) string {
-	// Обрабатываем массивы и слайсы
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		return "[]"
 	}
 
-	// Обрабатываем map
 	if variable.MapKeyID != "" && variable.MapValueID != "" {
 		return "{}"
 	}
 
-	// Базовый тип - используем простые примеры
 	typeStr := r.tsTypeStringFromVariable(variable, pkgPath)
 	switch typeStr {
 	case "string":
@@ -1366,10 +1266,8 @@ func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variab
 	}
 }
 
-// getClientMethodName возвращает правильное имя метода для получения клиента контракта
 func (r *ClientRenderer) getClientMethodName(contract *model.Contract) string {
 	fileName := r.tsFileName(contract)
-	// Преобразуем snake_case в lowerCamelCase для имени метода
 	// Например: "http_service" -> "httpService", "json_rpc_service" -> "jsonRpcService"
 	methodName := ""
 	parts := strings.Split(fileName, "_")
@@ -1381,27 +1279,23 @@ func (r *ClientRenderer) getClientMethodName(contract *model.Contract) string {
 		}
 	}
 
-	// Для HTTP контрактов добавляем суффикс HTTP
-	if contract.Annotations.IsSet(TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 		methodName += "HTTP"
 	}
 
 	return methodName
 }
 
-// getStructType возвращает структуру типа по typeID
 func (r *ClientRenderer) getStructType(typeID, pkgPath string) (structType *model.Type, typeName string, pkg string) {
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		return nil, "", ""
 	}
 
-	// Проверяем, является ли тип структурой
 	if typ.Kind != model.TypeKindStruct || typ.TypeName == "" {
 		return nil, "", ""
 	}
 
-	// Это структура
 	typeName = typ.TypeName
 	pkg = typ.ImportPkgPath
 	if pkg == "" {
@@ -1411,14 +1305,11 @@ func (r *ClientRenderer) getStructType(typeID, pkgPath string) (structType *mode
 	return typ, typeName, pkg
 }
 
-// getTypeLinkFromVariableTS возвращает ссылку на тип для переменной (параметр или возвращаемое значение) в TypeScript
 func (r *ClientRenderer) getTypeLinkFromVariableTS(variable *model.Variable, pkgPath string) string {
 	switch {
 	case variable.IsSlice || variable.ArrayLen > 0:
-		// Для массивов/слайсов - ссылка на тип элемента (без [])
 		return r.getTypeLinkTS(variable.TypeID, pkgPath)
 	case variable.MapKeyID != "" && variable.MapValueID != "":
-		// Для map - две ссылки: на ключ и значение (примитивы пропускаем)
 		keyLink := r.getTypeLinkTS(variable.MapKeyID, pkgPath)
 		valueLink := r.getTypeLinkTS(variable.MapValueID, pkgPath)
 		links := []string{}
@@ -1433,61 +1324,46 @@ func (r *ClientRenderer) getTypeLinkFromVariableTS(variable *model.Variable, pkg
 		}
 		return "-"
 	default:
-		// Обычный тип
 		return r.getTypeLinkTS(variable.TypeID, pkgPath)
 	}
 }
 
-// getTypeLinkTS возвращает ссылку на тип или "-" если это примитив
 func (r *ClientRenderer) getTypeLinkTS(typeID, pkgPath string) string {
-	// Проверяем, является ли тип встроенным примитивом
 	if r.isBuiltinType(typeID) {
 		return "-"
 	}
 
-	// Получаем тип для проверки
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		return "-"
 	}
 
-	// Проверяем, является ли тип исключаемым (time.Time и т.д.)
 	if r.isExplicitlyExcludedType(typ) {
 		return "-" // Встроенный тип TypeScript, без ссылки
 	}
 
-	// Проверяем наличие маршалера - типы с маршалерами конвертируются в any
 	// Для ссылок проверяем оба маршалера (тип может использоваться и в запросах, и в ответах)
 	if r.hasMarshaler(typ, true) || r.hasMarshaler(typ, false) {
 		return "-" // any - встроенный тип TypeScript, без ссылки
 	}
 
-	// Проверяем, является ли тип структурой
 	if structType, _, typePkg := r.getStructType(typeID, pkgPath); structType != nil {
-		// Это структура - создаём ссылку на таблицу типа
-		// Получаем строковое представление типа для отображения (с namespace)
 		typeStr := r.tsTypeString(typeID, pkgPath)
 
-		// Для создания якоря всегда используем полное имя с namespace
-		// В разделе "Общие типы" все типы отображаются с namespace (например, "dto.SomeStruct")
-		// Поэтому якорь должен соответствовать полному имени типа с namespace
 		typ, ok := r.project.Types[typeID]
 		if !ok {
 			return "-"
 		}
 
-		// Проверяем, является ли тип исключаемым (time.Time и т.д.)
 		if r.isExplicitlyExcludedType(typ) {
 			return "-" // Встроенный тип TypeScript, без ссылки
 		}
 
-		// Проверяем наличие маршалера - типы с маршалерами конвертируются в any
 		// Для ссылок проверяем оба маршалера (тип может использоваться и в запросах, и в ответах)
 		if r.hasMarshaler(typ, true) || r.hasMarshaler(typ, false) {
 			return "-" // any - встроенный тип TypeScript, без ссылки
 		}
 
-		// Определяем namespace для типа
 		namespace := ""
 		switch {
 		case typ.PkgName != "":
@@ -1506,7 +1382,6 @@ func (r *ClientRenderer) getTypeLinkTS(typeID, pkgPath string) string {
 			}
 		}
 
-		// Формируем полное имя типа для якоря (с namespace)
 		typeNameForAnchor := typ.TypeName
 		if typeNameForAnchor == "" {
 			typeNameForAnchor = typeStr
@@ -1516,68 +1391,56 @@ func (r *ClientRenderer) getTypeLinkTS(typeID, pkgPath string) string {
 			fullTypeNameForAnchor = fmt.Sprintf("%s.%s", namespace, typeNameForAnchor)
 		}
 
-		// Якорь должен включать namespace (например, "dto.SomeStruct" -> "#dto.somestruct")
-		typeAnchor := generateAnchor(fullTypeNameForAnchor)
+		typeAnchor := typeAnchorID(fullTypeNameForAnchor)
+		if r.typeAnchorsSet != nil && !r.typeAnchorsSet[typeAnchor] {
+			return "-"
+		}
 		return fmt.Sprintf("[%s](#%s)", typeStr, typeAnchor)
 	}
 
-	// Проверяем, является ли тип внешним
 	typ3, ok := r.project.Types[typeID]
 	if ok && typ3.ImportPkgPath != "" && !r.isTypeFromCurrentProject(typ3.ImportPkgPath) {
-		// Проверяем, является ли тип исключаемым (time.Time и т.д.)
 		if r.isExplicitlyExcludedType(typ3) {
 			return "-" // Встроенный тип TypeScript, без ссылки
 		}
-		// Проверяем наличие маршалера - типы с маршалерами конвертируются в any
 		if r.hasMarshaler(typ3, true) || r.hasMarshaler(typ3, false) {
 			return "-" // any - встроенный тип TypeScript, без ссылки
 		}
-		// Внешний тип - для TypeScript обычно не создаём ссылки на внешние библиотеки
 		return "-"
 	}
 
-	// Локальный тип или примитив - без ссылки
 	return "-"
 }
 
-// tsTypeString возвращает строковое представление TypeScript типа из typeID
 func (r *ClientRenderer) tsTypeString(typeID, pkgPath string) string {
-	// Проверяем встроенные типы
 	if r.isBuiltinType(typeID) {
 		return r.typeIDToTSType(typeID)
 	}
 
-	// Получаем тип из project.Types
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		return r.typeIDToTSType(typeID)
 	}
 
-	// Проверяем, является ли тип исключаемым (time.Time и т.д.)
 	if r.isExplicitlyExcludedType(typ) {
 		// time.Time -> Date
 		if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
 			return "Date"
 		}
-		// Для других исключаемых типов используем typeIDToTSType
 		return r.typeIDToTSType(typeID)
 	}
 
-	// Проверяем наличие маршалера - типы с маршалерами конвертируются в any
 	// Для отображения типа в README проверяем оба маршалера (тип может использоваться и в запросах, и в ответах)
 	if r.hasMarshaler(typ, true) || r.hasMarshaler(typ, false) {
 		return "any"
 	}
 
-	// Формируем имя типа
 	typeName := typ.TypeName
 	if typeName == "" {
 		typeName = typeID
 	}
 
-	// Если тип из другого пакета, добавляем namespace
 	if typ.ImportPkgPath != "" && typ.ImportPkgPath != pkgPath {
-		// Используем PkgName или ImportAlias для namespace
 		namespace := ""
 		switch {
 		case typ.PkgName != "":
@@ -1585,7 +1448,6 @@ func (r *ClientRenderer) tsTypeString(typeID, pkgPath string) string {
 		case typ.ImportAlias != "":
 			namespace = typ.ImportAlias
 		default:
-			// Извлекаем имя пакета из пути
 			parts := strings.Split(typ.ImportPkgPath, "/")
 			if len(parts) > 0 {
 				namespace = parts[len(parts)-1]
@@ -1599,7 +1461,6 @@ func (r *ClientRenderer) tsTypeString(typeID, pkgPath string) string {
 	return castTypeTs(typeName)
 }
 
-// typeUsageTS содержит информацию об использовании типа для TypeScript
 type typeUsageTS struct {
 	typeName     string
 	pkgPath      string
@@ -1607,11 +1468,9 @@ type typeUsageTS struct {
 	locations    []string
 }
 
-// collectStructTypesTS собирает все используемые типы структур для TypeScript
 func (r *ClientRenderer) collectStructTypesTS() map[string]*typeUsageTS {
 	typeUsages := make(map[string]*typeUsageTS)
 
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
 	contracts := make([]*model.Contract, len(r.project.Contracts))
 	copy(contracts, r.project.Contracts)
 	sort.Slice(contracts, func(i, j int) bool {
@@ -1619,24 +1478,20 @@ func (r *ClientRenderer) collectStructTypesTS() map[string]*typeUsageTS {
 	})
 	for _, contract := range contracts {
 		for _, method := range contract.Methods {
-			// Параметры запроса
 			args := r.argsWithoutContext(method)
 			for _, arg := range args {
 				if structType, typeName, pkg := r.getStructType(arg.TypeID, contract.PkgPath); structType != nil {
-					// Формируем ключ
 					keyTypeName := typeName
 					if typeName == "" {
 						typeName = arg.Name
 						keyTypeName = arg.Name
 					}
-					// Если typeName содержит точку (импортированный тип), извлекаем только имя типа для ключа
 					if strings.Contains(keyTypeName, ".") {
 						parts := strings.Split(keyTypeName, ".")
 						keyTypeName = parts[len(parts)-1]
 					}
 					key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
 
-					// Формируем полное имя типа для отображения (с namespace если нужно)
 					fullTypeNameForKey := r.tsTypeString(arg.TypeID, contract.PkgPath)
 					if fullTypeNameForKey == "" {
 						fullTypeNameForKey = typeName
@@ -1658,34 +1513,28 @@ func (r *ClientRenderer) collectStructTypesTS() map[string]*typeUsageTS {
 			// Результаты
 			results := r.resultsWithoutError(method)
 			for _, result := range results {
-				// Пропускаем типы с маршалерами - в TypeScript они конвертируются в any
 				typ, ok := r.project.Types[result.TypeID]
 				if ok {
-					// Проверяем, является ли тип исключаемым (time.Time и т.д.)
 					if r.isExplicitlyExcludedType(typ) {
 						continue
 					}
-					// Проверяем наличие маршалера для результатов (Unmarshaler)
 					if r.hasMarshaler(typ, false) {
 						continue
 					}
 				}
 
 				if structType, typeName, pkg := r.getStructType(result.TypeID, contract.PkgPath); structType != nil {
-					// Формируем ключ
 					keyTypeName := typeName
 					if typeName == "" {
 						typeName = result.Name
 						keyTypeName = result.Name
 					}
-					// Если typeName содержит точку (импортированный тип), извлекаем только имя типа для ключа
 					if strings.Contains(keyTypeName, ".") {
 						parts := strings.Split(keyTypeName, ".")
 						keyTypeName = parts[len(parts)-1]
 					}
 					key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
 
-					// Формируем полное имя типа для отображения (с namespace если нужно)
 					fullTypeNameForKey := r.tsTypeString(result.TypeID, contract.PkgPath)
 					if fullTypeNameForKey == "" {
 						fullTypeNameForKey = typeName
@@ -1709,7 +1558,6 @@ func (r *ClientRenderer) collectStructTypesTS() map[string]*typeUsageTS {
 	return typeUsages
 }
 
-// renderAllTypesTS генерирует секцию "Общие типы" для всех типов, используемых в контрактах
 func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[string]*typeUsageTS) {
 	sharedTypesAnchor := generateAnchor("Общие типы")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", sharedTypesAnchor))
@@ -1718,11 +1566,8 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 	md.PlainText("Типы данных, используемые в клиенте. Типы, используемые в нескольких методах, описаны здесь для избежания дублирования.")
 	md.LF()
 
-	// Группируем типы по namespace
 	typesByNamespace := make(map[string][]*typeUsageTS)
-	// Используем отсортированные пары для детерминированного порядка
 	for _, usage := range common.SortedPairs(allTypes) {
-		// Извлекаем namespace из fullTypeName (например, "dto.SomeStruct" -> "dto")
 		namespace := ""
 		if strings.Contains(usage.fullTypeName, ".") {
 			parts := strings.SplitN(usage.fullTypeName, ".", 2)
@@ -1735,24 +1580,19 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 		typesByNamespace[namespace] = append(typesByNamespace[namespace], usage)
 	}
 
-	// Сортируем namespace
 	namespaceKeys := make([]string, 0, len(typesByNamespace))
 	for ns := range typesByNamespace {
 		namespaceKeys = append(namespaceKeys, ns)
 	}
 	sort.Strings(namespaceKeys)
 
-	// Рендерим типы по namespace
 	for _, namespace := range namespaceKeys {
 		types := typesByNamespace[namespace]
 
-		// Сортируем типы внутри namespace
 		sort.Slice(types, func(i, j int) bool {
 			return types[i].fullTypeName < types[j].fullTypeName
 		})
 
-		// Если есть namespace, создаём подзаголовок
-		// Пропускаем namespace "time" - в TypeScript time.Time конвертируется в Date
 		if namespace != "" && namespace != "time" {
 			namespaceAnchor := generateAnchor(namespace)
 			md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", namespaceAnchor))
@@ -1762,12 +1602,9 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 		}
 
 		for _, usage := range types {
-			// Получаем структуру типа - ищем по pkgPath и typeName
 			var typ *model.Type
-			// Используем отсортированные пары для детерминированного порядка
 			for _, t := range common.SortedPairs(r.project.Types) {
 				if t.TypeName == usage.typeName {
-					// Проверяем соответствие pkgPath
 					tPkg := t.ImportPkgPath
 					if tPkg == "" {
 						tPkg = usage.pkgPath
@@ -1779,9 +1616,7 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 				}
 			}
 
-			// Пропускаем типы с маршалерами и исключаемые типы - в TypeScript они конвертируются в встроенные типы
 			if typ != nil {
-				// Проверяем, является ли тип исключаемым (time.Time и т.д.)
 				if r.isExplicitlyExcludedType(typ) {
 					continue
 				}
@@ -1792,39 +1627,32 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 				}
 			}
 
-			// Проверяем, является ли тип из внешней библиотеки
 			isExternal := typ != nil && typ.ImportPkgPath != "" && !r.isTypeFromCurrentProject(typ.ImportPkgPath)
 
 			// В TypeScript все типы должны быть локальными (внешние типы конвертируются в встроенные)
 			// Поэтому не выводим информацию о внешних библиотеках
 			if typ != nil && typ.Kind == model.TypeKindStruct && !isExternal {
-				// Локальная структура - выводим таблицу полей
 				r.renderStructTypeTableTS(md, typ, usage.fullTypeName, usage.pkgPath)
 			} else if typ != nil && !isExternal {
 				// Если тип не структура, но локальный - выводим только заголовок
-				typeAnchor := generateAnchor(usage.fullTypeName)
+				typeAnchor := typeAnchorID(usage.fullTypeName)
 				md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", typeAnchor))
 				md.LF()
 				md.H4(usage.fullTypeName)
 				md.LF()
 			}
-			// Пропускаем внешние типы - в TypeScript они конвертируются в встроенные типы
 		}
 	}
 
 	md.HorizontalRule()
 }
 
-// renderStructTypeTableTS генерирует таблицу для типа структуры в TypeScript
-// Вызывается только для локальных типов (не из внешних библиотек)
 func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structType *model.Type, typeName string, pkgPath string) {
-	// Заголовок таблицы типа
-	typeAnchor := generateAnchor(typeName)
+	typeAnchor := typeAnchorID(typeName)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", typeAnchor))
 	md.LF()
 	md.H4(typeName)
 
-	// Собираем данные для таблицы полей
 	rows := make([][]string, 0)
 	for _, field := range structType.StructFields {
 		fieldName, _ := r.jsonName(field)
@@ -1835,7 +1663,6 @@ func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structTy
 		// Тип поля
 		typeStr := r.tsTypeStringFromStructField(field, pkgPath)
 
-		// Required
 		fieldTags := parseTagsFromDocs(field.Docs)
 		isRequired := fieldTags[tagRequired] != ""
 		requiredStr := "Нет"
@@ -1843,14 +1670,12 @@ func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structTy
 			requiredStr = "Да"
 		}
 
-		// Nullable
 		isNullable := field.NumberOfPointers > 0
 		nullableStr := "Нет"
 		if isNullable {
 			nullableStr = "Да"
 		}
 
-		// Omitempty
 		hasOmitempty := false
 		if tagValues, ok := field.Tags["json"]; ok {
 			for _, val := range tagValues {
@@ -1865,10 +1690,8 @@ func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structTy
 			omitemptyStr = "Да"
 		}
 
-		// Ссылка на тип
 		typeLink := r.getTypeLinkFromStructFieldTS(field, pkgPath)
 
-		// Формируем строку таблицы
 		rows = append(rows, []string{
 			markdown.Code(fieldName),
 			markdown.Code(typeStr),
@@ -1879,7 +1702,6 @@ func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structTy
 		})
 	}
 
-	// Формируем заголовки
 	headers := []string{"Поле", "Тип", "Обязательное", "Nullable", "Omitempty", "Ссылка на тип"}
 
 	tableSet := markdown.TableSet{
@@ -1890,9 +1712,7 @@ func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structTy
 	md.LF()
 }
 
-// tsTypeStringFromStructField возвращает строковое представление TypeScript типа из StructField
 func (r *ClientRenderer) tsTypeStringFromStructField(field *model.StructField, pkgPath string) string {
-	// Обрабатываем массивы и слайсы
 	if field.IsSlice || field.ArrayLen > 0 {
 		elemType := r.tsTypeString(field.TypeID, pkgPath)
 		if field.IsSlice {
@@ -1901,25 +1721,20 @@ func (r *ClientRenderer) tsTypeStringFromStructField(field *model.StructField, p
 		return fmt.Sprintf("%s[]", elemType) // Для TypeScript массивы фиксированного размера тоже []
 	}
 
-	// Обрабатываем map
 	if field.MapKeyID != "" && field.MapValueID != "" {
 		keyType := r.tsTypeString(field.MapKeyID, pkgPath)
 		valueType := r.tsTypeString(field.MapValueID, pkgPath)
 		return fmt.Sprintf("Record<%s, %s>", keyType, valueType)
 	}
 
-	// Базовый тип
 	return r.tsTypeString(field.TypeID, pkgPath)
 }
 
-// getTypeLinkFromStructFieldTS возвращает ссылку на тип для поля структуры в TypeScript
 func (r *ClientRenderer) getTypeLinkFromStructFieldTS(field *model.StructField, pkgPath string) string {
 	switch {
 	case field.IsSlice || field.ArrayLen > 0:
-		// Для массивов/слайсов - ссылка на тип элемента (без [])
 		return r.getTypeLinkTS(field.TypeID, pkgPath)
 	case field.MapKeyID != "" && field.MapValueID != "":
-		// Для map - две ссылки: на ключ и значение (примитивы пропускаем)
 		keyLink := r.getTypeLinkTS(field.MapKeyID, pkgPath)
 		valueLink := r.getTypeLinkTS(field.MapValueID, pkgPath)
 		links := []string{}
@@ -1934,7 +1749,6 @@ func (r *ClientRenderer) getTypeLinkFromStructFieldTS(field *model.StructField, 
 		}
 		return "-"
 	default:
-		// Обычный тип
 		return r.getTypeLinkTS(field.TypeID, pkgPath)
 	}
 }

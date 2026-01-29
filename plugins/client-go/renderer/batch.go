@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -10,7 +10,6 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// RenderClientBatch генерирует файл batch.go.
 func (r *ClientRenderer) RenderClientBatch() error {
 
 	outDir := r.outDir
@@ -47,8 +46,8 @@ func (r *ClientRenderer) RenderClientBatch() error {
 			),
 			Return(),
 		)
-		bg.For(List(Id("id"), Id("response")).Op(":=").Range().Id("rpcResponses").Dot("AsMap").Call()).Block(
-			If(Id("callback").Op(":=").Id("callbacks").Op("[").Id("id").Op("]").Op(";").Id("callback").Op("!=").Nil()).Block(
+		bg.For(List(Id("_"), Id("response")).Op(":=").Range().Id("rpcResponses")).Block(
+			If(Id("callback").Op(":=").Id("callbacks").Op("[").Id("response").Dot("ID").Op("]").Op(";").Id("callback").Op("!=").Nil()).Block(
 				If(Id("response").Op("!=").Nil().Op("&&").Id("response").Dot("Error").Op("!=").Nil()).Block(
 					Id("callback").Call(Qual(PackageFmt, "Errorf").Call(Lit("%s"), Id("response").Dot("Error").Dot("Message")), Id("response")),
 				).Else().Block(

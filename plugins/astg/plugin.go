@@ -1,15 +1,13 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package main
 
 import (
-	"context"
 	_ "embed"
 	"fmt"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
-
-	"github.com/goccy/go-json"
 
 	"tgp/core/data"
 	"tgp/core/i18n"
@@ -26,10 +24,8 @@ import (
 //go:embed plugin.md
 var pluginDoc string
 
-// AstgPlugin реализует интерфейс Plugin.
 type AstgPlugin struct{}
 
-// Execute выполняет основную логику плагина.
 func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
 
 	// Настраиваем дефолтный slog с контекстом плагина
@@ -45,38 +41,31 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 		return
 	}
 
-	// Получаем contracts-dir из request или используем значение по умолчанию
 	contractsDir := "./contracts"
 	var contractsDirStr string
 	if contractsDirStr, err = data.Get[string](request, "contracts-dir"); err == nil && contractsDirStr != "" {
 		contractsDir = contractsDirStr
 	}
 
-	// Получаем список контрактов для фильтрации
 	var contractsFilter []string
 	if contractsFilter, err = helper.ParseStringList(request, "contracts"); err != nil {
 		err = fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
 		return
 	}
 
-	// Определяем значение для вывода contracts
 	contractsDisplay := "all"
 	if len(contractsFilter) > 0 {
 		contractsDisplay = strings.Join(contractsFilter, ", ")
 	}
 
-	// Получаем опцию no-cache
 	noCache, _ := data.Get[bool](request, "no-cache")
 
 	slog.Info(i18n.Msg("analyzing project"),
 		slog.String("contractsDir", contractsDir),
 		slog.String("contracts", contractsDisplay),
-		slog.String("version", internal.Version),
 		slog.Bool("no-cache", noCache),
 	)
 
-	// Пытаемся получить проект из кэша (если опция no-cache не установлена)
-	// GetProject возвращает также вычисленные projectID и marker для последующего использования
 	var fromCache bool
 	var projectID string
 	var currentMarker string
@@ -163,30 +152,6 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 		)
 	}
 
-	// Сохраняем project в файл .tg/project.json только в DEBUG режиме
-	// В WASM окружении корень файловой системы - это корень проекта
-	if slog.Default().Handler().Enabled(context.Background(), slog.LevelDebug) {
-		projectPath := "/.tg/project.json"
-
-		slog.Debug(i18n.Msg("saving project"), slog.String("rootDir", rootDir), slog.String("projectPath", projectPath))
-
-		if err = os.MkdirAll(filepath.Dir(projectPath), 0755); err == nil {
-			var projectJSON []byte
-			if projectJSON, err = json.MarshalIndent(project, "", "  "); err == nil {
-				if err = os.WriteFile(projectPath, projectJSON, 0600); err == nil {
-					slog.Debug(i18n.Msg("project saved"), slog.String("path", projectPath), slog.Int("typesCount", len(project.Types)))
-				} else {
-					slog.Warn(i18n.Msg("failed to save project"), slog.String("error", err.Error()), slog.String("path", projectPath))
-				}
-			} else {
-				slog.Warn(i18n.Msg("failed to marshal project"), slog.String("error", err.Error()))
-			}
-		} else {
-			slog.Warn(i18n.Msg("failed to create project directory"), slog.String("error", err.Error()), slog.String("path", filepath.Dir(projectPath)))
-		}
-	}
-
-	// Добавляем project в response
 	if err = response.Set("project", project); err != nil {
 		err = fmt.Errorf("%s: %w", i18n.Msg("failed to set project in response"), err)
 		return
@@ -196,7 +161,6 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 	return
 }
 
-// Info возвращает информацию о плагине.
 func (p *AstgPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{
@@ -225,8 +189,6 @@ func (p *AstgPlugin) Info() (info plugin.Info, err error) {
 	return
 }
 
-// Generate генерирует пакет astg с автономными типами.
-// Реализует интерфейс InitGenerator для генерации кода при tg plugin init.
 func (p *AstgPlugin) Generate(rootDir string, moduleName string) (err error) {
 
 	slog.Info(i18n.Msg("generating astg package"), slog.String("rootDir", rootDir), slog.String("moduleName", moduleName))
@@ -238,8 +200,6 @@ func (p *AstgPlugin) Generate(rootDir string, moduleName string) (err error) {
 	return
 }
 
-// Cleanup удаляет сгенерированные файлы.
-// Реализует интерфейс InitGenerator для очистки при tg plugin upgrade.
 func (p *AstgPlugin) Cleanup(rootDir string) (err error) {
 
 	slog.Info(i18n.Msg("cleaning up astg package"), slog.String("rootDir", rootDir))

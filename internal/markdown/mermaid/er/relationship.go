@@ -1,6 +1,8 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package er
 
-// Relationship is a type that represents the relationship between entities.
 type Relationship string
 
 const (
@@ -25,7 +27,6 @@ const (
 	right = false
 )
 
-// string converts the relationship to a mermaid synatax string.
 func (r Relationship) string(left bool) string {
 	switch r {
 	case ZeroToOneRelationship:

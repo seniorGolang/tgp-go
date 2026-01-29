@@ -1,25 +1,20 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
-	"go/build"
 	"go/types"
 	"sync"
 )
 
-// FileSystemImporter реализует types.Importer для загрузки пакетов через файловую систему.
 type FileSystemImporter struct {
 	loader          *AutonomousPackageLoader
 	cache           map[string]*types.Package
 	mu              sync.RWMutex
-	buildCtx        *build.Context
 	lazyMode        bool
-	importedSet     map[string]bool
 	requiredImports map[string]bool
 }
 
-// Import импортирует пакет.
 func (i *FileSystemImporter) Import(path string) (pkg *types.Package, err error) {
 
 	i.mu.RLock()

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package generator
 
 import (
@@ -14,7 +14,6 @@ import (
 //go:embed templates
 var templates embed.FS
 
-// Generate создает пакет astg с автономными типами из internal/model и internal/tags.
 func Generate(rootDir string, moduleName string) (err error) {
 
 	astgDir := filepath.Join(rootDir, "astg")
@@ -28,14 +27,12 @@ func Generate(rootDir string, moduleName string) (err error) {
 		"moduleName": moduleName,
 	}
 
-	// Парсим шаблоны
 	var tmpl *template.Template
 	if tmpl, err = template.ParseFS(templates, "templates/*.tmpl"); err != nil {
 		err = fmt.Errorf("failed to parse templates: %w", err)
 		return
 	}
 
-	// Генерируем файлы для tags
 	if err = renderFile(tmpl, "tags.go.tmpl", filepath.Join(astgDir, "tags.go"), meta); err != nil {
 		err = fmt.Errorf("failed to render tags.go: %w", err)
 		return
@@ -51,7 +48,6 @@ func Generate(rootDir string, moduleName string) (err error) {
 		return
 	}
 
-	// Генерируем файлы для model
 	if err = renderFile(tmpl, "project.go.tmpl", filepath.Join(astgDir, "project.go"), meta); err != nil {
 		err = fmt.Errorf("failed to render project.go: %w", err)
 		return
@@ -82,7 +78,6 @@ func Generate(rootDir string, moduleName string) (err error) {
 		return
 	}
 
-	// Генерируем README
 	if err = renderFile(tmpl, "readme.md.tmpl", filepath.Join(astgDir, "readme.md"), meta); err != nil {
 		err = fmt.Errorf("failed to render readme.md: %w", err)
 		return
@@ -91,7 +86,6 @@ func Generate(rootDir string, moduleName string) (err error) {
 	return
 }
 
-// Cleanup удаляет сгенерированные файлы.
 func Cleanup(rootDir string) (err error) {
 
 	astgDir := filepath.Join(rootDir, "astg")
@@ -103,7 +97,6 @@ func Cleanup(rootDir string) (err error) {
 	return
 }
 
-// renderFile рендерит шаблон и записывает в файл.
 func renderFile(tmpl *template.Template, templateName, filePath string, data any) (err error) {
 
 	_ = os.Remove(filePath)

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -10,14 +10,11 @@ import (
 	"tgp/internal/model"
 )
 
-// hasMarshaler проверяет, имеет ли тип соответствующий маршалер (Marshaler/Unmarshaler)
-// Проверяет только сам тип, без рекурсии по вложенным типам
 func (r *ClientRenderer) hasMarshaler(typ *model.Type, isArgument bool) bool {
 	if typ == nil {
 		return false
 	}
 
-	// Проверяем маршалеры самого типа
 	// ВАЖНО: интерфейсы хранятся в формате "pkgPath:InterfaceName" (с двоеточием), а не "pkgPath.InterfaceName"
 	if len(typ.ImplementsInterfaces) > 0 {
 		for _, iface := range typ.ImplementsInterfaces {
@@ -45,14 +42,10 @@ func (r *ClientRenderer) hasMarshaler(typ *model.Type, isArgument bool) bool {
 	return false
 }
 
-// walkVariable конвертирует Go тип в TypeScript определение типа
-// isArgument указывает, является ли это аргументом метода (true) или возвращаемым значением (false)
 func (r *ClientRenderer) walkVariable(typeName, pkgPath string, variable *model.Variable, varTags map[string]string, isArgument bool) (schema typeDefTs) {
 	return r.walkVariableWithVisited(typeName, pkgPath, variable, varTags, make(map[string]bool), isArgument)
 }
 
-// walkVariableWithVisited конвертирует Go тип в TypeScript определение типа с отслеживанием обрабатываемых типов
-// isArgument указывает, является ли это аргументом метода (true) или возвращаемым значением (false)
 func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, variable *model.Variable, varTags map[string]string, processing map[string]bool, isArgument bool) (schema typeDefTs) {
 
 	schema.name = typeName
@@ -61,7 +54,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 		schema.nullable = annotationValue(varTags, "nullable", "") == "true"
 	}
 
-	// Обрабатываем массивы и слайсы ПЕРЕД получением типа из project.Types
 	// Это важно, потому что для массива []string мы обрабатываем элемент string, а не сам массив
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		schema.kind = "array"
@@ -77,10 +69,8 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 		return
 	}
 
-	// Обрабатываем map ПЕРЕД получением типа из project.Types
 	// НО: если TypeID указывает на именованный map тип из текущего проекта, используем его
 	if variable.MapKeyID != "" && variable.MapValueID != "" {
-		// Проверяем, является ли TypeID именованным map типом из текущего проекта
 		if variable.TypeID != "" {
 			if typ, ok := r.project.Types[variable.TypeID]; ok {
 				if typ.Kind == model.TypeKindMap && typ.TypeName != "" && typ.ImportPkgPath != "" {
@@ -99,7 +89,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 						// Сохраняем тип в typeDefTs
 						if schema.importPkg != "" && schema.importName != "" {
 							typeKey := fmt.Sprintf("%s:%s", schema.importPkg, schema.importName)
-							// Проверяем, не сохранен ли уже этот тип
 							if existingDef, exists := r.typeDefTs[typeKey]; !exists || len(existingDef.properties) == 0 {
 								// Сохраняем map определение для генерации type alias
 								mapDef := typeDefTs{
@@ -132,7 +121,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 		return
 	}
 
-	// Получаем тип из project.Types
 	typeID := variable.TypeID
 	typ, ok := r.project.Types[typeID]
 	// ВАЖНО: если TypeID указывает на именованный map тип из текущего проекта,
@@ -153,7 +141,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 			// Сохраняем тип в typeDefTs
 			if schema.importPkg != "" && schema.importName != "" {
 				typeKey := fmt.Sprintf("%s:%s", schema.importPkg, schema.importName)
-				// Проверяем, не сохранен ли уже этот тип
 				if existingDef, exists := r.typeDefTs[typeKey]; !exists || len(existingDef.properties) == 0 {
 					// Сохраняем map определение для генерации type alias
 					mapKeyID := typ.MapKeyID
@@ -183,13 +170,11 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 	}
 	if !ok {
 		// Тип не найден - возможно это встроенный тип или исключаемый тип (time.Time, UUID и т.п.)
-		// Проверяем, является ли это time.Time
 		if strings.Contains(typeID, "time") && strings.Contains(typeID, "Time") {
 			schema.kind = "scalar"
 			schema.typeName = "Date"
 			return
 		}
-		// Проверяем, является ли это UUID
 		if strings.Contains(typeID, "UUID") {
 			schema.kind = "scalar"
 			schema.typeName = "string"
@@ -205,7 +190,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 	// ВАЖНО: Проверяем маршалеры ПЕРЕД проверкой исключений
 	// Типы с маршалерами должны быть any, независимо от того, являются ли они исключениями
 	// (кроме явных исключений, формат которых известен)
-	// Проверяем только сам тип, без рекурсии по вложенным типам
 	hasCustomMarshaler := r.hasMarshaler(typ, isArgument)
 	isExcluded := r.isExplicitlyExcludedType(typ)
 
@@ -236,13 +220,11 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 	}
 
 	if isExcluded {
-		// Проверяем time.Time по ImportPkgPath и TypeName
 		if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
 			schema.kind = "scalar"
 			schema.typeName = "Date"
 			return
 		}
-		// Проверяем по typeID (fallback)
 		if strings.Contains(typeID, "time") && strings.Contains(typeID, "Time") {
 			schema.kind = "scalar"
 			schema.typeName = "Date"
@@ -253,31 +235,25 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 			schema.typeName = "string"
 			return
 		}
-		// Для других исключаемых типов используем typeIDToTSType
 		typeStr := r.typeIDToTSType(typeID)
 		schema.kind = "scalar"
 		schema.typeName = typeStr
 		return
 	}
 
-	// Обрабатываем указатели
 	if variable.NumberOfPointers > 0 {
 		schema.nullable = true
 	}
 
-	// Обрабатываем базовый тип
 	switch typ.Kind {
 	case model.TypeKindString, model.TypeKindInt, model.TypeKindInt8, model.TypeKindInt16, model.TypeKindInt32, model.TypeKindInt64,
 		model.TypeKindUint, model.TypeKindUint8, model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
 		model.TypeKindFloat32, model.TypeKindFloat64, model.TypeKindBool, model.TypeKindByte, model.TypeKindRune:
-		// Проверяем, не является ли это time.Time с Kind=string (алиас на string)
 		if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
 			schema.kind = "scalar"
 			schema.typeName = "Date"
 			return
 		}
-		// Для именованных типов (type UserID int64) используем базовый TypeScript тип
-		// Определяем базовый TypeScript тип на основе Kind типа
 		var baseTSType string
 		switch typ.Kind {
 		case model.TypeKindString:
@@ -298,16 +274,13 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 		schema.typeName = baseTSType
 		// Если тип импортирован (именованный тип или алиас), сохраняем информацию об импорте
 		// ВАЖНО: сохраняем типы алиасов даже если они используются только в полях структур
-		// Используем PkgName для namespace (реальное имя пакета Go), fallback на ImportAlias
 		if typ.TypeName != "" && typ.ImportPkgPath != "" {
-			// Используем PkgName для namespace, если доступно, иначе ImportAlias
 			if typ.PkgName != "" {
 				schema.importPkg = typ.PkgName
 			} else if typ.ImportAlias != "" {
 				schema.importPkg = typ.ImportAlias
 			}
 			schema.importName = typ.TypeName
-			// Сохраняем в typeDefTs для последующей генерации
 			var typeKey string
 			if schema.importPkg != "" && schema.importName != "" {
 				typeKey = fmt.Sprintf("%s:%s", schema.importPkg, schema.importName)
@@ -321,7 +294,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 
 	case model.TypeKindStruct:
 		// Проверка на исключаемые типы уже выполнена выше, здесь обрабатываем только обычные структуры
-		// Используем TypeName, если есть, иначе typeName из параметра
 		if typ.TypeName != "" {
 			schema.name = typ.TypeName
 		} else {
@@ -341,7 +313,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 		processing[typeID] = true
 		defer delete(processing, typeID)
 
-		// Обрабатываем поля структуры только если они есть
 		if len(typ.StructFields) > 0 {
 			for _, field := range typ.StructFields {
 				fieldName, inline := r.jsonName(field)
@@ -362,7 +333,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 						continue
 					}
 					// Inline поля - добавляем их свойства напрямую
-					// Используем отсортированные пары для детерминированного порядка
 					for eField, def := range common.SortedPairs(embed.properties) {
 						schema.properties[eField] = def
 					}
@@ -370,23 +340,18 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 			}
 		}
 		// Если тип импортирован, сохраняем информацию об импорте
-		// Используем PkgName для namespace (реальное имя пакета Go), fallback на ImportAlias
 		if typ.ImportPkgPath != "" {
-			// Используем PkgName для namespace, если доступно, иначе ImportAlias
 			if typ.PkgName != "" {
 				schema.importPkg = typ.PkgName
 			} else if typ.ImportAlias != "" {
 				schema.importPkg = typ.ImportAlias
 			}
-			// Используем TypeName, если есть, иначе schema.name
 			if typ.TypeName != "" {
 				schema.importName = typ.TypeName
 			} else {
 				schema.importName = schema.name
 			}
 		}
-		// Сохраняем структуру в typeDefTs для последующей генерации
-		// Используем уникальный ключ: для импортированных типов - "pkg:typeName", для локальных - typeID
 		var typeKey string
 		if schema.importPkg != "" && schema.importName != "" {
 			typeKey = fmt.Sprintf("%s:%s", schema.importPkg, schema.importName)
@@ -416,26 +381,20 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 		// Для алиасов создаем type alias, который ссылается на базовый тип
 		// ВАЖНО: не разворачиваем базовый тип, а сохраняем алиас как ссылку
 		if typ.AliasOf != "" {
-			// Получаем базовый тип для формирования ссылки
 			baseType, baseTypeExists := r.project.Types[typ.AliasOf]
 			if !baseTypeExists {
-				// Базовый тип не найден - обрабатываем как обычно
 				aliasVar := &model.Variable{TypeID: typ.AliasOf}
 				return r.walkVariableWithVisited(typeName, pkgPath, aliasVar, varTags, processing, isArgument)
 			}
 
-			// Получаем схему базового типа для формирования ссылки
 			baseVar := &model.Variable{TypeID: typ.AliasOf}
 			baseSchema := r.walkVariableWithVisited("base", pkgPath, baseVar, nil, processing, isArgument)
 
-			// Формируем ссылку на базовый тип
 			var baseTypeRef string
 			switch {
 			case baseSchema.importPkg != "" && baseSchema.importName != "":
-				// Базовый тип из другого namespace
 				baseTypeRef = fmt.Sprintf("%s.%s", baseSchema.importPkg, baseSchema.importName)
 			case baseType.ImportPkgPath != "":
-				// Базовый тип из другого пакета, но еще не обработан
 				switch {
 				case baseType.PkgName != "":
 					baseTypeRef = fmt.Sprintf("%s.%s", baseType.PkgName, baseType.TypeName)
@@ -445,7 +404,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 					baseTypeRef = baseType.TypeName
 				}
 			default:
-				// Базовый тип из того же пакета или встроенный
 				baseTypeRef = baseSchema.typeLink()
 			}
 
@@ -485,14 +443,12 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 	case model.TypeKindMap:
 		// ВАЖНО: если это именованный map тип из текущего проекта, используем имя типа
 		if typ.TypeName != "" && typ.ImportPkgPath != "" {
-			// Проверяем, является ли тип из текущего проекта
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта - генерируем map с правильными типами ключа и значения
 				// и сохраняем как именованный тип
 				schema.kind = "map"
 				schema.typeName = "map"
 				schema.nullable = true
-				// Генерируем типы ключа и значения
 				if typ.MapKeyID != "" && typ.MapValueID != "" {
 					keyVar := &model.Variable{TypeID: typ.MapKeyID}
 					valueVar := &model.Variable{TypeID: typ.MapValueID}
@@ -557,7 +513,6 @@ func (r *ClientRenderer) walkVariableWithVisited(typeName, pkgPath string, varia
 	return
 }
 
-// jsonName извлекает имя JSON поля из структуры
 func (r *ClientRenderer) jsonName(field *model.StructField) (value string, inline bool) {
 	if field.Name == "" {
 		return field.Name, false
@@ -573,7 +528,6 @@ func (r *ClientRenderer) jsonName(field *model.StructField) (value string, inlin
 	if value == "-" {
 		return value, false
 	}
-	// Проверяем, начинается ли имя с маленькой буквы (неэкспортируемое поле)
 	// НО только если значение не было взято из тега json
 	if len(value) > 0 && value[0] >= 'a' && value[0] <= 'z' && !inline {
 		// Если значение было взято из тега, не пропускаем (тег явно указан)
@@ -584,9 +538,6 @@ func (r *ClientRenderer) jsonName(field *model.StructField) (value string, inlin
 	return
 }
 
-// isTypeFromCurrentProject уже определен в base.go
-
-// typeIDToTSType конвертирует typeID в TypeScript тип (упрощенная версия для базовых типов)
 func (r *ClientRenderer) typeIDToTSType(typeID string) string {
 	// Базовые типы
 	switch typeID {
@@ -631,7 +582,6 @@ func (r *ClientRenderer) typeIDToTSType(typeID string) string {
 	return "any"
 }
 
-// castTypeTs конвертирует имя Go типа в TypeScript тип
 func castTypeTs(originName string) (typeName string) {
 	typeName = originName
 	switch originName {
@@ -667,7 +617,6 @@ func castTypeTs(originName string) (typeName string) {
 	return
 }
 
-// annotationIsSet проверяет, установлена ли аннотация
 func annotationIsSet(annotations map[string]string, key string) bool {
 	if annotations == nil {
 		return false
@@ -676,7 +625,6 @@ func annotationIsSet(annotations map[string]string, key string) bool {
 	return ok
 }
 
-// annotationValue возвращает значение аннотации
 func annotationValue(annotations map[string]string, key, defaultValue string) string {
 	if annotations == nil {
 		return defaultValue
@@ -687,7 +635,6 @@ func annotationValue(annotations map[string]string, key, defaultValue string) st
 	return defaultValue
 }
 
-// parseTagsFromDocs парсит теги из документации
 func parseTagsFromDocs(docs []string) map[string]string {
 	result := make(map[string]string)
 	for _, doc := range docs {

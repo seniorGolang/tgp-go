@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -13,11 +13,10 @@ import (
 	"tgp/plugins/server/renderer/types"
 )
 
-// varHeaderMap возвращает маппинг переменных на HTTP заголовки.
 func (r *contractRenderer) varHeaderMap(method *model.Method) map[string]string {
 
 	headers := make(map[string]string)
-	if httpHeaders := method.Annotations.Value(TagHttpHeader, ""); httpHeaders != "" {
+	if httpHeaders := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpHeader, ""); httpHeaders != "" {
 		headerPairs := strings.Split(httpHeaders, ",")
 		for _, pair := range headerPairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -30,11 +29,10 @@ func (r *contractRenderer) varHeaderMap(method *model.Method) map[string]string 
 	return headers
 }
 
-// varCookieMap возвращает маппинг переменных на HTTP cookies.
 func (r *contractRenderer) varCookieMap(method *model.Method) map[string]string {
 
 	cookies := make(map[string]string)
-	if httpCookies := method.Annotations.Value(TagHttpCookies, ""); httpCookies != "" {
+	if httpCookies := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpCookies, ""); httpCookies != "" {
 		cookiePairs := strings.Split(httpCookies, ",")
 		for _, pair := range cookiePairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -47,11 +45,48 @@ func (r *contractRenderer) varCookieMap(method *model.Method) map[string]string 
 	return cookies
 }
 
-// argPathMap возвращает маппинг аргументов на path параметры.
+func usedHeaderNamesForMethod(project *model.Project, contract *model.Contract, method *model.Method) []string {
+
+	if project == nil || contract == nil || method == nil {
+		return nil
+	}
+	headers := make(map[string]struct{})
+	if httpHeaders := model.GetAnnotationValue(project, contract, method, nil, TagHttpHeader, ""); httpHeaders != "" {
+		for _, pair := range strings.Split(httpHeaders, ",") {
+			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
+				header := strings.TrimSpace(pairTokens[1])
+				if header != "" {
+					headers[header] = struct{}{}
+				}
+			}
+		}
+	}
+	return common.SortedKeys(headers)
+}
+
+func usedCookieNamesForMethod(project *model.Project, contract *model.Contract, method *model.Method) []string {
+
+	if project == nil || contract == nil || method == nil {
+		return nil
+	}
+	cookies := make(map[string]struct{})
+	if httpCookies := model.GetAnnotationValue(project, contract, method, nil, TagHttpCookies, ""); httpCookies != "" {
+		for _, pair := range strings.Split(httpCookies, ",") {
+			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
+				cookie := strings.TrimSpace(pairTokens[1])
+				if cookie != "" {
+					cookies[cookie] = struct{}{}
+				}
+			}
+		}
+	}
+	return common.SortedKeys(cookies)
+}
+
 func (r *contractRenderer) argPathMap(method *model.Method) map[string]string {
 
 	paths := make(map[string]string)
-	if urlPath := method.Annotations.Value(TagHttpPath, ""); urlPath != "" {
+	if urlPath := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpPath, ""); urlPath != "" {
 		urlTokens := strings.Split(urlPath, "/")
 		for _, token := range urlTokens {
 			if strings.HasPrefix(token, ":") {
@@ -63,11 +98,10 @@ func (r *contractRenderer) argPathMap(method *model.Method) map[string]string {
 	return paths
 }
 
-// argParamMap возвращает маппинг аргументов на query параметры.
 func (r *contractRenderer) argParamMap(method *model.Method) map[string]string {
 
 	params := make(map[string]string)
-	if urlArgs := method.Annotations.Value(TagHttpArg, ""); urlArgs != "" {
+	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpArg, ""); urlArgs != "" {
 		paramPairs := strings.Split(urlArgs, ",")
 		for _, pair := range paramPairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -80,7 +114,6 @@ func (r *contractRenderer) argParamMap(method *model.Method) map[string]string {
 	return params
 }
 
-// argByName находит аргумент по имени.
 func (r *contractRenderer) argByName(method *model.Method, argName string) *model.Variable {
 
 	argName = strings.TrimPrefix(argName, "!")
@@ -92,7 +125,6 @@ func (r *contractRenderer) argByName(method *model.Method, argName string) *mode
 	return nil
 }
 
-// resultByName находит результат по имени.
 func (r *contractRenderer) resultByName(method *model.Method, retName string) *model.Variable {
 
 	for _, ret := range method.Results {
@@ -103,7 +135,6 @@ func (r *contractRenderer) resultByName(method *model.Method, retName string) *m
 	return nil
 }
 
-// retCookieMap возвращает маппинг результатов на cookies.
 func (r *contractRenderer) retCookieMap(method *model.Method) map[string]string {
 
 	cookies := make(map[string]string)
@@ -116,7 +147,6 @@ func (r *contractRenderer) retCookieMap(method *model.Method) map[string]string 
 	return cookies
 }
 
-// argsWithoutSpecialArgs возвращает аргументы без path, query, header, cookie параметров.
 func (r *contractRenderer) argsWithoutSpecialArgs(method *model.Method) []*model.Variable {
 
 	vars := make([]*model.Variable, 0)
@@ -139,7 +169,6 @@ func (r *contractRenderer) argsWithoutSpecialArgs(method *model.Method) []*model
 	return vars
 }
 
-// isBuiltinTypeID проверяет, является ли TypeID встроенным типом Go.
 func isBuiltinTypeID(typeID string) bool {
 
 	switch typeID {
@@ -152,12 +181,10 @@ func isBuiltinTypeID(typeID string) bool {
 	return false
 }
 
-// argFromString генерирует код для извлечения аргумента из строки (path, query, header, cookie).
 func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, srcCode func(srcName string) Code, errStatement func(arg, header string) *Statement) *Statement {
 
 	block := Line()
 	if len(varMap) != 0 {
-		// Используем отсортированные пары для детерминированного порядка
 		for fullArgName, srcName := range common.SortedPairs(varMap) {
 			fullArgName = strings.TrimPrefix(fullArgName, "!")
 			argTokens := strings.Split(fullArgName, ".")
@@ -169,7 +196,6 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 			}
 			srcName = strings.TrimPrefix(srcName, "!")
 
-			// Определяем тип для генерации кода, используя данные из core напрямую
 			var argTypeName string
 			var typ *model.Type
 			var fieldTypeID string
@@ -288,7 +314,6 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 						// Если тип импортирован, используем полное имя (может содержать точку)
 						typeParts := strings.Split(argTypeName, ".")
 						if len(typeParts) > 1 {
-							// Полное имя типа (например, "uuid.UUID")
 							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
 						} else {
 							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
@@ -298,7 +323,6 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 						bg.Var().Id(argVarName).Id(argTypeName)
 					}
 
-					// Конвертируем строку в нужный тип, создавая временный Variable из данных поля
 					fieldVar := &model.Variable{
 						TypeID:           fieldTypeID,
 						IsSlice:          fieldIsSlice,
@@ -326,12 +350,10 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 	return block
 }
 
-// argFromStringOrdered генерирует код для извлечения аргументов из строки с сохранением порядка.
 func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, orderedArgs []string, srcCode func(srcName string) Code, errStatement func(arg, header string) *Statement) *Statement {
 
 	block := Line()
 	if len(varMap) != 0 {
-		// Используем упорядоченный список, если он предоставлен
 		var argsToProcess []string
 		if len(orderedArgs) > 0 {
 			argsToProcess = orderedArgs
@@ -356,7 +378,6 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 			}
 			srcName = strings.TrimPrefix(srcName, "!")
 
-			// Определяем тип для генерации кода, используя данные из core напрямую
 			var argTypeName string
 			var typ *model.Type
 			var fieldTypeID string
@@ -475,7 +496,6 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 						// Если тип импортирован, используем полное имя (может содержать точку)
 						typeParts := strings.Split(argTypeName, ".")
 						if len(typeParts) > 1 {
-							// Полное имя типа (например, "uuid.UUID")
 							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
 						} else {
 							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
@@ -485,7 +505,6 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 						bg.Var().Id(argVarName).Id(argTypeName)
 					}
 
-					// Конвертируем строку в нужный тип, создавая временный Variable из данных поля
 					fieldVar := &model.Variable{
 						TypeID:           fieldTypeID,
 						IsSlice:          fieldIsSlice,
@@ -513,7 +532,6 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 	return block
 }
 
-// argToTypeConverter генерирует код для конвертации строки в нужный тип.
 func (r *contractRenderer) argToTypeConverter(srcFile *GoFile, typeGen *types.Generator, from *Statement, arg *model.Variable, id *Statement, errStatement *Statement) *Statement {
 
 	op := "="
@@ -530,9 +548,7 @@ func (r *contractRenderer) argToTypeConverter(srcFile *GoFile, typeGen *types.Ge
 			NumberOfPointers: arg.ElementPointers,
 			IsSlice:          false,
 		}
-		// Генерируем код для парсинга слайса
 		srcFile.ImportName(PackageStrings, "strings")
-		// Получаем тип элемента через typeGen для правильной обработки пакетов
 		elementTypeCode := typeGen.FieldType(elementTypeID, arg.ElementPointers, false)
 		return BlockFunc(func(bg *Group) {
 			bg.Id("parts").Op(":=").Qual(PackageStrings, "Split").Call(from, Lit(","))
@@ -587,10 +603,8 @@ func (r *contractRenderer) argToTypeConverter(srcFile *GoFile, typeGen *types.Ge
 		return id.Op(op).Add(from)
 	}
 
-	// Определяем формат сериализации на основе типа
 	openAPIType, format := getSerializationFormat(typ, r.project)
 
-	// Определяем, как парсить тип на основе формата сериализации
 	switch {
 	case openAPIType == "string" && format == "uuid":
 		// UUID - парсим через uuid.Parse
@@ -612,7 +626,6 @@ func (r *contractRenderer) argToTypeConverter(srcFile *GoFile, typeGen *types.Ge
 	}
 }
 
-// containsString проверяет, содержится ли строка в слайсе.
 func containsString(slice []string, s string) bool {
 	for _, item := range slice {
 		if item == s {
@@ -622,7 +635,6 @@ func containsString(slice []string, s string) bool {
 	return false
 }
 
-// toIDWithImport генерирует код для вызова функции с импортом пакета.
 func toIDWithImport(qualifiedName string, srcFile *GoFile) *Statement {
 	// Формат: "package/path:FunctionName"
 	if tokens := strings.Split(qualifiedName, ":"); len(tokens) == 2 {
@@ -636,12 +648,10 @@ func toIDWithImport(qualifiedName string, srcFile *GoFile) *Statement {
 	return Id(qualifiedName)
 }
 
-// arguments возвращает аргументы без context и специальных параметров.
 func (r *contractRenderer) arguments(method *model.Method) []*model.Variable {
 	return r.argsWithoutSpecialArgs(method)
 }
 
-// urlArgs генерирует код для извлечения аргументов из path параметров.
 func (r *contractRenderer) urlArgs(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
 	return r.argFromString(srcFile, typeGen, method, "urlParam", r.argPathMap(method),
 		func(srcName string) Code {
@@ -651,10 +661,9 @@ func (r *contractRenderer) urlArgs(srcFile *GoFile, typeGen *types.Generator, me
 	)
 }
 
-// urlParams генерирует код для извлечения аргументов из query параметров.
 func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
 	queryParams := make(map[string]string)
-	if urlArgs := method.Annotations.Value(TagHttpArg, ""); urlArgs != "" {
+	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpArg, ""); urlArgs != "" {
 		paramPairs := strings.Split(urlArgs, ",")
 		for _, pair := range paramPairs {
 			pair = strings.TrimSpace(pair)
@@ -680,7 +689,7 @@ func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, 
 		}
 	}
 	var orderedArgs []string
-	if urlArgs := method.Annotations.Value(TagHttpArg, ""); urlArgs != "" {
+	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpArg, ""); urlArgs != "" {
 		paramPairs := strings.Split(urlArgs, ",")
 		for _, pair := range paramPairs {
 			pair = strings.TrimSpace(pair)
@@ -709,7 +718,6 @@ func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, 
 	)
 }
 
-// httpArgHeaders генерирует код для извлечения аргументов из HTTP заголовков.
 func (r *contractRenderer) httpArgHeaders(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
 	return r.argFromString(srcFile, typeGen, method, "header", r.varHeaderMap(method),
 		func(srcName string) Code {
@@ -719,7 +727,37 @@ func (r *contractRenderer) httpArgHeaders(srcFile *GoFile, typeGen *types.Genera
 	)
 }
 
-// httpCookies генерирует код для извлечения аргументов из HTTP cookies.
+func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement, overlayAsStruct bool) *Statement {
+
+	headerMap := r.varHeaderMap(method)
+	cookieMap := r.varCookieMap(method)
+	if len(headerMap) == 0 && len(cookieMap) == 0 {
+		return Line()
+	}
+	var overlayFromMap func(srcName string) Code
+	if overlayAsStruct {
+		overlayFromMap = func(srcName string) Code {
+			return Id("overlay").Dot("Get").Call(Lit(srcName))
+		}
+	} else {
+		overlayFromMap = func(srcName string) Code {
+			return Id("overlay").Index(Lit(srcName))
+		}
+	}
+	inner := Line()
+	inner.Add(r.argFromString(srcFile, typeGen, method, "header", headerMap, overlayFromMap, errStatement))
+	inner.Add(r.argFromString(srcFile, typeGen, method, "cookie", cookieMap, overlayFromMap, errStatement))
+	var assertBlock *Statement
+	if overlayAsStruct {
+		assertBlock = If(List(Id("overlay"), Id("ok")).Op(":=").Id("overlayVal").Assert(Id("requestOverlay")).Op(";").Id("ok")).Block(inner)
+	} else {
+		assertBlock = If(List(Id("overlay"), Id("ok")).Op(":=").Id("overlayVal").Assert(Map(String()).String()).Op(";").Id("ok")).Block(inner)
+	}
+	return Line().
+		Id("overlayVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
+		Line().If(Id("overlayVal").Op("!=").Nil()).Block(assertBlock)
+}
+
 func (r *contractRenderer) httpCookies(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
 	return r.argFromString(srcFile, typeGen, method, "cookie", r.varCookieMap(method),
 		func(srcName string) Code {
@@ -729,7 +767,6 @@ func (r *contractRenderer) httpCookies(srcFile *GoFile, typeGen *types.Generator
 	)
 }
 
-// httpRetHeaders генерирует код для установки HTTP заголовков из результатов.
 func (r *contractRenderer) httpRetHeaders(method *model.Method) *Statement {
 	ex := Line()
 	headerMap := r.varHeaderMap(method)
@@ -741,20 +778,16 @@ func (r *contractRenderer) httpRetHeaders(method *model.Method) *Statement {
 	return ex
 }
 
-// getSerializationFormat определяет OpenAPI тип и формат для типа.
 func getSerializationFormat(typ *model.Type, project *model.Project) (openAPIType string, format string) {
 
-	// Проверяем time.Time
 	if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
 		return "string", "date-time"
 	}
 
-	// Проверяем UUID
 	if strings.Contains(typ.TypeName, "UUID") || strings.Contains(typ.ImportPkgPath, "uuid") {
 		return "string", "uuid"
 	}
 
-	// Проверяем, реализует ли тип json.Marshaler
 	if containsString(typ.ImplementsInterfaces, "encoding/json:Marshaler") {
 		return "string", ""
 	}

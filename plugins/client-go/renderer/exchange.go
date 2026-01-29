@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -16,7 +16,6 @@ import (
 	"tgp/internal/model"
 )
 
-// RenderExchange генерирует файл exchange для контракта.
 func (r *ClientRenderer) RenderExchange(contract *model.Contract) error {
 
 	outDir := r.outDir
@@ -40,7 +39,6 @@ func (r *ClientRenderer) exchange(ctx context.Context, contract *model.Contract,
 		return Comment("Formal exchange type, please do not delete.").Line().Type().Id(name).Struct()
 	}
 
-	// Сортируем поля по имени для гарантии детерминированного порядка
 	sortedFields := slices.Clone(fields)
 	slices.SortFunc(sortedFields, func(a, b exchangeField) int {
 		if a.name < b.name {
@@ -52,9 +50,9 @@ func (r *ClientRenderer) exchange(ctx context.Context, contract *model.Contract,
 		return 0
 	})
 
-	template := "%s,omitempty"
-	if contract.Annotations.IsSet("tagNoOmitempty") {
-		template = "%s"
+	template := "%s"
+	if model.IsAnnotationSet(r.project, contract, nil, nil, "tagOmitemptyAll") {
+		template = "%s,omitempty"
 	}
 	return Type().Id(name).StructFunc(func(gr *Group) {
 		for _, field := range sortedFields {
@@ -68,10 +66,7 @@ func (r *ClientRenderer) structField(ctx context.Context, field exchangeField, t
 
 	var isInlined bool
 	tags := map[string]string{"json": fmt.Sprintf(template, field.name)}
-	// Сортируем ключи тегов для гарантии детерминированного порядка
-	// Используем итератор для получения отсортированных пар ключ-значение
 	for tag, value := range common.SortedPairs(field.tags) {
-		// Пропускаем "json", так как он уже добавлен выше
 		if tag == "json" {
 			if strings.Contains(value, "inline") {
 				isInlined = true
@@ -87,7 +82,6 @@ func (r *ClientRenderer) structField(ctx context.Context, field exchangeField, t
 		s.Tag(map[string]string{"json": ",inline"})
 	} else {
 		s = Id(ToCamel(field.name))
-		// Проверяем, есть ли информация о массивах/map
 		if field.isSlice || field.arrayLen > 0 || field.mapKeyID != "" {
 			// Создаем временный Variable для передачи в fieldTypeFromVariable
 			v := &model.Variable{

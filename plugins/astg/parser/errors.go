@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -16,7 +16,6 @@ import (
 	"tgp/internal/tags"
 )
 
-// analyzeMethodErrors анализирует ошибки методов из аннотаций, имплементаций и обработчиков.
 func analyzeMethodErrors(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
 	isErrorTypeCache := make(map[string]bool)
@@ -40,7 +39,6 @@ func analyzeMethodErrors(project *model.Project, loader *AutonomousPackageLoader
 				errorsMap[key] = errInfo
 			}
 			for _, errInfo := range errorsFromAnnotations {
-				// Используем ключ с HTTP кодом, чтобы один тип ошибки мог иметь несколько HTTP кодов
 				key := fmt.Sprintf("%s:%s:%d", errInfo.PkgPath, errInfo.TypeName, errInfo.HTTPCode)
 				errorsMap[key] = errInfo
 			}
@@ -62,20 +60,12 @@ func analyzeMethodErrors(project *model.Project, loader *AutonomousPackageLoader
 						slog.String("error", err.Error()))
 				}
 			}
-
-			if len(method.Errors) > 0 {
-				slog.Debug(i18n.Msg("Method errors found"),
-					slog.String("contract", contract.Name),
-					slog.String("method", method.Name),
-					slog.Int("errorsCount", len(method.Errors)))
-			}
 		}
 	}
 
 	return
 }
 
-// extractErrorsFromAnnotations извлекает ошибки из аннотаций метода.
 func extractErrorsFromAnnotations(methodTags tags.DocTags) (errors []*model.ErrorInfo) {
 
 	errors = make([]*model.ErrorInfo, 0)
@@ -105,7 +95,7 @@ func extractErrorsFromAnnotations(methodTags tags.DocTags) (errors []*model.Erro
 		pkgPath := tokens[0]
 		typeName := tokens[1]
 
-		typeID := findErrorTypeID(pkgPath, typeName)
+		typeID := makeTypeID(pkgPath, typeName)
 		if typeID == "" {
 			typeID = fmt.Sprintf("%s:%s", pkgPath, typeName)
 		}
@@ -125,7 +115,6 @@ func extractErrorsFromAnnotations(methodTags tags.DocTags) (errors []*model.Erro
 	return errors
 }
 
-// extractErrorsFromImplementations извлекает ошибки из имплементаций контракта.
 func extractErrorsFromImplementations(method *model.Method, contract *model.Contract, project *model.Project, loader *AutonomousPackageLoader, isErrorTypeCache map[string]bool) (errors []*model.ErrorInfo) {
 
 	errorsMap := make(map[string]*model.ErrorInfo)
@@ -150,7 +139,7 @@ func extractErrorsFromImplementations(method *model.Method, contract *model.Cont
 			}
 
 			if isError {
-				typeID := findErrorTypeID(errorRef.PkgPath, errorRef.TypeName)
+				typeID := makeTypeID(errorRef.PkgPath, errorRef.TypeName)
 				if typeID == "" {
 					typeID = fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
 				}
@@ -175,7 +164,6 @@ func extractErrorsFromImplementations(method *model.Method, contract *model.Cont
 	return
 }
 
-// isErrorType проверяет, является ли тип типом ошибки (реализует интерфейс error и имеет метод Code() int).
 func isErrorType(pkgPath string, typeName string, loader *AutonomousPackageLoader) (isError bool) {
 
 	var pkgInfo *PackageInfo
@@ -238,7 +226,6 @@ func isErrorType(pkgPath string, typeName string, loader *AutonomousPackageLoade
 	return
 }
 
-// createErrorInterface создает интерфейс error (Error() string) для проверки через types.Implements.
 func createErrorInterface() (iface *types.Interface) {
 
 	errorMethod := types.NewFunc(
@@ -261,14 +248,6 @@ func createErrorInterface() (iface *types.Interface) {
 	return
 }
 
-// findErrorTypeID находит ID типа ошибки в проекте.
-func findErrorTypeID(pkgPath string, typeName string) (typeID string) {
-
-	typeID = fmt.Sprintf("%s:%s", pkgPath, typeName)
-	return
-}
-
-// getHTTPStatusText возвращает текстовое описание HTTP статус кода.
 func getHTTPStatusText(code int) (text string) {
 
 	statusTexts := map[int]string{
@@ -293,7 +272,6 @@ func getHTTPStatusText(code int) (text string) {
 	return
 }
 
-// extractErrorsFromHandler извлекает ошибки из обработчика (http-response или handler).
 func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoader, isErrorTypeCache map[string]bool) (errors []*model.ErrorInfo) {
 
 	if method.Handler == nil {
@@ -351,7 +329,7 @@ func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoa
 						continue
 					}
 
-					typeID := findErrorTypeID(errorRef.PkgPath, errorRef.TypeName)
+					typeID := makeTypeID(errorRef.PkgPath, errorRef.TypeName)
 					if typeID == "" {
 						typeID = fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
 					}
@@ -369,13 +347,6 @@ func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoa
 				errors = make([]*model.ErrorInfo, 0, len(errorsMap))
 				for _, errInfo := range errorsMap {
 					errors = append(errors, errInfo)
-				}
-
-				if len(errors) > 0 {
-					slog.Debug(i18n.Msg("Extracted errors from handler"),
-						slog.String("package", handlerPkgPath),
-						slog.String("handler", handlerName),
-						slog.Int("errorsCount", len(errors)))
 				}
 
 				return

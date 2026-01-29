@@ -1,8 +1,10 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package arch
 
 import "fmt"
 
-// The Position refers to the location where the Service is placed.
 type Position string
 
 const (
@@ -16,8 +18,6 @@ const (
 	PositionBottom Position = "B"
 )
 
-// Arrow can be added to each side of an edge by adding < before the
-// direction on the left, and/or > after the direction on the right.
 type Arrow string
 
 const (
@@ -29,8 +29,6 @@ const (
 	ArrowLeft Arrow = "<"
 )
 
-// Edge represents an edge between two services.
-// The edge can be customized with the Position and Arrow.
 type Edge struct {
 	// ServiceID is edge's service ID.
 	// A junction ID can be specified instead of a service ID.
@@ -41,8 +39,6 @@ type Edge struct {
 	Arrow Arrow
 }
 
-// Edges adds a string to connect two services.
-// Syntax: {serviceId}:{T|B|L|R} {<}?--{>}? {T|B|L|R}:{serviceId}
 func (a *Architecture) Edges(from, to Edge) *Architecture {
 	a.body = append(
 		a.body,
@@ -54,8 +50,6 @@ func (a *Architecture) Edges(from, to Edge) *Architecture {
 	return a
 }
 
-// EdgesInAnothorGroup adds a string to connect two services in another group.
-// Syntax: {serviceId}{{group}}:{T|B|L|R} {<}?--{>}? {T|B|L|R}:{serviceId}{{group}}
 func (a *Architecture) EdgesInAnothorGroup(from, to Edge) *Architecture {
 	a.body = append(
 		a.body,

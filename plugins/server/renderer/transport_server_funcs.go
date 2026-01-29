@@ -1,14 +1,15 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
 	"fmt"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/model"
 )
 
-// fiberFunc генерирует функцию Fiber.
 func (r *transportRenderer) fiberFunc() Code {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
@@ -20,7 +21,6 @@ func (r *transportRenderer) fiberFunc() Code {
 		)
 }
 
-// withLogFunc генерирует функцию WithLog.
 func (r *transportRenderer) withLogFunc() Code {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
@@ -28,14 +28,13 @@ func (r *transportRenderer) withLogFunc() Code {
 		Params().
 		Params(Op("*").Id("Server")).
 		BlockFunc(func(bg *Group) {
-			if r.hasHTTPService() {
-				bg.If(Id("srv").Dot("httpHTTPService").Op("!=").Nil()).Block(
-					Id("srv").Dot("httpHTTPService").Op("=").Id("srv").Dot("HTTPService").Call().Dot("WithLog").Call(),
-				)
-			}
-			// Применяем логирование для всех контрактов с jsonRPC
 			for _, contract := range r.project.Contracts {
-				if contract.Annotations.Contains(TagServerJsonRPC) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
+						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithLog").Call(),
+					)
+				}
+				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithLog").Call(),
 					)
@@ -45,7 +44,6 @@ func (r *transportRenderer) withLogFunc() Code {
 		})
 }
 
-// withTraceFunc генерирует функцию WithTrace.
 func (r *transportRenderer) withTraceFunc() Code {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
@@ -55,14 +53,13 @@ func (r *transportRenderer) withTraceFunc() Code {
 		BlockFunc(func(bg *Group) {
 			bg.Line()
 			bg.Qual(fmt.Sprintf("%s/tracer", r.pkgPath(r.outDir)), "Init").Call(Id(VarNameCtx), Id("appName"), Id("endpoint"), Id("attributes").Op("..."))
-			if r.hasHTTPService() {
-				bg.If(Id("srv").Dot("httpHTTPService").Op("!=").Nil()).Block(
-					Id("srv").Dot("httpHTTPService").Op("=").Id("srv").Dot("HTTPService").Call().Dot("WithTrace").Call(),
-				)
-			}
-			// Применяем трейсинг для всех контрактов с jsonRPC
 			for _, contract := range r.project.Contracts {
-				if contract.Annotations.Contains(TagServerJsonRPC) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
+						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithTrace").Call(),
+					)
+				}
+				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithTrace").Call(),
 					)
@@ -72,7 +69,6 @@ func (r *transportRenderer) withTraceFunc() Code {
 		})
 }
 
-// withMetricsFunc генерирует функцию WithMetrics.
 func (r *transportRenderer) withMetricsFunc() Code {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
@@ -83,14 +79,13 @@ func (r *transportRenderer) withMetricsFunc() Code {
 			bg.If(Id("srv").Dot("metrics").Op("==").Nil()).Block(
 				Id("srv").Dot("metrics").Op("=").Id("NewMetrics").Call(),
 			)
-			if r.hasHTTPService() {
-				bg.If(Id("srv").Dot("httpHTTPService").Op("!=").Nil()).Block(
-					Id("srv").Dot("httpHTTPService").Op("=").Id("srv").Dot("HTTPService").Call().Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
-				)
-			}
-			// Применяем метрики для всех контрактов с jsonRPC
 			for _, contract := range r.project.Contracts {
-				if contract.Annotations.Contains(TagServerJsonRPC) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
+						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
+					)
+				}
+				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
 					)
@@ -100,7 +95,6 @@ func (r *transportRenderer) withMetricsFunc() Code {
 		})
 }
 
-// serverNewFunc генерирует функцию New.
 func (r *transportRenderer) serverNewFunc() Code {
 
 	return Func().Id("New").
@@ -146,6 +140,9 @@ func (r *transportRenderer) serverNewFunc() Code {
 			bg.Line()
 			bg.Id("srv").Dot("srvHTTP").Op("=").Qual(PackageFiber, "New").Call(Id("srv").Dot("config"))
 			bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Id("recoverHandler"))
+			if r.hasJsonRPC() {
+				bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Id("requestOverlayMiddleware"))
+			}
 			if r.hasTrace() {
 				bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Qual(fmt.Sprintf("%s/tracer", r.pkgPath(r.outDir)), "Middleware").Call())
 			}
@@ -158,11 +155,13 @@ func (r *transportRenderer) serverNewFunc() Code {
 			bg.For(List(Id("_"), Id("option")).Op(":=").Range().Id("serviceOptions")).Block(
 				Id("option").Call(Id("srv")),
 			)
+			if r.hasJsonRPC() {
+				bg.Id("initJsonRPCMethodMap").Call(Id("srv"))
+			}
 			bg.Return()
 		})
 }
 
-// serveHealthFunc генерирует функцию ServeHealth.
 func (r *transportRenderer) serveHealthFunc() Code {
 
 	jsonPkg := r.getPackageJSON()
@@ -171,7 +170,7 @@ func (r *transportRenderer) serveHealthFunc() Code {
 			Id("log").Op("*").Qual(PackageSlog, "Logger"),
 			Id("path").String(),
 			Id("address").String(),
-			Id("response").Interface(),
+			Id("response").Any(),
 		).
 		Params(Op("*").Id("HealthServer")).
 		BlockFunc(func(bg *Group) {
@@ -202,7 +201,7 @@ func (r *transportRenderer) serveHealthFunc() Code {
 					hg.Return(Err())
 				}))
 			bg.Go().Func().Params().Block(
-				Err().Op(":=").Id("srv").Dot("Listen").Call(Id("address")),
+				Err().Op("=").Id("srv").Dot("Listen").Call(Id("address")),
 				Id("ExitOnError").Call(Id("log"), Err(), Lit("serve health on ").Op("+").Id("address")),
 			).Call()
 			bg.Return(Op("&").Id("HealthServer").Values(Dict{
@@ -212,7 +211,6 @@ func (r *transportRenderer) serveHealthFunc() Code {
 		})
 }
 
-// shutdownFunc генерирует функцию Shutdown.
 func (r *transportRenderer) shutdownFunc() Code {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
@@ -236,12 +234,11 @@ func (r *transportRenderer) shutdownFunc() Code {
 		})
 }
 
-// sendResponseFunc генерирует функцию sendResponse.
 func (r *transportRenderer) sendResponseFunc() Code {
 
 	jsonPkg := r.getPackageJSON()
 	return Func().Id("sendResponse").
-		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("resp").Interface()).
+		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("resp").Any()).
 		Params(Err().Error()).
 		BlockFunc(func(bg *Group) {
 			// Проверка на пустой batch ответ (только notifications)
@@ -250,7 +247,6 @@ func (r *transportRenderer) sendResponseFunc() Code {
 				Return(Nil()),
 			)
 			bg.Id(VarNameFtx).Dot("Response").Call().Dot("Header").Dot("SetContentType").Call(Id("contentTypeJson"))
-			// Используем sync.Pool для буферов
 			bg.Id("buf").Op(":=").Id("bufferPool").Dot("Get").Call().Op(".").Call(Op("*").Qual(PackageBytes, "Buffer"))
 			bg.Defer().Func().Params().Block(
 				Id("buf").Dot("Reset").Call(),
@@ -269,7 +265,6 @@ func (r *transportRenderer) sendResponseFunc() Code {
 		})
 }
 
-// sendHTTPErrorFunc генерирует функцию sendHTTPError.
 func (r *transportRenderer) sendHTTPErrorFunc() Code {
 
 	return Func().Id("sendHTTPError").
@@ -283,19 +278,6 @@ func (r *transportRenderer) sendHTTPErrorFunc() Code {
 		})
 }
 
-// httpServiceFunc генерирует функцию HTTPService.
-func (r *transportRenderer) httpServiceFunc() Code {
-
-	return Func().Params(Id("srv").Op("*").Id("Server")).
-		Id("HTTPService").
-		Params().
-		Params(Op("*").Id("httpHTTPService")).
-		Block(
-			Return(Id("srv").Dot("httpHTTPService")),
-		)
-}
-
-// requiresHTTPFunc генерирует функцию requiresHTTP.
 func (r *transportRenderer) requiresHTTPFunc() Code {
 
 	return Func().Id("requiresHTTP").
@@ -310,18 +292,13 @@ func (r *transportRenderer) requiresHTTPFunc() Code {
 				s.Add(Op("}"))
 			})
 			bg.Id("option").Call(Id("testSrv"))
-			// Проверяем, что нет HTTP сервисов
 			bg.Id("hasHTTPService").Op(":=").Id("testSrv").Dot("srvHTTP").Op("==").Nil()
-			if r.hasHTTPService() {
-				bg.Id("hasHTTPService").Op("=").Id("hasHTTPService").Op("&&").Id("testSrv").Dot("httpHTTPService").Op("==").Nil()
-			}
-			// Проверяем, что нет jsonRPC сервисов
-			bg.Id("hasJsonRPCService").Op(":=").True()
 			for _, contract := range r.project.Contracts {
-				if contract.Annotations.Contains(TagServerJsonRPC) {
-					bg.Id("hasJsonRPCService").Op("=").Id("hasJsonRPCService").Op("&&").Id("testSrv").Dot("http" + contract.Name).Op("==").Nil()
+				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) ||
+					model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+					bg.Id("hasHTTPService").Op("=").Id("hasHTTPService").Op("&&").Id("testSrv").Dot("http" + contract.Name).Op("==").Nil()
 				}
 			}
-			bg.Return(Id("hasHTTPService").Op("&&").Id("hasJsonRPCService"))
+			bg.Return(Id("hasHTTPService"))
 		})
 }

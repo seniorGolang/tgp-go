@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package generator
 
 import (
@@ -13,7 +13,6 @@ import (
 	"tgp/plugins/swagger/types"
 )
 
-// registerStruct регистрирует структуру запроса/ответа в схемах.
 func (g *generator) registerStruct(name string, pkgPath string, methodTags tags.DocTags, variables []*model.Variable) {
 
 	if len(variables) == 0 {
@@ -386,7 +385,6 @@ func (g *generator) variableToSchema(variable *model.Variable, pkgPath string, i
 func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTags) (schema *types.Schema) {
 
 	var typeID string
-	// Используем отсортированные пары для детерминированного порядка
 	for id, typ := range common.SortedPairs(g.project.Types) {
 		if typ == typeInfo {
 			typeID = id
@@ -537,7 +535,6 @@ func (g *generator) normalizeTypeName(typeInfo *model.Type, typeID string, defau
 
 	if pkgPath != "" && !strings.Contains(typeName, ".") {
 		var pkgName string
-		// Используем отсортированные пары для детерминированного порядка
 		for _, typ := range common.SortedPairs(g.project.Types) {
 			if typ.ImportPkgPath == pkgPath && typ.TypeName == typeName {
 				if typ.PkgName != "" {

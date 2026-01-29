@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -8,32 +8,30 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/common"
 	"tgp/internal/model"
 )
 
-// jsonBufferPools генерирует пулы буферов для JSON-RPC.
 func (r *transportRenderer) jsonBufferPools() Code {
 
 	return Var().DefsFunc(func(dg *Group) {
 		dg.Id("bufferPool").Op("=").Qual(PackageSync, "Pool").Values(Dict{
-			Id("New"): Func().Params().Interface().Block(
+			Id("New"): Func().Params().Any().Block(
 				Return(Qual(PackageBytes, "NewBuffer").Call(Make(Index().Byte(), Lit(0), Lit(4096)))),
 			),
 		})
 	})
 }
 
-// jsonRPCMethodMap генерирует карту методов JSON-RPC.
-func (r *transportRenderer) jsonRPCMethodMap() Code {
+func (r *transportRenderer) initJsonRPCMethodMap() Code {
 
-	return Func().Params(Id("srv").Op("*").Id("Server")).
-		Id("jsonRPCMethodMap").
+	return Func().Id("initJsonRPCMethodMap").
+		Params(Id("srv").Op("*").Id("Server")).
 		Params().
-		Params(Map(String()).Id("methodJsonRPC")).
 		BlockFunc(func(bg *Group) {
-			bg.Return(Map(String()).Id("methodJsonRPC").Values(DictFunc(func(dict Dict) {
+			bg.Id("srv").Dot("jsonRPCMethodMap").Op("=").Map(String()).Id("methodJsonRPC").Values(DictFunc(func(dict Dict) {
 				for _, contract := range r.project.Contracts {
-					if !contract.Annotations.Contains(TagServerJsonRPC) {
+					if !model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 						continue
 					}
 					for _, method := range contract.Methods {
@@ -51,11 +49,10 @@ func (r *transportRenderer) jsonRPCMethodMap() Code {
 							)
 					}
 				}
-			})))
+			}))
 		})
 }
 
-// singleBatchFunc генерирует функцию doSingleBatch.
 func (r *transportRenderer) singleBatchFunc() Code {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
@@ -70,8 +67,7 @@ func (r *transportRenderer) singleBatchFunc() Code {
 			)
 			bg.Id("methodNameOrigin").Op(":=").Id("request").Dot("Method")
 			bg.Id("method").Op(":=").Id("toLowercaseMethod").Call(Id("methodNameOrigin"))
-			bg.Id("methodMap").Op(":=").Id("srv").Dot("jsonRPCMethodMap").Call()
-			bg.Id("handler").Op(",").Id("ok").Op(":=").Id("methodMap").Index(Id("method"))
+			bg.Id("handler").Op(",").Id("ok").Op(":=").Id("srv").Dot("jsonRPCMethodMap").Index(Id("method"))
 			bg.If(Op("!").Id("ok")).Block(
 				Return(Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("methodNotFoundError"), Lit("invalid method '").Op("+").Id("methodNameOrigin").Op("+").Lit("'"), Nil())),
 			)
@@ -79,7 +75,6 @@ func (r *transportRenderer) singleBatchFunc() Code {
 		})
 }
 
-// batchFunc генерирует функцию doBatch.
 func (r *transportRenderer) batchFunc() Code {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
@@ -88,7 +83,6 @@ func (r *transportRenderer) batchFunc() Code {
 		Params(Id("responses").Op("[]").Op("*").Id("baseJsonRPC")).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
-			// Извлекаем контекст и конфигурацию до запуска горутин
 			bg.Id("userCtx").Op(":=").Id(VarNameFtx).Dot("UserContext").Call()
 			bg.Id("batchTimeout").Op(":=").Id(VarNameFtx).Dot("App").Call().Dot("Config").Call().Dot("WriteTimeout")
 			bg.Var().Id("batchCtx").Qual(fmt.Sprintf("%s/context", r.pkgPath(r.outDir)), "Context")
@@ -196,7 +190,6 @@ func (r *transportRenderer) batchFunc() Code {
 		})
 }
 
-// serveBatchFunc генерирует функцию serveBatch.
 func (r *transportRenderer) serveBatchFunc() Code {
 
 	jsonPkg := r.getPackageJSON()
@@ -222,7 +215,7 @@ func (r *transportRenderer) serveBatchFunc() Code {
 			)
 			bg.Id("decoder").Op(":=").Qual(jsonPkg, "NewDecoder").Call(Qual(PackageBytes, "NewReader").Call(Id("body")))
 			bg.Id("decoder").Dot("DisallowUnknownFields").Call()
-			bg.Var().Id("token").Interface()
+			bg.Var().Id("token").Any()
 			bg.List(Id("token"), Err()).Op("=").Id("decoder").Dot("Token").Call()
 			bg.If(Err().Op("!=").Nil()).Block(
 				Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil()))),
@@ -250,14 +243,13 @@ func (r *transportRenderer) serveBatchFunc() Code {
 			bg.If(Len(Id("requests")).Op(">").Id("srv").Dot("maxBatchSize")).Block(
 				Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded"))),
 			)
-			bg.If(Id("single")).Block(
-				Return(Id("sendResponse").Call(Id(VarNameFtx), Id("srv").Dot("doSingleBatch").Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("requests").Op("[").Lit(0).Op("]")))),
-			)
+			bg.If(Id("single")).BlockFunc(func(ig *Group) {
+				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("srv").Dot("doSingleBatch").Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("requests").Op("[").Lit(0).Op("]"))))
+			})
 			bg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("srv").Dot("doBatch").Call(Id(VarNameFtx), Id("requests"))))
 		})
 }
 
-// toLowercaseMethodFunc генерирует функцию toLowercaseMethod.
 func (r *transportRenderer) toLowercaseMethodFunc() Code {
 
 	return Func().Id("toLowercaseMethod").
@@ -268,7 +260,6 @@ func (r *transportRenderer) toLowercaseMethodFunc() Code {
 		)
 }
 
-// sanitizeErrorMessageFunc генерирует функцию sanitizeErrorMessage.
 func (r *transportRenderer) sanitizeErrorMessageFunc() Code {
 
 	return Func().Id("sanitizeErrorMessage").
@@ -286,7 +277,6 @@ func (r *transportRenderer) sanitizeErrorMessageFunc() Code {
 		)
 }
 
-// validateJsonRPCRequestFunc генерирует функцию validateJsonRPCRequest.
 func (r *transportRenderer) validateJsonRPCRequestFunc() Code {
 
 	return Func().Id("validateJsonRPCRequest").
@@ -303,11 +293,10 @@ func (r *transportRenderer) validateJsonRPCRequestFunc() Code {
 		})
 }
 
-// makeErrorResponseJsonRPCFunc генерирует функцию makeErrorResponseJsonRPC.
 func (r *transportRenderer) makeErrorResponseJsonRPCFunc() Code {
 
 	return Func().Id("makeErrorResponseJsonRPC").
-		Params(Id("id").Id("idJsonRPC"), Id("code").Int(), Id("msg").String(), Id("data").Interface()).
+		Params(Id("id").Id("idJsonRPC"), Id("code").Int(), Id("msg").String(), Id("data").Any()).
 		Params(Op("*").Id("baseJsonRPC")).
 		BlockFunc(func(bg *Group) {
 			bg.If(Id("id").Op("==").Nil()).Block(
@@ -325,11 +314,45 @@ func (r *transportRenderer) makeErrorResponseJsonRPCFunc() Code {
 		})
 }
 
-// methodIsJsonRPCForContract проверяет, является ли метод JSON-RPC методом для указанного контракта.
 func (r *transportRenderer) methodIsJsonRPCForContract(contract *model.Contract, method *model.Method) bool {
 
-	if method == nil || method.Annotations == nil {
+	if method == nil {
 		return false
 	}
-	return contract != nil && contract.Annotations.Contains(TagServerJsonRPC) && !method.Annotations.Contains(TagMethodHTTP)
+	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
+}
+
+func (r *transportRenderer) jsonRPCUsedOverlayKeys() (headerNames []string, cookieNames []string) {
+
+	headers := make(map[string]struct{})
+	cookies := make(map[string]struct{})
+	for _, contract := range r.project.Contracts {
+		if !model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+			continue
+		}
+		for _, method := range contract.Methods {
+			if !r.methodIsJsonRPCForContract(contract, method) {
+				continue
+			}
+			for _, h := range usedHeaderNamesForMethod(r.project, contract, method) {
+				headers[h] = struct{}{}
+			}
+			for _, c := range usedCookieNamesForMethod(r.project, contract, method) {
+				cookies[c] = struct{}{}
+			}
+		}
+	}
+	return common.SortedKeys(headers), common.SortedKeys(cookies)
+}
+
+func overlayKeyToFieldName(key string) string {
+
+	parts := strings.Split(key, "-")
+	for i, p := range parts {
+		if len(p) == 0 {
+			continue
+		}
+		parts[i] = strings.ToUpper(p[:1]) + strings.ToLower(p[1:])
+	}
+	return strings.Join(parts, "")
 }

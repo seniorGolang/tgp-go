@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package marker
 
 import (
@@ -12,13 +12,11 @@ import (
 	"strings"
 )
 
-// trackedFile представляет отслеживаемый файл с его hash из Git индекса.
 type trackedFile struct {
 	path string
 	hash string
 }
 
-// indexEntryWithHash представляет запись в Git индексе с SHA хешем.
 type indexEntryWithHash struct {
 	path  string
 	hash  string
@@ -26,8 +24,6 @@ type indexEntryWithHash struct {
 	mtime int64
 }
 
-// parseGitIndexWithHash парсит Git index файл и возвращает список файлов с их SHA хешами.
-// Git index формат: header (12 bytes) + entries + extensions + checksum
 func parseGitIndexWithHash(indexPath string) (entries []indexEntryWithHash, err error) {
 
 	var data []byte
@@ -40,7 +36,6 @@ func parseGitIndexWithHash(indexPath string) (entries []indexEntryWithHash, err 
 		return
 	}
 
-	// Проверяем signature "DIRC"
 	if string(data[0:4]) != "DIRC" {
 		err = fmt.Errorf("invalid index signature")
 		return
@@ -116,10 +111,8 @@ func parseGitIndexWithHash(indexPath string) (entries []indexEntryWithHash, err 
 	return
 }
 
-// getGitTrackedFiles получает список отслеживаемых файлов напрямую из .git/index.
 func getGitTrackedFiles(rootDir string) (files []trackedFile, err error) {
 
-	// Находим .git директорию
 	var gitDir string
 	if gitDir, err = findGitDir(rootDir); err != nil {
 		return nil, fmt.Errorf("failed to find git dir: %w", err)
@@ -151,10 +144,8 @@ func getGitTrackedFiles(rootDir string) (files []trackedFile, err error) {
 	return files, nil
 }
 
-// getGitModifiedFiles получает список измененных файлов, сравнивая рабочую директорию с индексом.
 func getGitModifiedFiles(rootDir string) (files []string, err error) {
 
-	// Находим .git директорию
 	var gitDir string
 	if gitDir, err = findGitDir(rootDir); err != nil {
 		return nil, fmt.Errorf("failed to find git dir: %w", err)
@@ -174,7 +165,6 @@ func getGitModifiedFiles(rootDir string) (files []string, err error) {
 
 	fileMap := make(map[string]bool)
 
-	// Проверяем изменения в рабочей директории относительно индекса
 	for _, entry := range indexEntries {
 		filePath := filepath.Join(rootDir, entry.path)
 		var fileInfo os.FileInfo
@@ -183,9 +173,7 @@ func getGitModifiedFiles(rootDir string) (files []string, err error) {
 			continue
 		}
 
-		// Проверяем, изменился ли файл (размер или время модификации)
 		if fileInfo.Size() != entry.size || fileInfo.ModTime().Unix() != entry.mtime {
-			// Файл изменен, проверяем содержимое
 			var currentHash string
 			if currentHash, err = computeFileSHA1(filePath); err != nil {
 				continue
@@ -208,7 +196,6 @@ func getGitModifiedFiles(rootDir string) (files []string, err error) {
 	return files, nil
 }
 
-// computeFileSHA1 вычисляет SHA-1 hash файла (как git hash-object).
 func computeFileSHA1(filePath string) (hash string, err error) {
 
 	file, err := os.Open(filePath)
@@ -217,7 +204,6 @@ func computeFileSHA1(filePath string) (hash string, err error) {
 	}
 	defer file.Close()
 
-	// Git hash-object формат: "blob " + size + "\0" + content
 	var fileInfo os.FileInfo
 	if fileInfo, err = file.Stat(); err != nil {
 		return "", fmt.Errorf("failed to stat file: %w", err)
@@ -254,10 +240,8 @@ func computeFileSHA1(filePath string) (hash string, err error) {
 	return hash, nil
 }
 
-// getGitUntrackedFiles получает список неотслеживаемых файлов, сканируя рабочую директорию.
 func getGitUntrackedFiles(rootDir string) (files []string, err error) {
 
-	// Находим .git директорию
 	var gitDir string
 	if gitDir, err = findGitDir(rootDir); err != nil {
 		return nil, fmt.Errorf("failed to find git dir: %w", err)
@@ -277,7 +261,6 @@ func getGitUntrackedFiles(rootDir string) (files []string, err error) {
 		trackedFiles[entry.path] = true
 	}
 
-	// Загружаем .gitignore правила
 	var ignorePatterns []string
 	gitignorePath := filepath.Join(rootDir, ".gitignore")
 	if gitignoreContent, readErr := os.ReadFile(gitignorePath); readErr == nil {
@@ -292,29 +275,24 @@ func getGitUntrackedFiles(rootDir string) (files []string, err error) {
 			return nil
 		}
 
-		// Пропускаем .git директорию
 		if info.IsDir() && info.Name() == ".git" {
 			return filepath.SkipDir
 		}
 
-		// Пропускаем директории
 		if info.IsDir() {
 			return nil
 		}
 
-		// Получаем относительный путь от корня репозитория
 		var relPath string
 		if relPath, walkErr = filepath.Rel(rootDir, path); walkErr != nil {
 			return nil
 		}
 		relPath = filepath.ToSlash(relPath)
 
-		// Пропускаем файлы, которые уже отслеживаются
 		if trackedFiles[relPath] {
 			return nil
 		}
 
-		// Проверяем .gitignore
 		if isIgnored(relPath, ignorePatterns) {
 			return nil
 		}
@@ -330,7 +308,6 @@ func getGitUntrackedFiles(rootDir string) (files []string, err error) {
 	return files, err
 }
 
-// parseGitignore парсит содержимое .gitignore файла и возвращает список паттернов.
 func parseGitignore(content string) (patterns []string) {
 
 	lines := strings.Split(content, "\n")
@@ -338,7 +315,6 @@ func parseGitignore(content string) (patterns []string) {
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		// Пропускаем пустые строки и комментарии
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -348,7 +324,6 @@ func parseGitignore(content string) (patterns []string) {
 	return patterns
 }
 
-// isIgnored проверяет, игнорируется ли файл по паттернам .gitignore.
 func isIgnored(path string, patterns []string) bool {
 
 	for _, pattern := range patterns {
@@ -360,7 +335,6 @@ func isIgnored(path string, patterns []string) bool {
 	return false
 }
 
-// matchesGitignorePattern проверяет, соответствует ли путь паттерну .gitignore.
 func matchesGitignorePattern(path string, pattern string) bool {
 
 	// Упрощенная реализация - поддерживаем базовые паттерны
@@ -369,7 +343,6 @@ func matchesGitignorePattern(path string, pattern string) bool {
 	// Если паттерн заканчивается на /, это директория
 	if strings.HasSuffix(pattern, "/") {
 		pattern = strings.TrimSuffix(pattern, "/")
-		// Проверяем, является ли путь директорией или файлом внутри директории
 		if strings.HasPrefix(path, pattern+"/") || path == pattern {
 			return true
 		}
@@ -404,10 +377,8 @@ func matchesGitignorePattern(path string, pattern string) bool {
 	return path == pattern || strings.HasPrefix(path, pattern+"/")
 }
 
-// getGitDeletedFiles получает список удаленных файлов, проверяя файлы из индекса, отсутствующие в рабочей директории.
 func getGitDeletedFiles(rootDir string) (files []string, err error) {
 
-	// Находим .git директорию
 	var gitDir string
 	if gitDir, err = findGitDir(rootDir); err != nil {
 		return nil, fmt.Errorf("failed to find git dir: %w", err)
@@ -427,7 +398,6 @@ func getGitDeletedFiles(rootDir string) (files []string, err error) {
 
 	files = make([]string, 0)
 
-	// Проверяем каждый файл из индекса
 	for _, entry := range indexEntries {
 		filePath := filepath.Join(rootDir, entry.path)
 		if _, statErr = os.Stat(filePath); statErr != nil {

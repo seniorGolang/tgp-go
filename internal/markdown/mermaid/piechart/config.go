@@ -1,6 +1,8 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package piechart
 
-// config is a pie chart configuration.
 type config struct {
 	// The axial position of the pie slice labels,
 	// from 0.0 at the center to 1.0 at the outside edge of the circle.
@@ -11,7 +13,6 @@ type config struct {
 	title string
 }
 
-// newConfig returns a new Config with default values.
 func newConfig() *config {
 	return &config{
 		textPosition: defaultTextPosition,
@@ -29,13 +30,8 @@ const (
 	noTitle string = ""
 )
 
-// Option sets the options for the PieChart struct.
 type Option func(*config)
 
-// WithTextPosition sets the axial position of the pie slice labels.
-// The axial position of the pie slice labels, from 0.0 at the center
-// to 1.0 at the outside edge of the circle.
-// If pos is less than 0.0 or greater than 1.0, it will be set to the default value (0.75)
 func WithTextPosition(pos float64) Option {
 	return func(c *config) {
 		if pos < minTextPosition || pos > maxTextPosition {
@@ -45,14 +41,12 @@ func WithTextPosition(pos float64) Option {
 	}
 }
 
-// WithShowData sets the showData configuration.
 func WithShowData(showData bool) Option {
 	return func(c *config) {
 		c.showData = showData
 	}
 }
 
-// WithTitle sets the title configuration.
 func WithTitle(title string) Option {
 	return func(c *config) {
 		c.title = title

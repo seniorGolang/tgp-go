@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -7,17 +7,17 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/model"
 )
 
-// RenderTransportMetrics генерирует транспортный metrics файл.
 func (r *transportRenderer) RenderTransportMetrics() error {
 
 	metricsPath := path.Join(r.outDir, "metrics.go")
 
-	// Генерируем только если есть контракты с метриками
 	hasMetrics := false
 	for _, contract := range r.project.Contracts {
-		if contract.Annotations.Contains(TagMetrics) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 			hasMetrics = true
 			break
 		}
@@ -56,7 +56,6 @@ func (r *transportRenderer) RenderTransportMetrics() error {
 	return srcFile.Save(metricsPath)
 }
 
-// newMetricsFunc генерирует функцию NewMetrics.
 func (r *transportRenderer) newMetricsFunc() Code {
 
 	return Func().Id("NewMetrics").
@@ -107,7 +106,6 @@ func (r *transportRenderer) newMetricsFunc() Code {
 		})
 }
 
-// serveMetricsFunc генерирует функцию ServeMetrics.
 func (r *transportRenderer) serveMetricsFunc() Code {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"path"
-	"strconv"
 	"strings"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
@@ -16,7 +15,6 @@ import (
 	"tgp/internal/model"
 )
 
-// httpClientMethodFunc генерирует метод для HTTP вызова
 func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *model.Contract, method *model.Method, outDir string) Code {
 
 	c := Comment(fmt.Sprintf("%s performs the %s operation.", method.Name, method.Name))
@@ -26,7 +24,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 		Params(r.funcDefinitionParams(ctx, method.Args)).Params(r.funcDefinitionParams(ctx, method.Results)).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
-			if r.HasMetrics() && contract.Annotations.IsSet(TagMetrics) {
+			if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 				bg.Defer().Func().Params(Id("_begin").Qual(PackageTime, "Time")).Block(
 					If(Id("cli").Dot("Client").Dot("metrics").Op("==").Nil()).Block(
 						Return(),
@@ -85,48 +83,26 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				).Call(Qual(PackageTime, "Now").Call())
 			}
 			var httpMethod string
-			if method.Annotations.IsSet(TagMethodHTTP) {
-				if val, ok := method.Annotations[TagMethodHTTP]; ok {
-					httpMethod = val
-				}
+			if model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP) {
+				httpMethod = model.GetAnnotationValue(r.project, contract, method, nil, TagMethodHTTP, "POST")
 			} else {
 				httpMethod = "POST"
 			}
-			var successStatusCode int
-			if method.Annotations.IsSet(TagHttpSuccess) {
-				successCodeStr := method.Annotations[TagHttpSuccess]
-				code, err := strconv.Atoi(successCodeStr)
-				if err != nil {
-					successStatusCode = http.StatusOK
-				} else {
-					successStatusCode = code
-				}
-			} else {
-				successStatusCode = http.StatusOK
-			}
+			successStatusCode := model.GetAnnotationValueInt(r.project, contract, method, nil, TagHttpSuccess, http.StatusOK)
 			methodPath := strings.ToLower(method.Name)
-			pathParams := r.argPathMap(method)
-			if method.Annotations.IsSet(TagHttpPath) {
-				if val, ok := method.Annotations[TagHttpPath]; ok {
-					methodPath = val
-				}
+			pathParams := r.argPathMap(contract, method)
+			if model.IsAnnotationSet(r.project, contract, method, nil, TagHttpPath) {
+				methodPath = model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, methodPath)
 			}
-			svcPrefix := contract.Name
-			if contract.Annotations.IsSet(TagHttpPrefix) {
-				if val, ok := contract.Annotations[TagHttpPrefix]; ok {
-					svcPrefix = val
-				}
-			}
-			argsMappings := r.argParamMap(method)
-			cookieMappings := r.varCookieMap(method)
-			headerMappings := r.varHeaderMap(method)
+			svcPrefix := model.GetAnnotationValue(r.project, contract, nil, nil, TagHttpPrefix, contract.Name)
+			argsMappings := r.argParamMap(contract, method)
+			cookieMappings := r.varCookieMap(contract, method)
+			headerMappings := r.varHeaderMap(contract, method)
 
-			// Формируем URL
 			fullURLPath := path.Join(svcPrefix, methodPath)
 			bg.Var().Id("urlStr").String()
 			if len(pathParams) > 0 {
 				bg.Id("urlPath").Op(":=").Lit(fullURLPath)
-				// Используем отсортированные ключи для детерминированного порядка замены параметров
 				for paramName := range common.SortedPairs(pathParams) {
 					paramVar := r.argByName(method, paramName)
 					escapedValue := Qual("net/url", "PathEscape").Call(r.varToString(ctx, paramVar))
@@ -137,9 +113,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				bg.Id("urlStr").Op("=").Id("cli").Dot("endpoint").Op("+").Lit("/").Op("+").Lit(fullURLPath)
 			}
 
-			// Добавляем query параметры
 			hasQueryParams := false
-			// Используем отсортированные ключи для детерминированного порядка
 			for paramName := range common.SortedPairs(argsMappings) {
 				if r.argByName(method, paramName) != nil {
 					hasQueryParams = true
@@ -148,7 +122,6 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			}
 			if hasQueryParams {
 				bg.Id("queryValues").Op(":=").Qual("net/url", "Values").Values(Dict{})
-				// Используем отсортированные пары для детерминированного порядка
 				for paramName, argName := range common.SortedPairs(argsMappings) {
 					paramVar := r.argByName(method, paramName)
 					if paramVar == nil {
@@ -165,7 +138,6 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				bg.Id("urlStr").Op("+=").Lit("?").Op("+").Id("queryValues").Dot("Encode").Call()
 			}
 
-			// Проверяем, есть ли тело запроса (параметры, которые не в path, query, header, cookie)
 			hasBody := false
 			argsWithoutCtx := r.argsWithoutContext(method)
 			fieldsArg := r.fieldsArgument(method)
@@ -188,9 +160,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			if hasBody {
 				bg.Var().Id("reqBody").Qual(PackageBytes, "Buffer")
 				bg.Id("_request").Op(":=").Id(r.requestStructName(contract, method)).Values(DictFunc(func(dict Dict) {
-					// Используем fieldsArg для гарантии соответствия порядка полей структуре
 					for _, field := range fieldsArg {
-						// Находим соответствующий аргумент по имени
 						var arg *model.Variable
 						for _, a := range argsWithoutCtx {
 							if a.Name == field.name {
@@ -201,7 +171,6 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 						if arg == nil {
 							continue
 						}
-						// Пропускаем аргументы, которые уже обработаны (path, query, header, cookie)
 						if _, exists := argsMappings[arg.Name]; exists {
 							continue
 						}
@@ -223,7 +192,6 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				)
 			}
 
-			// Создаём HTTP запрос
 			bg.Var().Id("httpReq").Op("*").Qual(PackageHttp, "Request")
 			if hasBody {
 				bg.List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(httpMethod), Id("urlStr"), Qual(PackageBytes, "NewReader").Call(Id("reqBody").Dot("Bytes").Call()))
@@ -239,13 +207,11 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			if hasBody {
 				bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Content-Type"), Lit("application/json"))
 			}
-			// Используем отсортированные пары для детерминированного порядка
 			for paramName, headerName := range common.SortedPairs(headerMappings) {
 				if paramVar := r.argByName(method, paramName); paramVar != nil {
 					bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit(headerName), r.varToString(ctx, paramVar))
 				}
 			}
-			// Используем отсортированные пары для детерминированного порядка
 			for paramName, cookieName := range common.SortedPairs(cookieMappings) {
 				if paramVar := r.argByName(method, paramName); paramVar != nil {
 					bg.Id("httpReq").Dot("AddCookie").Call(Op("&").Qual(PackageHttp, "Cookie").Values(Dict{
@@ -255,7 +221,6 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				}
 			}
 
-			// Добавляем заголовки из контекста
 			bg.For(List(Id("_"), Id("header")).Op(":=").Range().Id("cli").Dot("Client").Dot("headersFromCtx")).Block(
 				If(Id("value").Op(":=").Id(_ctx_).Dot("Value").Call(Id("header")).Op(";").Id("value").Op("!=").Nil()).Block(
 					Var().Id("k").String(),
@@ -318,11 +283,10 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				),
 			)
 
-			// Проверяем статус код
-			bg.If(Id("httpResp").Dot("StatusCode").Op("!=").Lit(successStatusCode)).Block(
-				Var().Id("respBodyBytes").Index().Byte(),
-				List(Id("respBodyBytes"), Err()).Op("=").Qual(PackageIO, "ReadAll").Call(Id("httpResp").Dot("Body")),
-				If(Err().Op("!=").Nil()).Block(
+			bg.If(Id("httpResp").Dot("StatusCode").Op("!=").Lit(successStatusCode)).BlockFunc(func(bgErr *Group) {
+				bgErr.Var().Id("respBodyBytes").Index().Byte()
+				bgErr.List(Id("respBodyBytes"), Err()).Op("=").Qual(PackageIO, "ReadAll").Call(Id("httpResp").Dot("Body"))
+				bgErr.If(Err().Op("!=").Nil()).Block(
 					Err().Op("=").Qual(PackageFmt, "Errorf").Call(
 						Lit("HTTP error: %d. URL: %s, Method: %s"),
 						Id("httpResp").Dot("StatusCode"),
@@ -330,21 +294,15 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 						Id("httpReq").Dot("Method"),
 					),
 				).Else().Block(
-					Err().Op("=").Qual(PackageFmt, "Errorf").Call(
-						Lit("HTTP error: %d. URL: %s, Method: %s, Body: %s"),
-						Id("httpResp").Dot("StatusCode"),
-						Id("httpReq").Dot("URL").Dot("String").Call(),
-						Id("httpReq").Dot("Method"),
-						String().Call(Id("respBodyBytes")),
-					),
-				),
-				Return(),
-			)
+					Err().Op("=").Id("cli").Dot("errorDecoder").Call(Id("respBodyBytes")),
+				)
+				bgErr.Return()
+			})
 
 			// Потоковое чтение JSON ответа
 			resultsWithoutErr := r.resultsWithoutError(method)
 			fieldsResult := r.fieldsResult(method)
-			if len(resultsWithoutErr) == 1 && method.Annotations.IsSet(TagHttpEnableInlineSingle) {
+			if len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpEnableInlineSingle) {
 				bg.Var().Id("_response").Id(r.responseStructName(contract, method))
 				jsonPkg := r.getPackageJSON(contract)
 				bg.Var().Id("decoder").Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("httpResp").Dot("Body"))

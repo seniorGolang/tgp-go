@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package server
 
 import (
@@ -14,7 +14,6 @@ import (
 	"tgp/core/i18n"
 )
 
-// DetectHostOS определяет реальную ОС хоста через команду uname или переменную окружения OSTYPE.
 func DetectHostOS() (hostOS string) {
 
 	cmd := exec.Command(CommandUname, "-s")
@@ -57,7 +56,6 @@ func DetectHostOS() (hostOS string) {
 	return ""
 }
 
-// OpenBrowser открывает URL в браузере пользователя.
 func OpenBrowser(browserURL string) (err error) {
 
 	defer func() {
@@ -134,7 +132,6 @@ func OpenBrowser(browserURL string) (err error) {
 	return
 }
 
-// AddressToURL преобразует адрес сервера в полный URL для открытия в браузере.
 func AddressToURL(addr string) (browserURL string) {
 
 	// Если адрес уже содержит протокол, возвращаем как есть
@@ -157,7 +154,6 @@ func AddressToURL(addr string) (browserURL string) {
 		return "http://" + addr
 	}
 
-	// Формируем URL
 	browserURL = "http://" + parsedURL.Host
 	if parsedURL.Path != "" {
 		browserURL += parsedURL.Path

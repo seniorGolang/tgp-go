@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 //go:build wasip1
 
 package common
@@ -7,27 +10,19 @@ import (
 	"strings"
 )
 
-// NormalizeWASMPath нормализует путь для WASM файловой системы.
-// В WASM файловая система монтируется в корень "/", поэтому все пути должны быть абсолютными.
-// Преобразует относительный путь в абсолютный, добавляя "/" в начало.
+// NormalizeWASMPath: в WASM ФС монтируется в "/", относительные пути приводятся к абсолютным.
 func NormalizeWASMPath(path string) string {
 
-	// Если путь уже абсолютный, возвращаем очищенный
 	if strings.HasPrefix(path, "/") {
 		return filepath.ToSlash(filepath.Clean(path))
 	}
 
-	// Убираем ведущие "./" если есть
 	path = strings.TrimPrefix(path, "./")
-
-	// Очищаем путь
 	path = filepath.Clean(path)
 
-	// Если путь пустой или ".", возвращаем корень
 	if path == "" || path == "." {
 		return "/"
 	}
 
-	// Добавляем "/" в начало для WASM файловой системы
 	return "/" + filepath.ToSlash(path)
 }

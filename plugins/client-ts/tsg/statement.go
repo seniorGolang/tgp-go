@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package tsg
 
 import (
@@ -7,25 +7,21 @@ import (
 	"strings"
 )
 
-// Statement представляет фрагмент TypeScript кода (аналог jen.Code)
 type Statement struct {
 	code   strings.Builder
 	indent int
 	export bool // Флаг, что statement должен быть экспортируемым
 }
 
-// NewStatement создаёт новый statement
 func NewStatement() *Statement {
 	return &Statement{
 		indent: 0,
 	}
 }
 
-// String возвращает строковое представление statement
 func (s *Statement) String() string {
 	result := s.code.String()
 	if s.export && result != "" && !strings.HasPrefix(strings.TrimSpace(result), "export ") {
-		// Добавляем export перед первым не-комментарием
 		lines := strings.Split(result, "\n")
 		if len(lines) > 0 {
 			// Ищем первую строку, которая не является комментарием
@@ -39,11 +35,9 @@ func (s *Statement) String() string {
 			}
 
 			if exportLineIdx >= 0 {
-				// Находим отступ строки, перед которой нужно добавить export
 				originalLine := lines[exportLineIdx]
 				indent := len(originalLine) - len(strings.TrimLeft(originalLine, " \t"))
 				indentStr := strings.Repeat("    ", indent/4) + strings.Repeat(" ", indent%4)
-				// Добавляем export
 				lines[exportLineIdx] = indentStr + "export " + strings.TrimLeft(originalLine, " \t")
 				result = strings.Join(lines, "\n")
 			}
@@ -52,7 +46,6 @@ func (s *Statement) String() string {
 	return result
 }
 
-// Add добавляет другой statement
 func (s *Statement) Add(other *Statement) *Statement {
 	if other != nil {
 		s.code.WriteString(other.String())
@@ -60,21 +53,18 @@ func (s *Statement) Add(other *Statement) *Statement {
 	return s
 }
 
-// Line добавляет пустую строку
 func (s *Statement) Line() *Statement {
 	s.code.WriteString("\n")
 	return s
 }
 
-// Id добавляет идентификатор
 func (s *Statement) Id(name string) *Statement {
 	s.writeIndent()
 	s.code.WriteString(name)
 	return s
 }
 
-// Lit добавляет литерал
-func (s *Statement) Lit(value interface{}) *Statement {
+func (s *Statement) Lit(value any) *Statement {
 	s.writeIndent()
 	var str string
 	switch v := value.(type) {
@@ -95,7 +85,6 @@ func (s *Statement) Lit(value interface{}) *Statement {
 	return s
 }
 
-// Comment добавляет комментарий
 func (s *Statement) Comment(text string) *Statement {
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
@@ -108,19 +97,16 @@ func (s *Statement) Comment(text string) *Statement {
 	return s
 }
 
-// Dot добавляет доступ к свойству
 func (s *Statement) Dot(property string) *Statement {
 	s.code.WriteString("." + property)
 	return s
 }
 
-// Op добавляет оператор
 func (s *Statement) Op(operator string) *Statement {
 	s.code.WriteString(" " + operator + " ")
 	return s
 }
 
-// Call добавляет вызов функции
 func (s *Statement) Call(args ...*Statement) *Statement {
 	s.code.WriteString("(")
 	for i, arg := range args {
@@ -135,7 +121,6 @@ func (s *Statement) Call(args ...*Statement) *Statement {
 	return s
 }
 
-// CallFunc добавляет вызов функции с колбэком
 func (s *Statement) CallFunc(fn func(*Group)) *Statement {
 	s.code.WriteString("(")
 	if fn != nil {
@@ -146,14 +131,12 @@ func (s *Statement) CallFunc(fn func(*Group)) *Statement {
 	return s
 }
 
-// Type создаёт объявление типа
 func (s *Statement) Type(name string) *Statement {
 	s.writeIndent()
 	s.code.WriteString("type " + name)
 	return s
 }
 
-// Interface создаёт интерфейс
 func (s *Statement) Interface(name string, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("interface " + name)
@@ -161,7 +144,6 @@ func (s *Statement) Interface(name string, fn func(*Group)) *Statement {
 	return s
 }
 
-// Class создаёт класс
 func (s *Statement) Namespace(name string, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("namespace " + name)
@@ -176,14 +158,12 @@ func (s *Statement) Class(name string, fn func(*Group)) *Statement {
 	return s
 }
 
-// Func создаёт функцию
 func (s *Statement) Func(name string) *Statement {
 	s.writeIndent()
 	s.code.WriteString("function " + name)
 	return s
 }
 
-// ArrowFunc создаёт стрелочную функцию
 func (s *Statement) ArrowFunc(params ...string) *Statement {
 	s.writeIndent()
 	paramStr := "()"
@@ -194,14 +174,12 @@ func (s *Statement) ArrowFunc(params ...string) *Statement {
 	return s
 }
 
-// Async добавляет async
 func (s *Statement) Async() *Statement {
 	s.writeIndent()
 	s.code.WriteString("async ")
 	return s
 }
 
-// Await добавляет await
 func (s *Statement) Await(expr *Statement) *Statement {
 	s.writeIndent()
 	s.code.WriteString("await ")
@@ -211,7 +189,6 @@ func (s *Statement) Await(expr *Statement) *Statement {
 	return s
 }
 
-// Return добавляет return
 func (s *Statement) Return(value ...*Statement) *Statement {
 	s.writeIndent()
 	s.code.WriteString("return")
@@ -232,7 +209,6 @@ func (s *Statement) Return(value ...*Statement) *Statement {
 	return s
 }
 
-// Assign добавляет присваивание
 func (s *Statement) Assign(left, right *Statement) *Statement {
 	s.writeIndent()
 	if left != nil {
@@ -245,7 +221,6 @@ func (s *Statement) Assign(left, right *Statement) *Statement {
 	return s
 }
 
-// Block создаёт блок кода
 func (s *Statement) Block(fn func(*Group)) *Statement {
 	s.code.WriteString(" {")
 	s.code.WriteString("\n")
@@ -260,12 +235,10 @@ func (s *Statement) Block(fn func(*Group)) *Statement {
 	return s
 }
 
-// BlockFunc создаёт блок кода (аналог jen.BlockFunc)
 func (s *Statement) BlockFunc(fn func(*Group)) *Statement {
 	return s.Block(fn)
 }
 
-// Params добавляет параметры функции
 func (s *Statement) Params(fn func(*Group)) *Statement {
 	s.code.WriteString("(")
 	if fn != nil {
@@ -287,50 +260,42 @@ func (s *Statement) Params(fn func(*Group)) *Statement {
 	return s
 }
 
-// Generic добавляет generic параметры
 func (s *Statement) Generic(params ...string) *Statement {
 	s.code.WriteString("<" + strings.Join(params, ", ") + ">")
 	return s
 }
 
-// Extends добавляет extends
 func (s *Statement) Extends(base string) *Statement {
 	s.code.WriteString(" extends " + base)
 	return s
 }
 
-// Implements добавляет implements
 func (s *Statement) Implements(interfaces ...string) *Statement {
 	s.code.WriteString(" implements " + strings.Join(interfaces, ", "))
 	return s
 }
 
-// Colon добавляет :
 func (s *Statement) Colon() *Statement {
 	s.code.WriteString(":")
 	return s
 }
 
-// Semicolon добавляет ;
 func (s *Statement) Semicolon() *Statement {
 	s.code.WriteString(";")
 	return s
 }
 
-// Optional добавляет ?
 func (s *Statement) Optional() *Statement {
 	s.code.WriteString("?")
 	return s
 }
 
-// Readonly добавляет readonly
 func (s *Statement) Readonly() *Statement {
 	s.writeIndent()
 	s.code.WriteString("readonly ")
 	return s
 }
 
-// Promise создаёт Promise тип
 func (s *Statement) Promise(typeParam *Statement) *Statement {
 	s.writeIndent()
 	s.code.WriteString("Promise<")
@@ -341,7 +306,6 @@ func (s *Statement) Promise(typeParam *Statement) *Statement {
 	return s
 }
 
-// If создаёт условие
 func (s *Statement) If(condition *Statement, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("if (")
@@ -353,7 +317,6 @@ func (s *Statement) If(condition *Statement, fn func(*Group)) *Statement {
 	return s
 }
 
-// For создаёт цикл
 func (s *Statement) For(init, condition, post *Statement, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("for (")
@@ -373,7 +336,6 @@ func (s *Statement) For(init, condition, post *Statement, fn func(*Group)) *Stat
 	return s
 }
 
-// ForOf создаёт цикл for...of
 func (s *Statement) ForOf(variable, iterable string, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("for (const " + variable + " of " + iterable + ")")
@@ -381,27 +343,23 @@ func (s *Statement) ForOf(variable, iterable string, fn func(*Group)) *Statement
 	return s
 }
 
-// Export помечает statement как экспортируемый
 func (s *Statement) Export() *Statement {
 	s.export = true
 	return s
 }
 
-// Const создаёт константу
 func (s *Statement) Const(name string) *Statement {
 	s.writeIndent()
 	s.code.WriteString("const " + name)
 	return s
 }
 
-// Var создаёт переменную
 func (s *Statement) Var(name string) *Statement {
 	s.writeIndent()
 	s.code.WriteString("let " + name)
 	return s
 }
 
-// writeIndent записывает отступ
 func (s *Statement) writeIndent() {
 	if s.code.Len() > 0 {
 		str := s.code.String()
@@ -415,7 +373,6 @@ func (s *Statement) writeIndent() {
 	s.code.WriteString(strings.Repeat("    ", s.indent))
 }
 
-// Values создаёт объект/литерал (аналог jen.Values)
 func (s *Statement) Values(fn func(*Group)) *Statement {
 	s.code.WriteString(" {")
 	if fn != nil {
@@ -433,7 +390,6 @@ func (s *Statement) Values(fn func(*Group)) *Statement {
 	return s
 }
 
-// Throw создаёт throw
 func (s *Statement) Throw(expr *Statement) *Statement {
 	s.writeIndent()
 	s.code.WriteString("throw ")
@@ -444,33 +400,28 @@ func (s *Statement) Throw(expr *Statement) *Statement {
 	return s
 }
 
-// New создаёт new
 func (s *Statement) New(typeName string) *Statement {
 	s.code.WriteString("new " + typeName)
 	return s
 }
 
-// This добавляет this
 func (s *Statement) This() *Statement {
 	s.code.WriteString("this")
 	return s
 }
 
-// Private добавляет private
 func (s *Statement) Private() *Statement {
 	s.writeIndent()
 	s.code.WriteString("private ")
 	return s
 }
 
-// Public добавляет public (явно, хотя по умолчанию в TS всё public)
 func (s *Statement) Public() *Statement {
 	s.writeIndent()
 	s.code.WriteString("public ")
 	return s
 }
 
-// Method создаёт метод класса
 func (s *Statement) Method(name string, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString(name)
@@ -481,12 +432,10 @@ func (s *Statement) Method(name string, fn func(*Group)) *Statement {
 	return s
 }
 
-// AsyncMethod создаёт async метод класса
 func (s *Statement) AsyncMethod(name string, returnType *Statement, fn func(*Group)) *Statement {
 	return s.AsyncMethodWithParams(name, nil, returnType, fn)
 }
 
-// AsyncMethodWithParams создаёт async метод класса с параметрами
 func (s *Statement) AsyncMethodWithParams(name string, params *Statement, returnType *Statement, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("async " + name)
@@ -513,7 +462,6 @@ func (s *Statement) AsyncMethodWithParams(name string, params *Statement, return
 	return s
 }
 
-// AsyncMethodWithGeneric создаёт async метод класса с generic параметрами
 func (s *Statement) AsyncMethodWithGeneric(name string, genericParams *Statement, params *Statement, returnType *Statement, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("async " + name)
@@ -543,7 +491,6 @@ func (s *Statement) AsyncMethodWithGeneric(name string, genericParams *Statement
 	return s
 }
 
-// Constructor создаёт конструктор класса
 func (s *Statement) Constructor(fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("constructor(")
@@ -561,14 +508,12 @@ func (s *Statement) Constructor(fn func(*Group)) *Statement {
 	return s
 }
 
-// TypeAlias создаёт type alias (type X = ...)
 func (s *Statement) TypeAlias(name string) *Statement {
 	s.writeIndent()
 	s.code.WriteString("type " + name + " =")
 	return s
 }
 
-// Record создаёт Record<K, V> тип
 func (s *Statement) Record(key, value *Statement) *Statement {
 	s.code.WriteString("Record<")
 	if key != nil {
@@ -582,7 +527,6 @@ func (s *Statement) Record(key, value *Statement) *Statement {
 	return s
 }
 
-// Array создаёт массив тип (T[])
 func (s *Statement) Array(elem *Statement) *Statement {
 	if elem != nil {
 		s.code.WriteString(elem.String())
@@ -591,7 +535,6 @@ func (s *Statement) Array(elem *Statement) *Statement {
 	return s
 }
 
-// Index создаёт литерал массива []
 func (s *Statement) Index(elem *Statement) *Statement {
 	s.code.WriteString("[")
 	if elem != nil {
@@ -601,7 +544,6 @@ func (s *Statement) Index(elem *Statement) *Statement {
 	return s
 }
 
-// Arrow создаёт стрелочную функцию тип ((params) => returnType)
 func (s *Statement) Arrow(params, returnType *Statement) *Statement {
 	s.code.WriteString("(")
 	if params != nil {
@@ -614,7 +556,6 @@ func (s *Statement) Arrow(params, returnType *Statement) *Statement {
 	return s
 }
 
-// Union создаёт union тип (Type1 | Type2 | ...)
 func (s *Statement) Union(types ...*Statement) *Statement {
 	for i, t := range types {
 		if i > 0 {
@@ -627,7 +568,6 @@ func (s *Statement) Union(types ...*Statement) *Statement {
 	return s
 }
 
-// Nullable создаёт nullable тип (Type | null)
 func (s *Statement) Nullable(baseType *Statement) *Statement {
 	if baseType != nil {
 		s.code.WriteString(baseType.String())
@@ -636,7 +576,6 @@ func (s *Statement) Nullable(baseType *Statement) *Statement {
 	return s
 }
 
-// ReadonlyArray создаёт readonly массив (readonly Type[])
 func (s *Statement) ReadonlyArray(elemType *Statement) *Statement {
 	s.code.WriteString("readonly ")
 	if elemType != nil {
@@ -646,7 +585,6 @@ func (s *Statement) ReadonlyArray(elemType *Statement) *Statement {
 	return s
 }
 
-// ObjectLiteral создаёт объектный литерал { field1: value1, field2: value2, ... }
 func (s *Statement) ObjectLiteral(fn func(*Group)) *Statement {
 	s.code.WriteString("{")
 	if fn != nil {
@@ -661,7 +599,6 @@ func (s *Statement) ObjectLiteral(fn func(*Group)) *Statement {
 	return s
 }
 
-// ObjectField добавляет поле в объектный литерал (name: value)
 func (s *Statement) ObjectField(name string, value *Statement) *Statement {
 	s.writeIndent()
 	// Если имя содержит дефис или другие специальные символы, заключаем в кавычки
@@ -677,7 +614,6 @@ func (s *Statement) ObjectField(name string, value *Statement) *Statement {
 	return s
 }
 
-// OptionalField добавляет опциональное поле в объектный литерал (name?: value)
 func (s *Statement) OptionalField(name string, value *Statement) *Statement {
 	s.writeIndent()
 	s.code.WriteString(name)
@@ -688,7 +624,6 @@ func (s *Statement) OptionalField(name string, value *Statement) *Statement {
 	return s
 }
 
-// Spread создаёт spread оператор (...obj)
 func (s *Statement) Spread(expr *Statement) *Statement {
 	s.code.WriteString("...")
 	if expr != nil {
@@ -697,7 +632,6 @@ func (s *Statement) Spread(expr *Statement) *Statement {
 	return s
 }
 
-// Try создаёт try-catch блок
 func (s *Statement) Try(tryFn func(*Group), catchFn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("try {")
@@ -722,7 +656,6 @@ func (s *Statement) Try(tryFn func(*Group), catchFn func(*Group)) *Statement {
 	return s
 }
 
-// Typeof создаёт typeof проверку (typeof expr === "type")
 func (s *Statement) Typeof(expr *Statement, typeStr string) *Statement {
 	s.code.WriteString("typeof ")
 	if expr != nil {
@@ -733,7 +666,6 @@ func (s *Statement) Typeof(expr *Statement, typeStr string) *Statement {
 	return s
 }
 
-// In создаёт проверку in (prop in obj)
 func (s *Statement) In(prop string, obj *Statement) *Statement {
 	s.code.WriteString(`"` + prop + `"`)
 	s.code.WriteString(" in ")
@@ -743,7 +675,6 @@ func (s *Statement) In(prop string, obj *Statement) *Statement {
 	return s
 }
 
-// TemplateString создаёт template string (`text ${expr} text`)
 func (s *Statement) TemplateString(parts []string, exprs []*Statement) *Statement {
 	s.code.WriteString("`")
 	for i, part := range parts {
@@ -758,7 +689,6 @@ func (s *Statement) TemplateString(parts []string, exprs []*Statement) *Statemen
 	return s
 }
 
-// GenericWithDefault создаёт generic параметр с default значением (<T = Default>)
 func (s *Statement) GenericWithDefault(params map[string]string) *Statement {
 	s.code.WriteString("<")
 	first := true
@@ -777,7 +707,6 @@ func (s *Statement) GenericWithDefault(params map[string]string) *Statement {
 	return s
 }
 
-// ExportClass создаёт экспортируемый класс
 func (s *Statement) ExportClass(name string, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("export class " + name)
@@ -785,7 +714,6 @@ func (s *Statement) ExportClass(name string, fn func(*Group)) *Statement {
 	return s
 }
 
-// ExportClassWithGeneric создаёт экспортируемый класс с generic параметрами
 func (s *Statement) ExportClassWithGeneric(name string, genericParams *Statement, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("export class " + name)
@@ -796,25 +724,21 @@ func (s *Statement) ExportClassWithGeneric(name string, genericParams *Statement
 	return s
 }
 
-// Void создаёт void тип
 func (s *Statement) Void() *Statement {
 	s.code.WriteString("void")
 	return s
 }
 
-// Any создаёт any тип
 func (s *Statement) Any() *Statement {
 	s.code.WriteString("any")
 	return s
 }
 
-// Never создаёт never тип
 func (s *Statement) Never() *Statement {
 	s.code.WriteString("never")
 	return s
 }
 
-// Import создаёт import statement (import ... from 'path')
 func (s *Statement) Import(imports string, path string) *Statement {
 	s.writeIndent()
 	s.code.WriteString("import ")
@@ -825,7 +749,6 @@ func (s *Statement) Import(imports string, path string) *Statement {
 	return s
 }
 
-// ImportAll создаёт import * as statement (import * as alias from 'path')
 func (s *Statement) ImportAll(alias string, path string) *Statement {
 	s.writeIndent()
 	s.code.WriteString("import * as ")
@@ -836,23 +759,18 @@ func (s *Statement) ImportAll(alias string, path string) *Statement {
 	return s
 }
 
-// TypeFromString создаёт statement из строки типа TypeScript
-// Используется для вставки типов, полученных из typeLink()
-// ВНИМАНИЕ: Используйте только для типов, полученных из typeLink(), не для генерации структуры кода!
 func TypeFromString(typeStr string) *Statement {
 	stmt := NewStatement()
 	stmt.code.WriteString(typeStr)
 	return stmt
 }
 
-// Group представляет группу statement'ов (аналог jen.Group)
 type Group struct {
 	statement *Statement
 	inObject  bool // Флаг, что мы внутри объекта (для правильной расстановки запятых)
 	inParams  bool // Флаг, что мы внутри параметров функции (для правильной расстановки запятых)
 }
 
-// Add добавляет statement в группу
 func (g *Group) Add(stmt *Statement) {
 	if stmt != nil {
 		stmtStr := stmt.String()
@@ -873,7 +791,6 @@ func (g *Group) Add(stmt *Statement) {
 			}
 		} else if g.inObject {
 			// В объектах TypeScript поля разделяются запятыми
-			// Проверяем, не первое ли это поле в объекте
 			// Ищем последнюю открывающую скобку и проверяем, что после неё ничего нет
 			lastBraceIdx := strings.LastIndex(currentStr, "{")
 			if lastBraceIdx >= 0 {
@@ -883,9 +800,7 @@ func (g *Group) Add(stmt *Statement) {
 				if afterBrace != "" && afterBrace != "\n" {
 					// Для spread оператора добавляем запятую в конец предыдущей строки
 					if isSpreadInObject {
-						// Получаем актуальное состояние кода (после writeIndent, если он был вызван)
 						currentStr = g.statement.code.String()
-						// Находим последнюю строку и добавляем запятую в её конец
 						lastNewlineIdx := strings.LastIndex(currentStr, "\n")
 						if lastNewlineIdx >= 0 {
 							lastLine := currentStr[lastNewlineIdx+1:]
@@ -945,7 +860,6 @@ func (g *Group) Add(stmt *Statement) {
 	}
 }
 
-// Id создаёт идентификатор и добавляет в группу
 func (g *Group) Id(name string) *Statement {
 	stmt := NewStatement()
 	stmt.indent = g.statement.indent
@@ -954,8 +868,7 @@ func (g *Group) Id(name string) *Statement {
 	return stmt
 }
 
-// Lit создаёт литерал и добавляет в группу
-func (g *Group) Lit(value interface{}) *Statement {
+func (g *Group) Lit(value any) *Statement {
 	stmt := NewStatement()
 	stmt.indent = g.statement.indent
 	stmt.writeIndent()
@@ -978,17 +891,14 @@ func (g *Group) Lit(value interface{}) *Statement {
 	return stmt
 }
 
-// Comment добавляет комментарий
 func (g *Group) Comment(text string) {
 	g.statement.Comment(text)
 }
 
-// Line добавляет пустую строку
 func (g *Group) Line() {
 	g.statement.Line()
 }
 
-// Return добавляет return
 func (g *Group) Return(value ...*Statement) {
 	g.statement.writeIndent()
 	g.statement.code.WriteString("return")
@@ -1006,7 +916,6 @@ func (g *Group) Return(value ...*Statement) {
 	g.statement.code.WriteString(";\n")
 }
 
-// Assign добавляет присваивание
 func (g *Group) Assign(left, right *Statement) {
 	g.statement.writeIndent()
 	if left != nil {
@@ -1019,7 +928,6 @@ func (g *Group) Assign(left, right *Statement) {
 	g.statement.code.WriteString(";\n")
 }
 
-// If добавляет условие
 func (g *Group) If(condition *Statement, fn func(*Group)) {
 	g.statement.writeIndent()
 	g.statement.code.WriteString("if (")
@@ -1037,7 +945,6 @@ func (g *Group) If(condition *Statement, fn func(*Group)) {
 	g.statement.code.WriteString("}\n")
 }
 
-// Throw добавляет throw
 func (g *Group) Throw(expr *Statement) {
 	g.statement.writeIndent()
 	g.statement.code.WriteString("throw ")
@@ -1047,7 +954,6 @@ func (g *Group) Throw(expr *Statement) {
 	g.statement.code.WriteString(";\n")
 }
 
-// Try добавляет try-catch блок
 func (g *Group) Try(tryFn func(*Group), catchFn func(*Group)) {
 	g.statement.writeIndent()
 	g.statement.code.WriteString("try {")

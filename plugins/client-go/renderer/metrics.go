@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,7 +9,6 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// RenderClientMetrics генерирует файл metrics.go.
 func (r *ClientRenderer) RenderClientMetrics() error {
 
 	outDir := r.outDir

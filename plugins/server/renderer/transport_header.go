@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,7 +9,6 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// RenderTransportHeader генерирует транспортный header файл.
 func (r *transportRenderer) RenderTransportHeader() error {
 
 	headerPath := path.Join(r.outDir, "header.go")
@@ -33,23 +32,21 @@ func (r *transportRenderer) RenderTransportHeader() error {
 	return srcFile.Save(headerPath)
 }
 
-// renderHeaderTypes генерирует типы для header.
 func (r *transportRenderer) renderHeaderTypes(srcFile *GoFile) {
 
 	srcFile.Line().Type().Id("Header").Struct(
 		Id("SpanKey").String(),
-		Id("SpanValue").Interface(),
+		Id("SpanValue").Any(),
 		Id("RequestKey").String(),
-		Id("RequestValue").Interface(),
+		Id("RequestValue").Any(),
 		Id("ResponseKey").String(),
-		Id("ResponseValue").Interface(),
+		Id("ResponseValue").Any(),
 		Id("LogKey").String(),
-		Id("LogValue").Interface(),
+		Id("LogValue").Any(),
 	).Line().
 		Line().Type().Id("HeaderHandler").Func().Params(Id("value").String()).Params(Id("Header"))
 }
 
-// renderHeaderHandler генерирует обработчик заголовков.
 func (r *transportRenderer) renderHeaderHandler(srcFile *GoFile) {
 
 	srcFile.Line().Func().Params(Id("srv").Op("*").Id("Server")).
@@ -102,11 +99,10 @@ func (r *transportRenderer) renderHeaderHandler(srcFile *GoFile) {
 		})
 }
 
-// renderHeaderValue генерирует функцию headerValue.
 func (r *transportRenderer) renderHeaderValue(srcFile *GoFile, jsonPkg string) {
 
 	srcFile.Line().Func().Id("headerValue").
-		Params(Id("src").Interface()).
+		Params(Id("src").Any()).
 		Params(Id("value").String()).
 		Block(
 			Line(),
@@ -127,7 +123,6 @@ func (r *transportRenderer) renderHeaderValue(srcFile *GoFile, jsonPkg string) {
 		)
 }
 
-// renderHeaderValueInterface генерирует интерфейс iHeaderValue.
 func (r *transportRenderer) renderHeaderValueInterface(srcFile *GoFile) {
 
 	srcFile.Line().Type().Id("iHeaderValue").Interface(

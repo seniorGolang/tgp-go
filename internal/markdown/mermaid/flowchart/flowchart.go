@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 // Package flowchart provides a simple way to create flowcharts in mermaid syntax.
 package flowchart
 
@@ -9,7 +12,6 @@ import (
 	"tgp/internal/markdown/internal"
 )
 
-// Flowchart is a flowchart builder.
 type Flowchart struct {
 	// body is flowchart body.
 	body []string
@@ -21,7 +23,6 @@ type Flowchart struct {
 	config *config
 }
 
-// NewFlowchart returns a new Flowchart.
 func NewFlowchart(w io.Writer, opts ...Option) *Flowchart {
 	c := newConfig()
 
@@ -44,12 +45,10 @@ func NewFlowchart(w io.Writer, opts ...Option) *Flowchart {
 	}
 }
 
-// String returns the flowchart body.
 func (f *Flowchart) String() string {
 	return strings.Join(f.body, internal.LineFeed())
 }
 
-// Build writes the flowchart body to the output destination.
 func (f *Flowchart) Build() error {
 	if _, err := fmt.Fprint(f.dest, f.String()); err != nil {
 		if f.err != nil {

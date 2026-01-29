@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -11,7 +11,6 @@ import (
 	"strings"
 )
 
-// HasVersionASTgConstant проверяет наличие константы VersionASTg в пакете с кэшированием.
 func (l *AutonomousPackageLoader) HasVersionASTgConstant(pkgPath string) (hasVersionASTg bool) {
 
 	l.versionASTgCacheMu.RLock()
@@ -42,7 +41,6 @@ func (l *AutonomousPackageLoader) HasVersionASTgConstant(pkgPath string) (hasVer
 	return
 }
 
-// checkVersionASTgInDir проверяет наличие константы VersionASTg в директории пакета.
 func (l *AutonomousPackageLoader) checkVersionASTgInDir(pkgDir string) (hasVersionASTg bool) {
 
 	var entries []os.DirEntry

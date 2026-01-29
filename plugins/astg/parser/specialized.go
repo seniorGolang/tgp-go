@@ -1,17 +1,13 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
 	"fmt"
 	"go/ast"
-	"go/build"
 	"go/types"
-	"os"
-	"strings"
 )
 
-// LoadPackageForErrorType загружает пакет с оптимизацией для проверки типов ошибок.
 func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeName string) (info *PackageInfo, err error) {
 
 	l.mu.RLock()
@@ -44,31 +40,22 @@ func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeNa
 	importer := &FileSystemImporter{
 		loader:          l,
 		cache:           make(map[string]*types.Package),
-		buildCtx:        &buildCtx,
 		lazyMode:        true,
-		importedSet:     make(map[string]bool),
 		requiredImports: requiredImports,
 	}
 
 	cfg := &types.Config{
 		Importer: importer,
-		Error: func(err error) {
-			// Обрабатываем ошибки type checking
-			// Ошибки в телах методов (из-за stub-пакетов) не критичны и не логируются
-		},
+		Error:    func(error) {},
 	}
 
 	typeInfo := createTypeInfo()
 	var pkg *types.Package
 	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
-		// Ошибки type checking не критичны, если pkg != nil
-		// Ошибки в телах методов (из-за stub-пакетов) не влияют на method sets
 		if pkg == nil {
-			// Критичная ошибка - пакет не создан
 			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 			return
 		}
-		// Некритичные ошибки (pkg != nil) игнорируются - не логируются
 		err = nil
 	}
 
@@ -92,7 +79,6 @@ func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeNa
 	return
 }
 
-// LoadPackageForType загружает пакет для конкретного типа, извлекая импорты только из определения этого типа и его полей.
 func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName string) (info *PackageInfo, err error) {
 
 	l.mu.RLock()
@@ -127,31 +113,22 @@ func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName st
 	importer := &FileSystemImporter{
 		loader:          l,
 		cache:           make(map[string]*types.Package),
-		buildCtx:        &buildCtx,
 		lazyMode:        true,
-		importedSet:     make(map[string]bool),
 		requiredImports: requiredImports,
 	}
 
 	cfg := &types.Config{
 		Importer: importer,
-		Error: func(err error) {
-			// Обрабатываем ошибки type checking
-			// Ошибки в телах методов (из-за stub-пакетов) не критичны и не логируются
-		},
+		Error:    func(error) {},
 	}
 
 	typeInfo := createTypeInfo()
 	var pkg *types.Package
 	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
-		// Ошибки type checking не критичны, если pkg != nil
-		// Ошибки в телах методов (из-за stub-пакетов) не влияют на method sets
 		if pkg == nil {
-			// Критичная ошибка - пакет не создан
 			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 			return
 		}
-		// Некритичные ошибки (pkg != nil) игнорируются - не логируются
 		err = nil
 	}
 
@@ -175,7 +152,6 @@ func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName st
 	return
 }
 
-// LoadPackageMinimal загружает пакет с минимальными зависимостями - только необходимые типы.
 func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImports map[string]bool) (info *PackageInfo, err error) {
 
 	l.mu.RLock()
@@ -221,28 +197,18 @@ func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImp
 		return
 	}
 
-	var importsToLoad map[string]bool
-	if len(requiredImports) > 0 {
-		importsToLoad = requiredImports
-	} else {
-		importsToLoad = extractImportsFromMethodSignatures(files)
-	}
+	importsToLoad := extractImportsFromExportedAndAliases(files)
 
 	importer := &FileSystemImporter{
 		loader:          l,
 		cache:           make(map[string]*types.Package),
-		buildCtx:        &buildCtx,
 		lazyMode:        true,
-		importedSet:     make(map[string]bool),
 		requiredImports: importsToLoad,
 	}
 
 	cfg := &types.Config{
 		Importer: importer,
-		Error: func(err error) {
-			// Обрабатываем ошибки type checking
-			// Ошибки в телах методов (из-за stub-пакетов) не критичны и не логируются
-		},
+		Error:    func(error) {},
 	}
 
 	typeInfo := createTypeInfo()
@@ -277,56 +243,5 @@ func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImp
 
 	l.cache[pkgPath] = info
 
-	return
-}
-
-// buildContext создает build.Context с настройками из переменных окружения.
-func buildContext() (buildCtx build.Context) {
-
-	buildCtx = build.Default
-	var goos string
-	if goos = os.Getenv("GOOS"); goos != "" {
-		buildCtx.GOOS = goos
-	}
-	var goarch string
-	if goarch = os.Getenv("GOARCH"); goarch != "" {
-		buildCtx.GOARCH = goarch
-	}
-	return
-}
-
-// createTypeInfo создает types.Info для type checking.
-func createTypeInfo() (typeInfo *types.Info) {
-
-	typeInfo = &types.Info{
-		Types:      make(map[ast.Expr]types.TypeAndValue),
-		Defs:       make(map[*ast.Ident]types.Object),
-		Uses:       make(map[*ast.Ident]types.Object),
-		Implicits:  make(map[ast.Node]types.Object),
-		Selections: make(map[*ast.SelectorExpr]*types.Selection),
-		Scopes:     make(map[ast.Node]*types.Scope),
-	}
-	return
-}
-
-// collectImports собирает импорты из файлов пакета.
-func collectImports(files []*ast.File) (imports map[string]string) {
-
-	imports = make(map[string]string)
-	for _, file := range files {
-		for _, imp := range file.Imports {
-			impPath := strings.Trim(imp.Path.Value, `"`)
-			var alias string
-			if imp.Name != nil {
-				alias = imp.Name.Name
-			} else {
-				parts := strings.Split(impPath, "/")
-				if len(parts) > 0 {
-					alias = parts[len(parts)-1]
-				}
-			}
-			imports[alias] = impPath
-		}
-	}
 	return
 }

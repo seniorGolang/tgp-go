@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package main
 
 import (
@@ -18,19 +21,15 @@ import (
 //go:embed plugin.md
 var pluginDoc string
 
-// ServerPlugin реализует интерфейс Plugin.
 type ServerPlugin struct{}
 
-// Execute выполняет основную логику плагина.
 func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
 
-	// Получаем project из request
 	var project *model.Project
 	if project, err = helper.GetProject(request); err != nil {
 		return
 	}
 
-	// Получаем output из request
 	var output string
 	if output, err = helper.GetOutput(request); err != nil || output == "" {
 		return nil, errors.New(i18n.Msg("out option is required and must be a string"))
@@ -39,7 +38,7 @@ func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...str
 	// project уже отфильтрован по contracts в плагине astg (зависимость)
 
 	// Очищаем старые сгенерированные файлы перед новой генерацией
-	if err = cleanup.CleanupGeneratedFiles(output); err != nil {
+	if err = cleanup.GeneratedFiles(output); err != nil {
 		slog.Debug(i18n.Msg("failed to cleanup generated files"), slog.String("error", err.Error()))
 		// Не возвращаем ошибку, так как очистка не критична
 	}
@@ -60,9 +59,7 @@ func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...str
 		return
 	}
 
-	// Генерируем сервер для каждого контракта (project.Contracts уже отфильтрован в astg)
 	for _, contract := range project.Contracts {
-		// Генерируем сервер для контракта (без логирования - детали в generator)
 		if err = generator.GenerateServer(project, contract.ID, output); err != nil {
 			slog.Error(i18n.Msg("failed to generate server"),
 				slog.String("contract", contract.ID),
@@ -84,7 +81,6 @@ func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...str
 	return
 }
 
-// Info возвращает информацию о плагине.
 func (p *ServerPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{

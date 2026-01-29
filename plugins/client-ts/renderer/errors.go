@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -12,7 +12,6 @@ import (
 	"tgp/plugins/client-ts/tsg"
 )
 
-// errorInfo структура для хранения информации об ошибке
 type errorInfo struct {
 	code     int    // HTTP статус код (0 если не указан)
 	codeText string // Текстовое описание статус кода
@@ -20,21 +19,17 @@ type errorInfo struct {
 	typeName string // Имя типа ошибки
 }
 
-// collectMethodErrors собирает информацию об ошибках метода
-// Возвращает map с ключом "pkgPath:typeName" и значением errorInfo
 func (r *ClientRenderer) collectMethodErrors(method *model.Method, contract *model.Contract) map[string]errorInfo {
 
 	errorsMap := make(map[string]errorInfo)
 
 	// 1. Ищем ошибки из аннотаций (@tg 401=package:TypeName)
-	// Используем отсортированные пары для детерминированного порядка
 	for key, value := range common.SortedPairs(method.Annotations) {
 		key = strings.TrimSpace(key)
 		value = strings.TrimSpace(value)
 
 		// Пытаемся преобразовать ключ в число (HTTP статус код)
 		if code, err := strconv.Atoi(key); err == nil {
-			// Проверяем, что это валидный HTTP статус код ошибки (4xx, 5xx)
 			if code >= 400 && code < 600 {
 				if value != "" && value != "skip" {
 					// Парсим значение формата "package:TypeName"
@@ -72,12 +67,10 @@ func (r *ClientRenderer) collectMethodErrors(method *model.Method, contract *mod
 	return errorsMap
 }
 
-// renderErrorType генерирует TypeScript интерфейс для типа ошибки
 func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 
 	stmt := tsg.NewStatement()
 
-	// Ищем структуру ошибки в project.Types
 	var structType *model.Type
 	typeID := fmt.Sprintf("%s:%s", errInfo.pkgPath, errInfo.typeName)
 	if typ, ok := r.project.Types[typeID]; ok && typ.Kind == model.TypeKindStruct {
@@ -86,7 +79,6 @@ func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 
 	// Если не нашли по полному пути, пробуем найти по имени типа
 	if structType == nil {
-		// Используем отсортированные пары для детерминированного порядка
 		for _, typ := range common.SortedPairs(r.project.Types) {
 			if typ.Kind == model.TypeKindStruct && typ.TypeName == errInfo.typeName {
 				structType = typ
@@ -95,30 +87,24 @@ func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 		}
 	}
 
-	// Формируем имя типа для TypeScript
-	// Извлекаем последнюю часть пути пакета
 	pkgParts := strings.Split(errInfo.pkgPath, "/")
 	pkgName := pkgParts[len(pkgParts)-1]
 	typeName := fmt.Sprintf("%s%s", pkgName, errInfo.typeName)
 
-	// Генерируем интерфейс
 	stmt.Comment(fmt.Sprintf("Error type: %s.%s", pkgName, errInfo.typeName))
 	if errInfo.code != 0 {
 		stmt.Comment(fmt.Sprintf("HTTP status code: %d (%s)", errInfo.code, errInfo.codeText))
 	}
 
 	stmt.Export().Interface(typeName, func(grp *tsg.Group) {
-		// Добавляем базовое поле message (из метода Error())
 		grp.Add(tsg.NewStatement().Id("message").Colon().Id("string").Semicolon())
 
-		// Добавляем поле code (из метода Code())
 		if errInfo.code != 0 {
 			grp.Add(tsg.NewStatement().Id("code").Colon().Lit(errInfo.code).Semicolon())
 		} else {
 			grp.Add(tsg.NewStatement().Id("code").Colon().Id("number").Semicolon())
 		}
 
-		// Добавляем поля из структуры ошибки
 		if structType != nil && structType.StructFields != nil {
 			for _, field := range structType.StructFields {
 				fieldName, inline := r.jsonName(field)
@@ -126,12 +112,10 @@ func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 					continue
 				}
 
-				// Пропускаем поля message и code, если они уже есть
 				if fieldName == "message" || fieldName == "code" {
 					continue
 				}
 
-				// Определяем тип поля
 				fieldVar := &model.Variable{
 					Name:             field.Name,
 					TypeID:           field.TypeID,
@@ -141,7 +125,6 @@ func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 					MapKeyID:         field.MapKeyID,
 					MapValueID:       field.MapValueID,
 				}
-				// Используем PkgPath из структуры, если он есть
 				pkgPath := errInfo.pkgPath
 				if structType != nil && structType.ImportPkgPath != "" {
 					pkgPath = structType.ImportPkgPath
@@ -153,12 +136,10 @@ func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 				fieldStmt := tsg.NewStatement()
 				fieldStmt.Id(fieldName)
 
-				// Проверяем, является ли поле optional (pointer или omitempty)
 				isOptional := false
 				if field.NumberOfPointers > 0 {
 					isOptional = true
 				} else {
-					// Проверяем omitempty в JSON тегах
 					if tagValues, ok := field.Tags["json"]; ok {
 						for _, val := range tagValues {
 							if val == "omitempty" {
@@ -184,14 +165,11 @@ func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 	return stmt
 }
 
-// renderErrorUnionType генерирует union тип для возможных ошибок метода
 func (r *ClientRenderer) renderErrorUnionType(methodName string, errorsMap map[string]errorInfo) *tsg.Statement {
 
 	stmt := tsg.NewStatement()
 
-	// Формируем union тип из всех возможных ошибок
 	errorTypes := make([]string, 0, len(errorsMap))
-	// Используем отсортированные пары для детерминированного порядка
 	for _, errInfo := range common.SortedPairs(errorsMap) {
 		pkgParts := strings.Split(errInfo.pkgPath, "/")
 		pkgName := pkgParts[len(pkgParts)-1]
@@ -201,7 +179,6 @@ func (r *ClientRenderer) renderErrorUnionType(methodName string, errorsMap map[s
 
 	// Если есть ошибки, создаём union тип
 	if len(errorTypes) > 0 {
-		// Сортируем для консистентности
 		for i := 0; i < len(errorTypes)-1; i++ {
 			for j := i + 1; j < len(errorTypes); j++ {
 				if errorTypes[i] > errorTypes[j] {
@@ -214,7 +191,6 @@ func (r *ClientRenderer) renderErrorUnionType(methodName string, errorsMap map[s
 		stmt.Comment(fmt.Sprintf("Union type for possible errors of %s method", methodName))
 		stmt.Export().TypeAlias(unionTypeName)
 
-		// Создаём union тип
 		unionTypes := make([]*tsg.Statement, len(errorTypes))
 		for i, errorType := range errorTypes {
 			unionTypes[i] = tsg.NewStatement().Id(errorType)
@@ -227,10 +203,8 @@ func (r *ClientRenderer) renderErrorUnionType(methodName string, errorsMap map[s
 	return stmt
 }
 
-// getHTTPStatusText возвращает текстовое описание HTTP статус кода
 func (r *ClientRenderer) getHTTPStatusText(code int) string {
 
-	// Используем те же тексты, что и в swagger-utils.go
 	statusTexts := map[int]string{
 		400: "Bad Request",
 		401: "Unauthorized",

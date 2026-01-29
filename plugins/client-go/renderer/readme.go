@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -22,18 +22,15 @@ import (
 //go:embed templates/*.tmpl
 var templatesFS embed.FS
 
-// DocOptions содержит опции для генерации документации
 type DocOptions struct {
 	Enabled  bool   // Включена ли генерация документации (по умолчанию true)
 	FilePath string // Полный путь к файлу документации (пусто = outDir/readme.md)
 }
 
-// RenderReadmeGo генерирует readme.md для Go клиента
-func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
+func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 	var err error
 	outDir := r.outDir
 
-	// Преобразуем docOpts в DocOptions
 	opts := DocOptions{Enabled: true}
 	if docOpts != nil {
 		if d, ok := docOpts.(DocOptions); ok {
@@ -44,18 +41,15 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
 	var buf bytes.Buffer
 	md := markdown.NewMarkdown(&buf)
 
-	// Заголовок
 	md.H1("API Документация")
 	md.PlainText("Автоматически сгенерированная документация API для Go клиента.")
 
-	// Сортируем контракты по имени для консистентности
 	contracts := make([]*model.Contract, len(r.project.Contracts))
 	copy(contracts, r.project.Contracts)
 	sort.Slice(contracts, func(i, j int) bool {
 		return contracts[i].Name < contracts[j].Name
 	})
 
-	// Собираем информацию о контрактах и методах для оглавления
 	type tocItem struct {
 		title  string
 		level  int
@@ -65,25 +59,22 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
 
 	hasJsonRPC := false
 
-	// Собираем заголовки контрактов и методов
 	for _, contract := range contracts {
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			hasJsonRPC = true
 		}
 
-		// Добавляем контракт в оглавление
-		contractAnchor := generateAnchor(contract.Name)
+		contractAnchor := contractAnchorID(contract.Name)
 		_ = append(tocItems, tocItem{
 			title:  contract.Name,
 			level:  2,
 			anchor: contractAnchor,
 		})
 
-		// JSON-RPC методы
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
-					methodAnchor := generateAnchor(method.Name)
+					methodAnchor := methodAnchorID(contract.Name, method.Name)
 					_ = append(tocItems, tocItem{
 						title:  method.Name,
 						level:  3,
@@ -93,20 +84,13 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
 			}
 		}
 
-		// HTTP методы
-		if contract.Annotations.IsSet(TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method) {
-					httpMethod := "GET"
-					if val, ok := method.Annotations[TagMethodHTTP]; ok {
-						httpMethod = val
-					}
-					httpPath := ""
-					if val, ok := method.Annotations[TagHttpPath]; ok {
-						httpPath = val
-					}
+					httpMethod := model.GetAnnotationValue(r.project, contract, method, nil, TagMethodHTTP, "GET")
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
-					methodAnchor := generateAnchor(methodTitle)
+					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					_ = append(tocItems, tocItem{
 						title:  methodTitle,
 						level:  3,
@@ -117,57 +101,48 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
 		}
 	}
 
-	// Собираем все используемые типы
 	typeUsages := r.collectStructTypes()
 	allTypes := make(map[string]*typeUsage)
-	// Используем отсортированные пары для детерминированного порядка
 	for key, usage := range common.SortedPairs(typeUsages) {
 		allTypes[key] = usage
 	}
 
-	// Сортируем типы для оглавления
-	// Используем отсортированные ключи для детерминированного порядка
+	r.typeAnchorsSet = make(map[string]bool)
+	for _, usage := range allTypes {
+		r.typeAnchorsSet[typeAnchorID(usage.fullTypeName)] = true
+	}
+
 	typeKeys := common.SortedKeys(allTypes)
 	sort.Strings(typeKeys)
 
-	// Генерируем оглавление
 	md.H2("Оглавление")
 	md.PlainText(fmt.Sprintf("- [Описание клиента](#%s)", generateAnchor("Описание клиента")))
 	md.LF()
 	md.PlainText(markdown.Bold("Контракты:"))
 	md.LF()
 
-	// Генерируем оглавление контрактов и их методов
 	for _, contract := range contracts {
-		contractAnchor := generateAnchor(contract.Name)
+		contractAnchor := contractAnchorID(contract.Name)
 		md.PlainText(fmt.Sprintf("- [%s](#%s)", contract.Name, contractAnchor))
 		md.LF()
 
-		// JSON-RPC методы
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
-					methodAnchor := generateAnchor(method.Name)
+					methodAnchor := methodAnchorID(contract.Name, method.Name)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", method.Name, methodAnchor))
 					md.LF()
 				}
 			}
 		}
 
-		// HTTP методы
-		if contract.Annotations.IsSet(TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method) {
-					httpMethod := "GET"
-					if val, ok := method.Annotations[TagMethodHTTP]; ok {
-						httpMethod = val
-					}
-					httpPath := ""
-					if val, ok := method.Annotations[TagHttpPath]; ok {
-						httpPath = val
-					}
+					httpMethod := model.GetAnnotationValue(r.project, contract, method, nil, TagMethodHTTP, "GET")
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
-					methodAnchor := generateAnchor(methodTitle)
+					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
 					md.LF()
 				}
@@ -176,23 +151,20 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
 	}
 	md.LF()
 
-	// Типы данных
 	if len(allTypes) > 0 {
 		md.PlainText(markdown.Bold("Типы данных:"))
 		md.LF()
 		md.PlainText(fmt.Sprintf("- [Общие типы](#%s)", generateAnchor("Общие типы")))
 		md.LF()
-		// Добавляем ссылки на конкретные типы
 		for _, key := range typeKeys {
 			usage := allTypes[key]
-			typeAnchor := generateAnchor(usage.fullTypeName)
+			typeAnchor := typeAnchorID(usage.fullTypeName)
 			md.PlainText(fmt.Sprintf("  - [%s](#%s)", usage.fullTypeName, typeAnchor))
 			md.LF()
 		}
 		md.LF()
 	}
 
-	// Вспомогательные разделы
 	md.PlainText(markdown.Bold("Вспомогательные разделы:"))
 	md.LF()
 	if hasJsonRPC {
@@ -209,25 +181,20 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
 	}
 	md.HorizontalRule()
 
-	// Описание клиента
 	r.renderClientDescription(md)
 
-	// Генерируем контракты
 	for _, contract := range contracts {
 		r.renderContract(md, contract, outDir, typeUsages)
 	}
 
-	// Генерируем секцию "Общие типы" для всех типов
 	if len(allTypes) > 0 {
 		r.renderAllTypes(md, allTypes)
 	}
 
-	// Batch запросы для JSON-RPC
 	if hasJsonRPC {
 		r.renderBatchSection(md, contracts, outDir)
 	}
 
-	// Обработка ошибок
 	r.renderErrorsSection(md)
 
 	// Логирование
@@ -242,11 +209,9 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
 		return err
 	}
 
-	// Определяем путь к файлу
 	outFilename := path.Join(outDir, "readme.md")
 	if opts.FilePath != "" {
 		outFilename = opts.FilePath
-		// Создаём директорию, если её нет
 		readmeDir := path.Dir(outFilename)
 		if err = os.MkdirAll(readmeDir, 0777); err != nil {
 			return err
@@ -256,7 +221,6 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts interface{}) error {
 	return os.WriteFile(outFilename, buf.Bytes(), 0600)
 }
 
-// renderClientDescription генерирует общее описание клиента
 func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 	md.H2("Описание клиента")
 	md.PlainText("Go клиент для работы с API. Клиент поддерживает JSON-RPC и HTTP методы.")
@@ -276,17 +240,15 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 	md.BulletList(capabilities...)
 	md.LF()
 
-	// Находим первый доступный контракт и метод для примеров
 	var exampleContract *model.Contract
 	var exampleMethod *model.Method
 
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
 	for _, contractName := range r.ContractKeys() {
 		contract := r.FindContract(contractName)
 		if contract == nil {
 			continue
 		}
-		if contract.Annotations.IsSet(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					exampleContract = contract
@@ -298,7 +260,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 				break
 			}
 		}
-		if exampleContract == nil && contract.Annotations.IsSet(TagServerHTTP) {
+		if exampleContract == nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method) {
 					exampleContract = contract
@@ -323,7 +285,6 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 	md.LF()
 
 	if exampleContract != nil && exampleMethod != nil {
-		// Используем реальный контракт и метод
 		serviceVar := ToLowerCamel(exampleContract.Name)
 		args := r.argsWithoutContext(exampleMethod)
 		results := r.resultsWithoutError(exampleMethod)
@@ -335,7 +296,6 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 			paramValues = append(paramValues, exampleValue)
 		}
 
-		// Используем ctx вместо context.Background() для поддержки заголовков
 		ctxVar := "ctx"
 		if len(paramValues) > 0 {
 			methodCall = fmt.Sprintf("%s.%s(%s, %s)", serviceVar, exampleMethod.Name, ctxVar, strings.Join(paramValues, ", "))
@@ -348,7 +308,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 			resultVar = "result"
 		}
 
-		templateData := map[string]interface{}{
+		templateData := map[string]any{
 			"PkgPath":      pkgPath,
 			"PkgName":      pkgName,
 			"ServiceVar":   serviceVar,
@@ -397,7 +357,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 			resultVar = "result"
 		}
 
-		templateData := map[string]interface{}{
+		templateData := map[string]any{
 			"PkgPath":      pkgPath,
 			"PkgName":      pkgName,
 			"ServiceVar":   serviceVar,
@@ -436,7 +396,6 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 			paramValues = append(paramValues, exampleValue)
 		}
 
-		// Используем ctx вместо context.Background() для поддержки заголовков
 		ctxVar := "ctx"
 		if len(paramValues) > 0 {
 			methodCall = fmt.Sprintf("%s.%s(%s, %s)", serviceVar, exampleMethod.Name, ctxVar, strings.Join(paramValues, ", "))
@@ -449,7 +408,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 			resultVar = "result"
 		}
 
-		templateData := map[string]interface{}{
+		templateData := map[string]any{
 			"PkgPath":      pkgPath,
 			"PkgName":      pkgName,
 			"ServiceVar":   serviceVar,
@@ -479,22 +438,19 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 	md.HorizontalRule()
 }
 
-// renderContract генерирует документацию для контракта
 func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.Contract, outDir string, typeUsages map[string]*typeUsage) {
-	contractAnchor := generateAnchor(contract.Name)
+	contractAnchor := contractAnchorID(contract.Name)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", contractAnchor))
 	md.LF()
 	md.H2(contract.Name)
 
-	// Описание контракта из документации
 	contractDesc := filterDocsComments(contract.Docs)
 	if len(contractDesc) > 0 {
 		md.PlainText(strings.Join(contractDesc, "\n"))
 		md.LF()
 	}
 
-	// JSON-RPC методы
-	if contract.Annotations.IsSet(TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 		for _, method := range contract.Methods {
 			if !r.methodIsJsonRPC(contract, method) {
 				continue
@@ -503,8 +459,7 @@ func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.C
 		}
 	}
 
-	// HTTP методы
-	if contract.Annotations.IsSet(TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 		for _, method := range contract.Methods {
 			if !r.methodIsHTTP(method) {
 				continue
@@ -516,27 +471,20 @@ func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.C
 	md.HorizontalRule()
 }
 
-// generateAnchor создаёт якорную ссылку из заголовка для Markdown
 func generateAnchor(title string) string {
-	// Конвертируем в нижний регистр
 	anchor := strings.ToLower(title)
 
-	// Заменяем пробелы на дефисы
 	anchor = strings.ReplaceAll(anchor, " ", "-")
 
-	// Заменяем / и : на дефисы
 	anchor = strings.ReplaceAll(anchor, "/", "-")
 	anchor = strings.ReplaceAll(anchor, ":", "-")
 
-	// Заменяем _ на дефисы
 	anchor = strings.ReplaceAll(anchor, "_", "-")
 
-	// Удаляем множественные дефисы
 	for strings.Contains(anchor, "--") {
 		anchor = strings.ReplaceAll(anchor, "--", "-")
 	}
 
-	// Удаляем дефисы в начале и конце
 	anchor = strings.Trim(anchor, "-")
 
 	if anchor == "" {
@@ -546,7 +494,21 @@ func generateAnchor(title string) string {
 	return anchor
 }
 
-// renderClientOptions генерирует описание опций клиента
+func contractAnchorID(contractName string) string {
+
+	return "contract-" + generateAnchor(contractName)
+}
+
+func methodAnchorID(contractName string, methodNameOrTitle string) string {
+
+	return contractAnchorID(contractName) + "-" + generateAnchor(methodNameOrTitle)
+}
+
+func typeAnchorID(typeName string) string {
+
+	return "type-" + generateAnchor(typeName)
+}
+
 func (r *ClientRenderer) renderClientOptions(md *markdown.Markdown, pkgPath, pkgName string) {
 	md.PlainText(markdown.Bold("Поддерживаемые опции клиента:"))
 	md.LF()
@@ -703,7 +665,6 @@ client := %s.New("http://localhost:9000",
 	}
 }
 
-// renderMetricsSection генерирует секцию описания метрик
 func (r *ClientRenderer) renderMetricsSection(md *markdown.Markdown, outDir string) {
 	metricsAnchor := generateAnchor("Метрики")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", metricsAnchor))
@@ -799,14 +760,12 @@ func main() {
 	md.HorizontalRule()
 }
 
-// filterDocsComments фильтрует аннотации @tg из документации
 func filterDocsComments(docs []string) []string {
 	if len(docs) == 0 {
 		return docs
 	}
 	var filtered []string
 	for _, doc := range docs {
-		// Пропускаем строки с аннотациями @tg
 		if !strings.Contains(doc, "@tg") {
 			filtered = append(filtered, doc)
 		}
@@ -814,8 +773,7 @@ func filterDocsComments(docs []string) []string {
 	return filtered
 }
 
-// renderTemplate рендерит шаблон из embed FS
-func (r *ClientRenderer) renderTemplate(templatePath string, data interface{}) (string, error) {
+func (r *ClientRenderer) renderTemplate(templatePath string, data any) (string, error) {
 	contentBytes, err := templatesFS.ReadFile(templatePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read template %s: %w", templatePath, err)
@@ -838,7 +796,6 @@ func (r *ClientRenderer) renderTemplate(templatePath string, data interface{}) (
 	return buf.String(), nil
 }
 
-// renderLoggingSection генерирует секцию описания логирования
 func (r *ClientRenderer) renderLoggingSection(md *markdown.Markdown, outDir string) {
 	loggingAnchor := generateAnchor("Логирование")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", loggingAnchor))
@@ -910,7 +867,7 @@ func (r *ClientRenderer) renderLoggingSection(md *markdown.Markdown, outDir stri
 	md.PlainText("Для использования логирования необходимо настроить `slog` handler перед созданием клиента. Клиент использует глобальный logger через `slog.Default()`, поэтому все настройки handler применяются автоматически.")
 	md.LF()
 
-	templateData := map[string]interface{}{
+	templateData := map[string]any{
 		"PkgPath": pkgPath,
 		"PkgName": pkgName,
 	}

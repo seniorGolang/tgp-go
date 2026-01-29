@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 //go:build wasip1
 
 package common
@@ -16,13 +19,10 @@ var (
 	goModPathCache = make(map[string]string)
 )
 
-// GetPkgPath получает путь пакета для указанного файла или директории.
 func GetPkgPath(fName string, isDir bool) (string, error) {
-	// find go.mod file
 	goModPath, err := GoModPath(fName, isDir)
 	if err != nil {
-		// В WASM не логируем ошибку, просто возвращаем
-		// Используем GOPATH как fallback
+		// В WASM при отсутствии go.mod используем GOPATH как fallback.
 		return GetPkgPathFromGOPATH(fName, isDir)
 	}
 
@@ -36,7 +36,6 @@ func GetPkgPath(fName string, isDir bool) (string, error) {
 	return GetPkgPathFromGOPATH(fName, isDir)
 }
 
-// GoModPath находит путь к go.mod файлу в WASM окружении.
 func GoModPath(fName string, isDir bool) (string, error) {
 	root := fName
 
@@ -118,7 +117,6 @@ func GoModPath(fName string, isDir bool) (string, error) {
 	return "", &os.PathError{Op: "go env GOMOD", Path: workDir, Err: os.ErrNotExist}
 }
 
-// GetPkgPathFromGoMod получает путь пакета из go.mod.
 func GetPkgPathFromGoMod(fName string, isDir bool, goModPath string) (string, error) {
 	modulePath := GetModulePath(goModPath)
 
@@ -139,7 +137,6 @@ var (
 	pkgPathFromGoModCache = make(map[string]string)
 )
 
-// GetModulePath получает путь модуля из go.mod файла.
 func GetModulePath(goModPath string) string {
 	pkgPath, ok := pkgPathFromGoModCache[goModPath]
 
@@ -189,7 +186,6 @@ func GetModulePath(goModPath string) string {
 	return ""
 }
 
-// GetPkgPathFromGOPATH получает путь пакета из GOPATH.
 func GetPkgPathFromGOPATH(fName string, isDir bool) (string, error) {
 	if gopathCache == "" {
 		gopath := os.Getenv("GOPATH")

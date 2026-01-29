@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package types
 
 import (
@@ -27,7 +27,6 @@ var uuidPackages = []string{
 	"gopkg.in/guregu/null.v4",
 }
 
-// IsExcludedTypeID проверяет, является ли тип исключенным.
 func IsExcludedTypeID(typeID string, project *model.Project) (excluded bool) {
 	if typeID == "" {
 		return
@@ -96,7 +95,6 @@ func IsExcludedTypeID(typeID string, project *model.Project) (excluded bool) {
 	return
 }
 
-// IsBuiltinTypeID проверяет, является ли TypeID встроенным типом Go.
 func IsBuiltinTypeID(typeID string) (isBuiltin bool) {
 	switch typeID {
 	case "string", "int", "int8", "int16", "int32", "int64",
@@ -108,7 +106,6 @@ func IsBuiltinTypeID(typeID string) (isBuiltin bool) {
 	return
 }
 
-// IsExplicitlyExcludedType проверяет явные исключения для известных типов.
 func IsExplicitlyExcludedType(typ *model.Type) (excluded bool) {
 	if typ == nil {
 		return
@@ -162,7 +159,6 @@ func IsExplicitlyExcludedType(typ *model.Type) (excluded bool) {
 	return
 }
 
-// GetSerializationFormatForTypeID определяет OpenAPI тип и формат для typeID.
 func GetSerializationFormatForTypeID(typeID string, project *model.Project) (openAPIType string, format string) {
 	if IsBuiltinTypeID(typeID) {
 		switch typeID {
@@ -211,7 +207,6 @@ func GetSerializationFormatForTypeID(typeID string, project *model.Project) (ope
 	return
 }
 
-// GetSerializationFormat определяет OpenAPI тип и формат для типа.
 func GetSerializationFormat(typ *model.Type, project *model.Project) (openAPIType string, format string) {
 	if typ.ImportPkgPath == pkgTime && typ.TypeName == typeTime {
 		return "string", "date-time"
@@ -241,7 +236,6 @@ func containsString(slice []string, str string) (found bool) {
 	return
 }
 
-// ToCamel конвертирует строку в CamelCase.
 func ToCamel(s string) (result string) {
 	if s == "" {
 		return s
@@ -268,7 +262,6 @@ func ToCamel(s string) (result string) {
 	return
 }
 
-// ToLowerCamel конвертирует строку в lowerCamelCase.
 func ToLowerCamel(s string) (result string) {
 	if s == "" {
 		return s

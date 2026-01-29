@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
@@ -22,7 +22,6 @@ import (
 	"tgp/internal/tags"
 )
 
-// CollectWithExcludeDirs собирает всю информацию о проекте из AST с указанием исключаемых директорий.
 func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string, ifaces ...string) (project *model.Project, err error) {
 
 	project = &model.Project{
@@ -56,12 +55,10 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 		project.ModulePath = svcDir
 	}
 
-	// Собираем Git информацию
 	if err = collectGitInfo(project); err != nil {
 		slog.Debug(i18n.Msg("Failed to collect git info"), slog.String("error", err.Error()))
 	}
 
-	// Создаем загрузчик пакетов
 	var loader *AutonomousPackageLoader
 	if loader, err = NewAutonomousPackageLoader(modFile); err != nil {
 		err = fmt.Errorf("failed to create package loader: %w", err)
@@ -69,7 +66,6 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 		return
 	}
 
-	// svcDir уже нормализован в plugin.go как относительный путь от rootDir
 	svcDirAbs := filepath.Join(internal.ProjectRoot, svcDir)
 
 	var files []os.DirEntry
@@ -79,9 +75,6 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 		return
 	}
 
-	// Собираем контракты из файлов
-	// Параметр ifaces игнорируется - парсер всегда собирает все контракты
-	// Фильтрация применяется позже в plugin.go после загрузки из кэша
 	contractsMap := make(map[string]*model.Contract)
 
 	for _, file := range files {
@@ -91,7 +84,6 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 
 		filePathAbs := filepath.Join(svcDirAbs, file.Name())
 
-		// Получаем путь пакета
 		dir := filepath.Dir(filePathAbs)
 		var pkgPath string
 		var pkgPathErr error
@@ -100,8 +92,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 				slog.String("path", filePathAbs),
 				slog.String("dir", dir),
 				slog.String("modulePath", project.ModulePath),
-				slog.String("error", err.Error()))
-			// Если не удалось получить путь пакета, строим его из modulePath
+				slog.String("error", pkgPathErr.Error()))
 			fset := token.NewFileSet()
 			var astFile *ast.File
 			var parseErr error
@@ -124,7 +115,6 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 			}
 		}
 
-		// Загружаем пакет
 		pkgInfo, err := loader.LoadPackageLazy(pkgPath)
 		if err != nil {
 			slog.Debug(i18n.Msg("Package not found, skipping file"),
@@ -169,20 +159,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 			}
 		}
 
-		imports := make(map[string]string)
-		for _, imp := range astFile.Imports {
-			importPath := strings.Trim(imp.Path.Value, `"`)
-			var alias string
-			if imp.Name != nil {
-				alias = imp.Name.Name
-			} else {
-				parts := strings.Split(importPath, "/")
-				if len(parts) > 0 {
-					alias = parts[len(parts)-1]
-				}
-			}
-			imports[alias] = importPath
-		}
+		imports := collectImports([]*ast.File{astFile})
 
 		if astFile.Doc != nil && len(project.Annotations) == 0 {
 			packageDocs := extractComments(astFile.Doc)
@@ -274,30 +251,21 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 				}
 
 				contractsMap[contractID] = contract
-
-				slog.Debug(i18n.Msg("Contract found"),
-					slog.String("contract", contract.ID),
-					slog.String("name", contract.Name),
-					slog.String("pkgPath", contract.PkgPath),
-					slog.Int("methodsCount", len(contract.Methods)))
 			}
 		}
 	}
 
-	// Преобразуем map в slice
 	for _, contract := range contractsMap {
 		project.Contracts = append(project.Contracts, contract)
 	}
 
-	if _, err = analyzeProject(project, loader); err != nil {
+	if err = analyzeProject(project, loader); err != nil {
 		return nil, fmt.Errorf("failed to analyze project: %w", err)
 	}
 
 	return
 }
 
-// findGoModPath находит путь к go.mod файлу через @go разрешение.
-// @go монтируется хостом как корень файловой системы, где go.mod находится в корне.
 func findGoModPath() (modPath string, err error) {
 
 	if _, err = os.Stat("/go.mod"); err != nil {
@@ -308,16 +276,11 @@ func findGoModPath() (modPath string, err error) {
 	return
 }
 
-// getPkgPathFromDir получает путь пакета из директории.
 func getPkgPathFromDir(dir string, modulePath string) (pkgPath string, err error) {
 
-	// Нормализуем пути для корректной работы filepath.Rel
-	// В WASM ProjectRoot всегда "/", а dir может быть "/contracts/dto"
 	var relPath string
 	if relPath, err = filepath.Rel(internal.ProjectRoot, dir); err != nil {
-		// Если filepath.Rel не работает, пробуем вычислить относительный путь вручную
 		if strings.HasPrefix(dir, "/") {
-			// Убираем ведущий "/" из dir
 			relPath = strings.TrimPrefix(dir, "/")
 		} else {
 			err = fmt.Errorf("failed to compute relative path from %s to %s: %w", internal.ProjectRoot, dir, err)
@@ -334,7 +297,6 @@ func getPkgPathFromDir(dir string, modulePath string) (pkgPath string, err error
 	return
 }
 
-// extractComments извлекает комментарии из CommentGroup.
 func extractComments(commentGroups ...*ast.CommentGroup) (comments []string) {
 
 	for _, group := range commentGroups {
@@ -348,7 +310,6 @@ func extractComments(commentGroups ...*ast.CommentGroup) (comments []string) {
 	return
 }
 
-// makeRelativePath преобразует абсолютный путь в относительный от корня проекта.
 func makeRelativePath(absPath string) (relPath string) {
 
 	var err error
@@ -360,7 +321,6 @@ func makeRelativePath(absPath string) (relPath string) {
 	return
 }
 
-// removeAnnotationsFromDocs удаляет строки с аннотациями @tg из комментариев.
 func removeAnnotationsFromDocs(docs []string) (filtered []string) {
 
 	if len(docs) == 0 {

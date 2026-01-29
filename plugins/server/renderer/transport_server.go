@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -8,9 +8,10 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/model"
 )
 
-// RenderTransportServer генерирует транспортный server файл.
 func (r *transportRenderer) RenderTransportServer() error {
 
 	serverPath := path.Join(r.outDir, "server.go")
@@ -35,7 +36,6 @@ func (r *transportRenderer) RenderTransportServer() error {
 	return srcFile.Save(serverPath)
 }
 
-// renderServerImports генерирует импорты для server файла.
 func (r *transportRenderer) renderServerImports(srcFile *GoFile) {
 
 	// Стандартные библиотеки (будут отсортированы goimports)
@@ -63,13 +63,11 @@ func (r *transportRenderer) renderServerImports(srcFile *GoFile) {
 	}
 }
 
-// renderServerTypes генерирует типы для server файла.
 func (r *transportRenderer) renderServerTypes(srcFile *GoFile) {
 
 	srcFile.Line().Add(r.transportServerType())
 }
 
-// renderServerConstants генерирует константы для server файла.
 func (r *transportRenderer) renderServerConstants(srcFile *GoFile) {
 
 	srcFile.Const().Id("defaultShutdownTimeout").Op("=").Lit(30).Op("*").Qual(PackageTime, "Second")
@@ -85,7 +83,6 @@ func (r *transportRenderer) renderServerConstants(srcFile *GoFile) {
 	srcFile.Line().Add(r.healthServerType())
 }
 
-// renderServerFunctions генерирует функции для server файла.
 func (r *transportRenderer) renderServerFunctions(srcFile *GoFile) {
 
 	srcFile.Line().Add(r.healthServerStopMethod())
@@ -103,12 +100,13 @@ func (r *transportRenderer) renderServerFunctions(srcFile *GoFile) {
 	if r.hasMetrics() {
 		srcFile.Line().Add(r.withMetricsFunc())
 	}
-	if r.hasHTTPService() {
-		srcFile.Line().Add(r.httpServiceFunc())
+	for _, contract := range r.project.Contracts {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+			srcFile.Line().Add(r.httpServiceAccessorFunc(contract))
+		}
 	}
 }
 
-// transportServerType генерирует тип Server.
 func (r *transportRenderer) transportServerType() Code {
 
 	return Type().Id("Server").StructFunc(func(bg *Group) {
@@ -122,14 +120,12 @@ func (r *transportRenderer) transportServerType() Code {
 		if r.hasJsonRPC() {
 			bg.Line().Id("maxBatchSize").Int()
 			bg.Id("maxParallelBatch").Int()
-			bg.Id("methodTimeout").Qual(PackageTime, "Duration").Line()
+			bg.Id("methodTimeout").Qual(PackageTime, "Duration")
+			bg.Id("jsonRPCMethodMap").Map(String()).Id("methodJsonRPC").Line()
 		}
-		if r.hasHTTPService() {
-			bg.Line().Id("httpHTTPService").Op("*").Id("httpHTTPService")
-		}
-		// Добавляем поля для каждого контракта с jsonRPC
 		for _, contract := range r.project.Contracts {
-			if contract.Annotations.Contains(TagServerJsonRPC) {
+			if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) ||
+				model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 				bg.Line()
 				bg.Id("http" + contract.Name).Op("*").Id("http" + contract.Name)
 			}
@@ -139,7 +135,6 @@ func (r *transportRenderer) transportServerType() Code {
 	})
 }
 
-// healthServerType генерирует тип HealthServer.
 func (r *transportRenderer) healthServerType() Code {
 
 	return Type().Id("HealthServer").StructFunc(func(bg *Group) {
@@ -148,7 +143,6 @@ func (r *transportRenderer) healthServerType() Code {
 	})
 }
 
-// healthServerStopMethod генерирует метод Stop для HealthServer.
 func (r *transportRenderer) healthServerStopMethod() Code {
 
 	return Func().Params(Id("hs").Op("*").Id("HealthServer")).
@@ -158,5 +152,16 @@ func (r *transportRenderer) healthServerStopMethod() Code {
 			If(Id("hs").Dot("srv").Op("!=").Nil()).Block(
 				If(Err().Op(":=").Id("hs").Dot("srv").Dot("ShutdownWithTimeout").Call(Id("defaultShutdownTimeout")).Op(";").Err().Op("!=").Nil()).Block(),
 			),
+		)
+}
+
+func (r *transportRenderer) httpServiceAccessorFunc(contract *model.Contract) Code {
+
+	return Func().Params(Id("srv").Op("*").Id("Server")).
+		Id(contract.Name).
+		Params().
+		Params(Op("*").Id("http" + contract.Name)).
+		Block(
+			Return(Id("srv").Dot("http" + contract.Name)),
 		)
 }

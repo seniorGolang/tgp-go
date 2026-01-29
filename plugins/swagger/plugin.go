@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package main
 
 import (
@@ -18,34 +21,31 @@ import (
 //go:embed plugin.md
 var pluginDoc string
 
-// SwaggerPlugin реализует интерфейс Plugin.
 type SwaggerPlugin struct{}
 
-// Execute выполняет основную логику плагина.
 func (p *SwaggerPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
 
 	slog.Info(i18n.Msg("swagger plugin started"))
 
 	response = data.NewStorage()
 
-	// Получаем project из request
 	var project *model.Project
 	if project, err = helper.GetProject(request); err != nil {
 		return
 	}
 
-	// Получаем список контрактов для фильтрации
 	var contracts []string
 	if contracts, err = helper.ParseStringList(request, "contracts"); err != nil {
 		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
 	}
 
-	// Собираем статистику для логирования
 	swaggerStats := stats.CollectSwaggerStats(project, contracts)
 
-	swaggerDoc := generator.GenerateDoc(project, contracts...)
+	swaggerDoc, err := generator.GenerateDoc(project, contracts...)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", i18n.Msg("generate Swagger"), err)
+	}
 
-	// Получаем output из request (опциональный, так как может быть только serve)
 	var output string
 	if output, err = helper.GetOutput(request); err != nil {
 		return
@@ -88,7 +88,6 @@ func (p *SwaggerPlugin) Execute(rootDir string, request data.Storage, path ...st
 	return
 }
 
-// Info возвращает информацию о плагине.
 func (p *SwaggerPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{

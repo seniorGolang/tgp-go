@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package er
 
 import (
@@ -7,7 +10,6 @@ import (
 	"tgp/internal/markdown/internal"
 )
 
-// Entity is a entity of entity relationship.
 type Entity struct {
 	// Name is the name of the entity.
 	Name string
@@ -15,7 +17,6 @@ type Entity struct {
 	Attributes []*Attribute
 }
 
-// string returns the string representation of the Entity.
 func (e *Entity) string() string {
 	attrs := make([]string, 0, len(e.Attributes))
 	for _, a := range e.Attributes {
@@ -33,7 +34,6 @@ func (e *Entity) string() string {
 	)
 }
 
-// NewEntity returns a new Entity.
 func NewEntity(name string, attrs []*Attribute) Entity {
 	return Entity{
 		Name:       name,
@@ -41,7 +41,6 @@ func NewEntity(name string, attrs []*Attribute) Entity {
 	}
 }
 
-// Attribute is a attribute of the entity.
 type Attribute struct {
 	// Type is the type of the attribute.
 	Type string
@@ -57,7 +56,6 @@ type Attribute struct {
 	Comment string
 }
 
-// string returns the string representation of the Attribute.
 func (a *Attribute) string() string {
 	var keys []string
 	if a.IsPrimaryKey {
@@ -75,12 +73,6 @@ func (a *Attribute) string() string {
 	return strings.ReplaceAll(s, "\"\"", "")
 }
 
-// Relationship is a relationship of entity relationship.
-// leftE: left entity
-// rightE: right entity
-// leftR: left relationship. You choice from Relationship constants (e.g. ZeroToOneRelationship)
-// rightR: right relationship. You choice from Relationship constants (e.g. ZeroToOneRelationship)
-// identidy: identify of the relationship. You choice from Identify constants (e.g. Identifying)
 func (d *Diagram) Relationship(leftE, rightE Entity, leftR, rightR Relationship, identidy Identify, comment string) *Diagram {
 	d.body = append(
 		d.body,
@@ -100,7 +92,6 @@ func (d *Diagram) Relationship(leftE, rightE Entity, leftR, rightR Relationship,
 	return d
 }
 
-// NoRelationship adds an entity that has no relationships.
 func (d *Diagram) NoRelationship(e Entity) *Diagram {
 	d.entities.Store(e.Name, e)
 	return d

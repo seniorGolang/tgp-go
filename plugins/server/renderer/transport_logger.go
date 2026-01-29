@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,7 +9,6 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// RenderTransportLogger генерирует транспортный logger файл.
 func (r *transportRenderer) RenderTransportLogger() error {
 
 	loggerPath := path.Join(r.outDir, "logger.go")
@@ -27,14 +26,12 @@ func (r *transportRenderer) RenderTransportLogger() error {
 	return srcFile.Save(loggerPath)
 }
 
-// loggerContextKey генерирует тип и переменную для ключа контекста логгера.
 func (r *transportRenderer) loggerContextKey() Code {
 
 	return Type().Id("loggerContextKey").String().Line().
 		Line().Var().Id("loggerKey").Id("loggerContextKey").Op("=").Lit("logger")
 }
 
-// loggerWithLoggerFunc генерирует функцию WithLogger.
 func (r *transportRenderer) loggerWithLoggerFunc() Code {
 
 	return Func().Id("WithLogger").
@@ -45,7 +42,6 @@ func (r *transportRenderer) loggerWithLoggerFunc() Code {
 		)
 }
 
-// loggerFromContextFunc генерирует функцию FromContext.
 func (r *transportRenderer) loggerFromContextFunc() Code {
 
 	return Func().Id("FromContext").

@@ -23,9 +23,9 @@ func (tags DocTags) MarshalJSON() (bytes []byte, err error) {
 	if len(tags) == 0 {
 		return json.Marshal(nil)
 	}
-	// Преобразуем map[string]string в map[string]interface{}
+	// Преобразуем map[string]string в map[string]any
 	// Пустые строки заменяем на true (булево значение)
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 	for k, v := range tags {
 		if v == "" {
 			result[k] = true
@@ -38,8 +38,8 @@ func (tags DocTags) MarshalJSON() (bytes []byte, err error) {
 
 // UnmarshalJSON implements json.Unmarshaler interface.
 func (tags *DocTags) UnmarshalJSON(data []byte) error {
-	// Десериализуем в map[string]interface{}, чтобы обработать булевы значения
-	var raw map[string]interface{}
+	// Десериализуем в map[string]any, чтобы обработать булевы значения
+	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}

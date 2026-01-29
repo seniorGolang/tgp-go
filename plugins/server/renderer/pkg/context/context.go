@@ -13,6 +13,7 @@ type CancelFunc = context.CancelFunc
 var TODO = context.TODO
 var Canceled = context.Canceled
 var Background = context.Background
+var WithValue = context.WithValue
 
 func WithCtx[T any](ctx context.Context, value T) context.Context {
 	return context.WithValue(ctx, contextKey(reflect.TypeOf(value).String()), value)

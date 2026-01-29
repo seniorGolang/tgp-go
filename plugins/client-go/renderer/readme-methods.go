@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -12,15 +12,14 @@ import (
 	"tgp/internal/model"
 )
 
-// renderMethodDoc генерирует документацию для JSON-RPC метода
 func (r *ClientRenderer) renderMethodDoc(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string, typeUsages map[string]*typeUsage) {
-	methodAnchor := generateAnchor(method.Name)
+
+	methodAnchor := methodAnchorID(contract.Name, method.Name)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
 	md.LF()
 	md.H3(method.Name)
 
-	// Описание метода
-	summary := method.Annotations[tagSummary]
+	summary := model.GetAnnotationValue(r.project, contract, method, nil, tagSummary, "")
 	methodDesc := filterDocsComments(method.Docs)
 	desc := ""
 	if len(methodDesc) > 0 {
@@ -42,34 +41,27 @@ func (r *ClientRenderer) renderMethodDoc(md *markdown.Markdown, method *model.Me
 		md.LF()
 	}
 
-	// Сигнатура метода
 	r.renderMethodSignature(md, method, contract, outDir, false)
 
-	// Параметры и возвращаемые значения
 	r.renderMethodParamsAndResults(md, method, contract, typeUsages)
 
-	// Возможные ошибки
 	r.renderMethodErrors(md, method, contract)
 
 	md.LF()
 }
 
-// renderHTTPMethodDoc генерирует документацию для HTTP метода
 func (r *ClientRenderer) renderHTTPMethodDoc(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string, typeUsages map[string]*typeUsage) {
-	httpMethod := method.Annotations[TagMethodHTTP]
-	if httpMethod == "" {
-		httpMethod = "GET"
-	}
-	httpPath := method.Annotations[TagHttpPath]
+
+	httpMethod := model.GetAnnotationValue(r.project, contract, method, nil, TagMethodHTTP, "GET")
+	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
-	methodAnchor := generateAnchor(methodTitle)
+	methodAnchor := methodAnchorID(contract.Name, methodTitle)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
 	md.LF()
 	md.H3(methodTitle)
 
-	// Описание метода
-	summary := method.Annotations[tagSummary]
+	summary := model.GetAnnotationValue(r.project, contract, method, nil, tagSummary, "")
 	methodDesc := filterDocsComments(method.Docs)
 	desc := ""
 	if len(methodDesc) > 0 {
@@ -91,19 +83,15 @@ func (r *ClientRenderer) renderHTTPMethodDoc(md *markdown.Markdown, method *mode
 		md.LF()
 	}
 
-	// Сигнатура метода
 	r.renderMethodSignature(md, method, contract, outDir, true)
 
-	// Параметры и возвращаемые значения
 	r.renderMethodParamsAndResults(md, method, contract, typeUsages)
 
-	// Возможные ошибки
 	r.renderMethodErrors(md, method, contract)
 
 	md.LF()
 }
 
-// renderMethodSignature генерирует сигнатуру метода в блоке кода
 func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string, isHTTP bool) {
 	md.PlainText(markdown.Bold("Сигнатура:"))
 	md.LF()
@@ -119,7 +107,6 @@ func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *mo
 	sigBuilder.WriteString(method.Name)
 	sigBuilder.WriteString("(ctx context.Context")
 
-	// Параметры
 	args := r.argsWithoutContext(method)
 	for _, arg := range args {
 		sigBuilder.WriteString(", ")
@@ -131,7 +118,6 @@ func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *mo
 
 	sigBuilder.WriteString(") (")
 
-	// Возвращаемые значения
 	results := r.resultsWithoutError(method)
 	if len(results) > 0 {
 		for i, result := range results {
@@ -153,12 +139,10 @@ func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *mo
 	md.LF()
 }
 
-// renderMethodParamsAndResults генерирует таблицы параметров и возвращаемых значений
 func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, method *model.Method, contract *model.Contract, typeUsages map[string]*typeUsage) {
 	args := r.argsWithoutContext(method)
 	results := r.resultsWithoutError(method)
 
-	// Параметры
 	if len(args) > 0 {
 		md.PlainText(markdown.Bold("Параметры:"))
 		md.LF()
@@ -169,7 +153,6 @@ func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, met
 			argTags := r.parseTagsFromDocs(strings.Join(arg.Docs, "\n"))
 			argDesc := argTags[tagDesc]
 
-			// Ссылка на тип (аналогично полям структуры)
 			typeLink := r.getTypeLinkFromVariable(arg, contract.PkgPath)
 
 			rows = append(rows, []string{
@@ -189,7 +172,6 @@ func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, met
 		md.LF()
 	}
 
-	// Возвращаемые значения
 	if len(results) > 0 {
 		md.PlainText(markdown.Bold("Возвращаемые значения:"))
 		md.LF()
@@ -200,7 +182,6 @@ func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, met
 			resultTags := r.parseTagsFromDocs(strings.Join(result.Docs, "\n"))
 			resultDesc := resultTags[tagDesc]
 
-			// Ссылка на тип (аналогично полям структуры)
 			typeLink := r.getTypeLinkFromVariable(result, contract.PkgPath)
 
 			resultName := result.Name
@@ -234,9 +215,7 @@ func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, met
 	}
 }
 
-// renderMethodErrors генерирует описание возможных ошибок метода
 func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model.Method, contract *model.Contract) {
-	// Используем информацию об ошибках из метода
 	if len(method.Errors) == 0 {
 		return
 	}
@@ -245,7 +224,6 @@ func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model
 	md.PlainText(markdown.Bold("Возможные ошибки:"))
 	md.LF()
 
-	// Сортируем ошибки по HTTP коду для детерминированного порядка
 	errors := make([]*model.ErrorInfo, len(method.Errors))
 	copy(errors, method.Errors)
 	sort.Slice(errors, func(i, j int) bool {
@@ -260,9 +238,7 @@ func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model
 		return errors[i].HTTPCode < errors[j].HTTPCode
 	})
 
-	// Описываем все ошибки
 	for _, errInfo := range errors {
-		// Заголовок ошибки
 		if errInfo.HTTPCode != 0 {
 			errorDesc := fmt.Sprintf("%s (%d)", errInfo.HTTPCodeText, errInfo.HTTPCode)
 			md.PlainText(fmt.Sprintf("- %s - %s", markdown.Code(fmt.Sprintf("%d", errInfo.HTTPCode)), errorDesc))

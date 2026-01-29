@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package tsg
 
 import (
@@ -9,7 +9,6 @@ import (
 	"strings"
 )
 
-// File представляет TypeScript файл для генерации (аналог jen.File)
 type File struct {
 	imports     map[string]importInfo
 	statements  []*Statement
@@ -25,7 +24,6 @@ type importInfo struct {
 	defaulted string
 }
 
-// NewFile создаёт новый TypeScript файл
 func NewFile() *File {
 	return &File{
 		imports:     make(map[string]importInfo),
@@ -34,13 +32,11 @@ func NewFile() *File {
 	}
 }
 
-// Comment устанавливает комментарий в начале файла
 func (f *File) Comment(comment string) *File {
 	f.comment = comment
 	return f
 }
 
-// Import добавляет импорт по умолчанию
 func (f *File) Import(path string, defaultName string) *File {
 	info := f.imports[path]
 	info.path = path
@@ -49,7 +45,6 @@ func (f *File) Import(path string, defaultName string) *File {
 	return f
 }
 
-// ImportNamed добавляет именованный импорт
 func (f *File) ImportNamed(path string, names ...string) *File {
 	info := f.imports[path]
 	info.path = path
@@ -58,7 +53,6 @@ func (f *File) ImportNamed(path string, names ...string) *File {
 	return f
 }
 
-// ImportType добавляет type-only именованный импорт
 func (f *File) ImportType(path string, names ...string) *File {
 	info := f.imports[path]
 	info.path = path
@@ -67,7 +61,6 @@ func (f *File) ImportType(path string, names ...string) *File {
 	return f
 }
 
-// ImportAll добавляет импорт всех экспортов
 func (f *File) ImportAll(path string, alias string) *File {
 	info := f.imports[path]
 	info.path = path
@@ -76,7 +69,6 @@ func (f *File) ImportAll(path string, alias string) *File {
 	return f
 }
 
-// GenerateImports генерирует импорты как statements и добавляет их в начало statements
 func (f *File) GenerateImports() *File {
 	if len(f.imports) == 0 {
 		return f
@@ -92,13 +84,11 @@ func (f *File) GenerateImports() *File {
 	for _, path := range paths {
 		info := f.imports[path]
 
-		// Обычные импорты (default, named, type) - отдельно от namespace import
 		var parts []string
 		if info.defaulted != "" {
 			parts = append(parts, info.defaulted)
 		}
 
-		// Объединяем обычные и type-only импорты в одну строку
 		var namedImports []string
 		if len(info.named) > 0 {
 			namedImports = append(namedImports, info.named...)
@@ -128,12 +118,10 @@ func (f *File) GenerateImports() *File {
 		}
 	}
 
-	// Добавляем импорты в начало statements
 	f.statements = append(importStatements, f.statements...)
 	return f
 }
 
-// Add добавляет statement в файл
 func (f *File) Add(stmt *Statement) *File {
 	if stmt != nil {
 		f.statements = append(f.statements, stmt)
@@ -141,13 +129,11 @@ func (f *File) Add(stmt *Statement) *File {
 	return f
 }
 
-// Line добавляет пустую строку
 func (f *File) Line() *File {
 	f.statements = append(f.statements, NewStatement().Line())
 	return f
 }
 
-// Save сохраняет файл
 func (f *File) Save(filename string) error {
 	if err := os.MkdirAll(filepath.Dir(filename), 0777); err != nil {
 		return err
@@ -155,7 +141,6 @@ func (f *File) Save(filename string) error {
 	return os.WriteFile(filename, []byte(f.String()), 0600)
 }
 
-// String возвращает строковое представление файла
 func (f *File) String() string {
 	var buf strings.Builder
 

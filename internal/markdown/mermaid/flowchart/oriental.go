@@ -1,6 +1,8 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package flowchart
 
-// oriental is a flowchart oriental.
 type oriental string
 
 const (
@@ -16,7 +18,6 @@ const (
 	lr oriental = "LR"
 )
 
-// string returns the oriental as a string.
 func (o oriental) string() string {
 	return string(o)
 }

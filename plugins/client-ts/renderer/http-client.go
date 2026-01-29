@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -14,8 +14,6 @@ import (
 	"tgp/internal/model"
 )
 
-// renderHTTPClient генерирует HTTP клиент для контракта
-// RenderHTTPClientClass генерирует HTTP клиент для контракта
 func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err error) {
 
 	// Отладка: проверяем входные данные
@@ -47,12 +45,10 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		if !r.isHTTP(method, contract) {
 			continue
 		}
-		// Собираем типы из аргументов
 		args := r.argsWithoutContext(method)
 		for _, arg := range args {
 			_ = r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true)
 		}
-		// Собираем типы из результатов
 		results := r.resultsWithoutError(method)
 		for _, ret := range results {
 			_ = r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false)
@@ -105,8 +101,6 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		file.ImportAll(exchangePath, "dto")
 	}
 
-	// Группируем типы по пакетам для генерации namespace
-	// Пропускаем типы, которые импортируются из exchange файла
 	importedTypes := make(map[string]bool)
 	for _, typeName := range exchangeTypes {
 		importedTypes[typeName] = true
@@ -116,7 +110,6 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 	var standaloneTypes []typeDefTs
 
 	for _, def := range common.SortedPairs(r.typeDefTs) {
-		// Пропускаем типы, которые импортируются из exchange
 		typeName := def.importName
 		if typeName == "" {
 			typeName = def.name
@@ -124,7 +117,6 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		if importedTypes[typeName] {
 			continue
 		}
-		// Пропускаем типы из namespace dto, так как они импортируются из exchange
 		if def.importPkg == "dto" {
 			continue
 		}
@@ -133,7 +125,6 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 			// Тип из другого пакета - группируем по пакету
 			typeByPackage[def.importPkg] = append(typeByPackage[def.importPkg], def)
 		} else {
-			// Обычный тип - генерируем отдельно
 			standaloneTypes = append(standaloneTypes, def)
 		}
 	}
@@ -150,7 +141,6 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		file.Line()
 	}
 
-	// Собираем все ошибки для всех методов и генерируем их типы
 	allErrorsMap := make(map[string]errorInfo)
 	for _, method := range contract.Methods {
 		if !r.isHTTP(method, contract) {
@@ -164,13 +154,11 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		}
 	}
 
-	// Генерируем типы ошибок
 	for _, errInfo := range common.SortedPairs(allErrorsMap) {
 		file.Add(r.renderErrorType(errInfo))
 		file.Line()
 	}
 
-	// Генерируем union типы для ошибок каждого метода
 	for _, method := range contract.Methods {
 		if !r.isHTTP(method, contract) {
 			continue
@@ -185,19 +173,16 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		}
 	}
 
-	// Генерируем класс клиента
 	clientClass := r.renderHTTPClientClass(contract)
 	file.Add(clientClass)
 	file.Line()
 
-	// Генерируем импорты
 	file.GenerateImports()
 
 	outFilename := path.Join(outDir, fmt.Sprintf("%s-http.ts", r.tsFileName(contract)))
 	return file.Save(outFilename)
 }
 
-// renderHTTPClientClass генерирует класс HTTP клиента
 func (r *ClientRenderer) renderHTTPClientClass(contract *model.Contract) *tsg.Statement {
 	// Сохраняем contract в локальную переменную для использования в замыкании
 	// Это гарантирует, что contract не будет изменен между установкой r.contract и использованием в замыкании
@@ -225,7 +210,6 @@ func (r *ClientRenderer) renderHTTPClientClass(contract *model.Contract) *tsg.St
 		grp.Line()
 
 		// Методы для каждого HTTP метода контракта
-		// Используем currentContract, чтобы гарантировать, что contract не изменен
 		// Также убеждаемся, что r.contract установлен перед вызовом renderHTTPMethod
 		if r.contract == nil {
 			slog.Error(i18n.Msg("renderHTTPClientClass: r.contract is nil in closure"))

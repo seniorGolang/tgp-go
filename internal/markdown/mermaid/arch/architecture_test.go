@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 // Package arch is mermaid architecture diagram builder.
 // The building blocks of an architecture are groups, services, edges, and junctions.
 // The arch package incorporates beta features of Mermaid, so the specifications are subject to significant changes.

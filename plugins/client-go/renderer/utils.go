@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -30,7 +30,6 @@ const keyPackage key = "package"
 var numberSequence = regexp.MustCompile(`([a-zA-Z])(\d+)([a-zA-Z]?)`)
 var numberReplacement = []byte(`$1 $2 $3`)
 
-// toCamelInitCase конвертирует строку в CamelCase.
 func toCamelInitCase(s string, initCase bool) string {
 	s = addWordBoundariesToNumbers(s)
 	s = strings.Trim(s, " ")
@@ -59,7 +58,6 @@ func toCamelInitCase(s string, initCase bool) string {
 	return n
 }
 
-// ToCamel конвертирует строку в CamelCase.
 func ToCamel(s string) string {
 	return toCamelInitCase(s, true)
 }
@@ -73,7 +71,6 @@ func isAllUpper(s string) bool {
 	return true
 }
 
-// ToLowerCamel конвертирует строку в lowerCamelCase.
 func ToLowerCamel(s string) string {
 	if isAllUpper(s) {
 		return s
@@ -93,26 +90,26 @@ func addWordBoundariesToNumbers(s string) string {
 	return string(b)
 }
 
-// fieldTypeFromVariable конвертирует тип из Variable в код jennifer.
-// Использует информацию о массивах/map из Variable.
 func (r *ClientRenderer) fieldTypeFromVariable(ctx context.Context, variable *model.Variable, allowEllipsis bool) *Statement {
 	c := &Statement{}
 
-	// Добавляем указатели
 	for i := 0; i < variable.NumberOfPointers; i++ {
 		c.Op("*")
 	}
 
-	// Обрабатываем ellipsis
 	if variable.IsEllipsis && allowEllipsis {
 		c.Op("...")
 		if variable.TypeID != "" {
 			return c.Add(r.fieldType(ctx, variable.TypeID, 0, false))
 		}
+		if variable.MapKeyID != "" && variable.MapValueID != "" {
+			keyType := r.fieldType(ctx, variable.MapKeyID, variable.MapKeyPointers, false)
+			valueType := r.fieldType(ctx, variable.MapValueID, variable.ElementPointers, false)
+			return c.Map(keyType).Add(valueType)
+		}
 		return c
 	}
 
-	// Обрабатываем массивы и слайсы
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		// ВАЖНО: если TypeID указывает на именованный тип из внешнего пакета (например, uuid.UUID),
 		// используем его как именованный тип, а не как массив [16]byte
@@ -121,11 +118,9 @@ func (r *ClientRenderer) fieldTypeFromVariable(ctx context.Context, variable *mo
 			if ok && typ.ImportPkgPath != "" && typ.TypeName != "" {
 				if !r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 					// Это именованный тип из внешнего пакета - используем его как есть
-					// Добавляем указатели на переменной (если есть *uuid.UUID)
 					for i := 0; i < variable.NumberOfPointers; i++ {
 						c.Op("*")
 					}
-					// Используем именованный тип из внешнего пакета
 					if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
 						packageName := typ.PkgName
 						if packageName == "" {
@@ -158,31 +153,31 @@ func (r *ClientRenderer) fieldTypeFromVariable(ctx context.Context, variable *mo
 		if variable.TypeID != "" {
 			return c.Add(r.fieldType(ctx, variable.TypeID, variable.ElementPointers, false))
 		}
+		if variable.MapKeyID != "" && variable.MapValueID != "" {
+			keyType := r.fieldType(ctx, variable.MapKeyID, variable.MapKeyPointers, false)
+			valueType := r.fieldType(ctx, variable.MapValueID, variable.ElementPointers, false)
+			return c.Map(keyType).Add(valueType)
+		}
 		// Если TypeID пустой, используем any как fallback
 		return c.Add(Id("any"))
 	}
 
-	// Обрабатываем map
 	if variable.MapKeyID != "" && variable.MapValueID != "" {
 		keyType := r.fieldType(ctx, variable.MapKeyID, variable.MapKeyPointers, false)
 		valueType := r.fieldType(ctx, variable.MapValueID, variable.ElementPointers, false)
 		return c.Map(keyType).Add(valueType)
 	}
 
-	// Базовый тип
 	return c.Add(r.fieldType(ctx, variable.TypeID, 0, false))
 }
 
-// fieldType конвертирует тип из renderer в код jennifer.
 func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfPointers int, allowEllipsis bool) *Statement {
 	c := &Statement{}
 
-	// Добавляем указатели
 	for i := 0; i < numberOfPointers; i++ {
 		c.Op("*")
 	}
 
-	// Получаем тип из проекта
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		// Тип не найден в project.Types - извлекаем информацию из typeID
@@ -236,7 +231,6 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 		}
 	}
 
-	// Обрабатываем ellipsis
 	if typ.IsEllipsis && allowEllipsis {
 		c.Op("...")
 		if typ.ArrayOfID != "" {
@@ -245,7 +239,6 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 		return c
 	}
 
-	// Обрабатываем в зависимости от вида типа
 	switch typ.Kind {
 	case model.TypeKindArray:
 		switch {
@@ -287,7 +280,6 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 	case model.TypeKindStruct:
 		// ВАЖНО: все типы из текущего проекта должны генерироваться локально и использоваться из dto пакета
 		if typ.ImportPkgPath != "" && typ.TypeName != "" {
-			// Проверяем, является ли тип из текущего проекта
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта - используем dto пакет
 				if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
@@ -299,7 +291,6 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 			}
 			// Тип из внешнего пакета - импортируем как обычно
 			if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
-				// Используем PkgName (реальное имя пакета) для ImportName
 				packageName := typ.PkgName
 				if packageName == "" {
 					packageName = filepath.Base(typ.ImportPkgPath)
@@ -320,7 +311,6 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 	case model.TypeKindInterface:
 		// ВАЖНО: все типы из текущего проекта должны генерироваться локально и использоваться из dto пакета
 		if typ.ImportPkgPath != "" && typ.TypeName != "" {
-			// Проверяем, является ли тип из текущего проекта
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта - используем dto пакет
 				if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
@@ -332,7 +322,6 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 			}
 			// Тип из внешнего пакета - импортируем как обычно
 			if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
-				// Используем PkgName (реальное имя пакета) для ImportName
 				packageName := typ.PkgName
 				if packageName == "" {
 					packageName = filepath.Base(typ.ImportPkgPath)
@@ -380,7 +369,6 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 		// ВАЖНО: все типы из текущего проекта должны генерироваться локально и использоваться из dto пакета
 		// Если у типа есть ImportPkgPath и TypeName, это именованный тип (например, UserID int64, Email string)
 		if typ.ImportPkgPath != "" && typ.TypeName != "" {
-			// Проверяем, является ли тип из текущего проекта
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта - используем dto пакет
 				if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
@@ -430,7 +418,6 @@ func (r *ClientRenderer) funcDefinitionParams(ctx context.Context, vars []*model
 	return c
 }
 
-// isContextFirst проверяет, является ли первый аргумент context.Context.
 func (r *ClientRenderer) isContextFirst(vars []*model.Variable) bool {
 
 	if len(vars) == 0 {
@@ -438,23 +425,19 @@ func (r *ClientRenderer) isContextFirst(vars []*model.Variable) bool {
 	}
 	typ, ok := r.project.Types[vars[0].TypeID]
 	if !ok {
-		// Проверяем по typeID - если это "context:Context", то это context.Context
 		return vars[0].TypeID == "context:Context"
 	}
 	return typ.Kind == model.TypeKindInterface && typ.ImportPkgPath == "context" && typ.TypeName == "Context"
 }
 
-// isErrorLast проверяет, является ли последний результат error.
 func (r *ClientRenderer) isErrorLast(vars []*model.Variable) bool {
 
 	if len(vars) == 0 {
 		return false
 	}
-	// Проверяем по typeID - если это "error", то это встроенный тип error
 	return vars[len(vars)-1].TypeID == "error"
 }
 
-// argsWithoutContext возвращает аргументы без первого context.Context, если он есть.
 func (r *ClientRenderer) argsWithoutContext(method *model.Method) []*model.Variable {
 
 	if r.isContextFirst(method.Args) {
@@ -463,7 +446,6 @@ func (r *ClientRenderer) argsWithoutContext(method *model.Method) []*model.Varia
 	return method.Args
 }
 
-// resultsWithoutError возвращает результаты без последнего error, если он есть.
 func (r *ClientRenderer) resultsWithoutError(method *model.Method) []*model.Variable {
 
 	if r.isErrorLast(method.Results) {
@@ -472,19 +454,16 @@ func (r *ClientRenderer) resultsWithoutError(method *model.Method) []*model.Vari
 	return method.Results
 }
 
-// requestStructName возвращает имя структуры request для метода.
 func (r *ClientRenderer) requestStructName(contract *model.Contract, method *model.Method) string {
 
 	return "request" + contract.Name + method.Name
 }
 
-// responseStructName возвращает имя структуры response для метода.
 func (r *ClientRenderer) responseStructName(contract *model.Contract, method *model.Method) string {
 
 	return "response" + contract.Name + method.Name
 }
 
-// ContractKeys возвращает отсортированный список имён контрактов.
 func (r *ClientRenderer) ContractKeys() []string {
 	keys := make([]string, 0, len(r.project.Contracts))
 	for _, contract := range r.project.Contracts {
@@ -494,30 +473,27 @@ func (r *ClientRenderer) ContractKeys() []string {
 	return keys
 }
 
-// methodIsJsonRPC проверяет, является ли метод JSON-RPC методом.
 func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) bool {
-	if method == nil || method.Annotations == nil {
+
+	if method == nil {
 		return false
 	}
-	// Метод является JSON-RPC, если контракт имеет jsonRPC-server и метод НЕ имеет http-method
-	return contract != nil && contract.Annotations.IsSet(TagServerJsonRPC) && !method.Annotations.IsSet(TagMethodHTTP)
+	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
 }
 
-// methodIsHTTP проверяет, является ли метод HTTP методом.
 func (r *ClientRenderer) methodIsHTTP(method *model.Method) bool {
-	if method == nil || method.Annotations == nil {
+
+	if method == nil {
 		return false
 	}
-	return method.Annotations.IsSet(TagMethodHTTP)
+	return model.IsAnnotationSet(r.project, nil, method, nil, TagMethodHTTP)
 }
 
-// getPackageJSON возвращает путь к JSON пакету из аннотаций с учетом наследования.
 func (r *ClientRenderer) getPackageJSON(contract *model.Contract) string {
 
 	return model.GetAnnotationValue(r.project, contract, nil, nil, tagPackageJSON, PackageStdJSON)
 }
 
-// isTypeFromCurrentProject проверяет, является ли тип из текущего проекта.
 func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) bool {
 	// Если ImportPkgPath начинается с ModulePath проекта, это тип из текущего проекта
 	if r.project.ModulePath != "" && strings.HasPrefix(importPkgPath, r.project.ModulePath) {
@@ -526,7 +502,6 @@ func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) bool {
 	return false
 }
 
-// parseTagsFromDocs парсит аннотации из документации
 func (r *ClientRenderer) parseTagsFromDocs(docs string) map[string]string {
 	tags := make(map[string]string)
 	if docs == "" {
@@ -556,9 +531,7 @@ func (r *ClientRenderer) parseTagsFromDocs(docs string) map[string]string {
 	return tags
 }
 
-// generateExampleValueFromVariable генерирует пример значения для переменной
 func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variable, docs, pkgPath string) string {
-	// Обрабатываем массивы и слайсы
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		elemType := r.goTypeString(variable.TypeID, pkgPath)
 		if variable.IsSlice {
@@ -567,14 +540,12 @@ func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variab
 		return fmt.Sprintf("[%d]%s{}", variable.ArrayLen, elemType)
 	}
 
-	// Обрабатываем map
 	if variable.MapKeyID != "" && variable.MapValueID != "" {
 		keyType := r.goTypeString(variable.MapKeyID, pkgPath)
 		valueType := r.goTypeString(variable.MapValueID, pkgPath)
 		return fmt.Sprintf("map[%s]%s{}", keyType, valueType)
 	}
 
-	// Базовый тип - используем простые примеры
 	typeStr := r.goTypeString(variable.TypeID, pkgPath)
 	switch typeStr {
 	case "string":
@@ -596,7 +567,6 @@ func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variab
 	}
 }
 
-// exchangeField представляет поле для обмена данными.
 type exchangeField struct {
 	name             string
 	typeID           string
@@ -610,19 +580,16 @@ type exchangeField struct {
 	tags             map[string]string
 }
 
-// fieldsArgument возвращает поля для аргументов метода.
 func (r *ClientRenderer) fieldsArgument(method *model.Method) []exchangeField {
 	vars := r.argsWithoutContext(method)
 	return r.varsToFields(vars, method.Annotations)
 }
 
-// fieldsResult возвращает поля для результатов метода.
 func (r *ClientRenderer) fieldsResult(method *model.Method) []exchangeField {
 	vars := r.resultsWithoutError(method)
 	return r.varsToFields(vars, method.Annotations)
 }
 
-// varsToFields конвертирует переменные в поля для обмена данными.
 func (r *ClientRenderer) varsToFields(vars []*model.Variable, methodTags map[string]string) []exchangeField {
 	fields := make([]exchangeField, 0, len(vars))
 	for _, v := range vars {
@@ -638,9 +605,7 @@ func (r *ClientRenderer) varsToFields(vars []*model.Variable, methodTags map[str
 			mapValueID:       v.MapValueID,
 			tags:             make(map[string]string),
 		}
-		// Обрабатываем теги из аннотаций метода
 		// Формат ключа: "tag:{variableName}:{tagName}"
-		// Используем отсортированные пары для детерминированного порядка
 		prefix := fmt.Sprintf("tag:%s:", v.Name)
 		for key, value := range common.SortedPairs(methodTags) {
 			if strings.HasPrefix(key, prefix) {

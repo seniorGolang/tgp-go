@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 //go:build !wasip1
 
 package mod
@@ -9,7 +12,6 @@ import (
 	"path/filepath"
 )
 
-// goModPath находит путь к go.mod файлу в нативном окружении через exec.Command.
 func goModPath(root string) (string, error) {
 
 	var stdout []byte
@@ -22,7 +24,6 @@ func goModPath(root string) (string, error) {
 			break
 		}
 		if _, ok := err.(*os.PathError); ok {
-			// try to find go.mod on level higher
 			r := filepath.Join(root, "..")
 			if r == root { // when we in root directory stop trying
 				return "", err

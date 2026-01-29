@@ -14,7 +14,7 @@ const (
 )
 
 type formatState struct {
-	value          interface{}
+	value          any
 	fs             fmt.State
 	depth          int
 	pointers       map[uintptr]int

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package marker
 
 import (
@@ -12,7 +12,6 @@ import (
 	"strings"
 )
 
-// computeTrackedFilesHash вычисляет hash отслеживаемых .go файлов.
 func computeTrackedFilesHash(rootDir string) (hash string, err error) {
 
 	var files []trackedFile
@@ -24,12 +23,10 @@ func computeTrackedFilesHash(rootDir string) (hash string, err error) {
 		return computeSHA256(""), nil
 	}
 
-	// Сортируем для детерминированности
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].path < files[j].path
 	})
 
-	// Формируем строку: path1:hash1\npath2:hash2\n...
 	var builder strings.Builder
 	for _, file := range files {
 		builder.WriteString(file.path)
@@ -41,7 +38,6 @@ func computeTrackedFilesHash(rootDir string) (hash string, err error) {
 	return computeSHA256(builder.String()), nil
 }
 
-// computeModifiedFilesHash вычисляет hash измененных файлов.
 func computeModifiedFilesHash(rootDir string) (hash string, err error) {
 
 	var files []string
@@ -53,10 +49,8 @@ func computeModifiedFilesHash(rootDir string) (hash string, err error) {
 		return computeSHA256(""), nil
 	}
 
-	// Сортируем для детерминированности
 	sort.Strings(files)
 
-	// Вычисляем hash для каждого файла
 	type fileHash struct {
 		path string
 		hash string
@@ -81,7 +75,6 @@ func computeModifiedFilesHash(rootDir string) (hash string, err error) {
 		return computeSHA256(""), nil
 	}
 
-	// Формируем строку: path1:hash1\npath2:hash2\n...
 	var builder strings.Builder
 	for _, fh := range fileHashes {
 		builder.WriteString(fh.path)
@@ -93,7 +86,6 @@ func computeModifiedFilesHash(rootDir string) (hash string, err error) {
 	return computeSHA256(builder.String()), nil
 }
 
-// computeUntrackedFilesHash вычисляет hash неотслеживаемых .go файлов.
 func computeUntrackedFilesHash(rootDir string) (hash string, err error) {
 
 	var files []string
@@ -105,10 +97,8 @@ func computeUntrackedFilesHash(rootDir string) (hash string, err error) {
 		return computeSHA256(""), nil
 	}
 
-	// Сортируем для детерминированности
 	sort.Strings(files)
 
-	// Вычисляем hash для каждого файла
 	type fileHash struct {
 		path string
 		hash string
@@ -132,7 +122,6 @@ func computeUntrackedFilesHash(rootDir string) (hash string, err error) {
 		return computeSHA256(""), nil
 	}
 
-	// Формируем строку: path1:hash1\npath2:hash2\n...
 	var builder strings.Builder
 	for _, fh := range fileHashes {
 		builder.WriteString(fh.path)
@@ -144,7 +133,6 @@ func computeUntrackedFilesHash(rootDir string) (hash string, err error) {
 	return computeSHA256(builder.String()), nil
 }
 
-// computeDeletedFilesHash вычисляет hash списка удаленных файлов.
 func computeDeletedFilesHash(rootDir string) (hash string, err error) {
 
 	var files []string
@@ -156,15 +144,12 @@ func computeDeletedFilesHash(rootDir string) (hash string, err error) {
 		return computeSHA256(""), nil
 	}
 
-	// Сортируем для детерминированности
 	sort.Strings(files)
 
-	// Формируем строку: path1\npath2\n...
 	combined := strings.Join(files, "\n")
 	return computeSHA256(combined), nil
 }
 
-// computeSHA256 вычисляет SHA256 hash строки.
 func computeSHA256(data string) string {
 
 	hasher := sha256.New()
@@ -172,14 +157,12 @@ func computeSHA256(data string) string {
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-// computeFileHash вычисляет hash файла через SHA256.
 func computeFileHash(rootDir string, filePath string) (hash string, err error) {
 
 	absPath := filepath.Join(rootDir, filePath)
 	return computeFileSHA256(absPath)
 }
 
-// computeFileSHA256 вычисляет SHA256 hash файла.
 func computeFileSHA256(filePath string) (hash string, err error) {
 
 	file, err := os.Open(filePath)

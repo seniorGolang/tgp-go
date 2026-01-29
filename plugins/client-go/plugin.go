@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package main
 
 import (
@@ -20,25 +23,20 @@ import (
 //go:embed plugin.md
 var pluginDoc string
 
-// ClientGoPlugin реализует интерфейс Plugin.
 type ClientGoPlugin struct{}
 
-// Execute выполняет основную логику плагина.
 func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
 
-	// Получаем project из request
 	var project *model.Project
 	if project, err = helper.GetProject(request); err != nil {
 		return
 	}
 
-	// Получаем output из request
 	var output string
 	if output, err = helper.GetOutput(request); err != nil || output == "" {
 		return nil, errors.New(i18n.Msg("out option is required and must be a string"))
 	}
 
-	// Получаем опции документации
 	docOpts := generator.DocOptions{
 		Enabled: true,
 	}
@@ -55,7 +53,6 @@ func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...s
 		docOpts.FilePath = filepath.Join(output, "readme.md")
 	}
 
-	// Получаем список контрактов для фильтрации
 	var contracts []string
 	if contracts, err = helper.ParseStringList(request, "contracts"); err != nil {
 		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
@@ -64,7 +61,6 @@ func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...s
 	// Фильтруем контракты, если указаны
 	project.Contracts = helper.FilterContracts(project, contracts)
 
-	// Собираем статистику для логирования
 	clientStats := stats.CollectClientStats(project)
 
 	// Логируем начало генерации с деталями
@@ -72,12 +68,11 @@ func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...s
 	slog.Info(i18n.Msg("generation started"), attrs...)
 
 	// Очищаем старые сгенерированные файлы перед новой генерацией
-	if err = cleanup.CleanupGeneratedFiles(output); err != nil {
+	if err = cleanup.GeneratedFiles(output); err != nil {
 		slog.Debug(i18n.Msg("failed to cleanup generated files"), slog.String("error", err.Error()))
 		// Не возвращаем ошибку, так как очистка не критична
 	}
 
-	// Генерируем клиент
 	if err = generator.GenerateClient(project, output, docOpts); err != nil {
 		slog.Error(i18n.Msg("failed to generate Go client"), slog.String("error", err.Error()))
 		err = fmt.Errorf("%s: %w", i18n.Msg("generate Go client"), err)
@@ -99,7 +94,6 @@ func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...s
 	return
 }
 
-// Info возвращает информацию о плагине.
 func (p *ClientGoPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{

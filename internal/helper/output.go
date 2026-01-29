@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package helper
 
 import (
@@ -13,10 +13,6 @@ import (
 	"tgp/internal/common"
 )
 
-// GetOutput получает output из request, нормализует путь для WASM файловой системы
-// и автоматически определяет, является ли путь файлом или директорией,
-// создавая необходимые директории.
-// Если параметр не найден, возвращает пустую строку без ошибки.
 func GetOutput(request data.Storage) (output string, err error) {
 
 	var outputRaw string

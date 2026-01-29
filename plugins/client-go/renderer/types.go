@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -19,8 +19,6 @@ import (
 	"tgp/internal/model"
 )
 
-// RenderClientTypes генерирует локальные версии всех типов, используемых в exchange структурах.
-// Использует project.Types напрямую, проверяя для каждого typeID, нужно ли генерировать локально.
 func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) error {
 
 	if len(collectedTypeIDs) == 0 {
@@ -43,15 +41,10 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 	ctx := context.WithValue(context.Background(), keyCode, srcFile) // nolint
 	ctx = context.WithValue(ctx, keyPackage, "dto")                  // nolint
 
-	// Генерируем типы в детерминированном порядке (сортируем по typeID)
-	// Генерируем каждый тип в отдельный файл
-	// Используем project.Types напрямую, проверяя для каждого typeID, нужно ли генерировать локально
 	notFoundCount := 0
 	skippedCount := 0
 	generatedCount := 0
-	// Используем common.SortedKeys, так как collectedTypeIDs - это map[string]bool, а не map[string]*Type
 	for _, typeID := range common.SortedKeys(collectedTypeIDs) {
-		// Получаем тип из project.Types (Core уже собрал все типы рекурсивно)
 		typ, ok := r.project.Types[typeID]
 		if !ok {
 			notFoundCount++
@@ -59,17 +52,14 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 			continue
 		}
 
-		// Пропускаем встроенные типы
 		if r.isBuiltinType(typeID) {
 			skippedCount++
 			slog.Debug(i18n.Msg("RenderClientTypes: skipping builtin type"), slog.String("typeID", typeID))
 			continue
 		}
 
-		// Определяем, является ли тип из текущего проекта
 		isFromCurrentProject := r.isTypeFromCurrentProject(typ.ImportPkgPath)
 
-		// Генерируем типы из текущего проекта
 		// ВАЖНО: алиасы на внешние типы тоже генерируем, но как алиасы (type Alias = ExternalType)
 		// Это позволяет сохранить семантику алиаса в клиенте
 		if !isFromCurrentProject {
@@ -90,10 +80,8 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 			continue
 		}
 
-		// Получаем имя типа для имени файла
 		typeName := typ.TypeName
 		if typeName == "" {
-			// Извлекаем имя из typeID (формат "pkgPath:TypeName" или просто "TypeName")
 			if strings.Contains(typeID, ":") {
 				parts := strings.SplitN(typeID, ":", 2)
 				if len(parts) == 2 {
@@ -111,8 +99,6 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 			}
 		}
 
-		// ВАЖНО: если тип собран, он ДОЛЖЕН быть сгенерирован
-		// Генерируем тип напрямую в зависимости от его структуры
 		var typeCode Code
 		switch {
 		case typ.Kind == model.TypeKindStruct:
@@ -165,10 +151,8 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 	return nil
 }
 
-// generateClientStruct генерирует код для структуры.
 func (r *ClientRenderer) generateClientStruct(ctx context.Context, typeName string, typ *model.Type) Code {
 
-	// Сортируем поля по имени для гарантии детерминированного порядка
 	sortedFields := slices.Clone(typ.StructFields)
 	slices.SortFunc(sortedFields, func(a, b *model.StructField) int {
 		nameA := a.Name
@@ -197,10 +181,8 @@ func (r *ClientRenderer) generateClientStruct(ctx context.Context, typeName stri
 	})
 }
 
-// generateClientStructField генерирует код для поля структуры.
 func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *model.StructField) *Statement {
 
-	// Обрабатываем встроенные поля (embedded fields) - когда Name пустой
 	var s *Statement
 	if field.Name == "" {
 		// Встроенное поле - генерируем только тип без имени
@@ -211,23 +193,22 @@ func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *m
 		s = Id(fieldName)
 	}
 
-	// Обрабатываем в зависимости от вида поля
 	switch {
 	case field.IsSlice || field.ArrayLen > 0:
-		// Обрабатываем массивы и слайсы
 		if field.IsSlice {
 			s = s.Index()
 		} else {
 			s = s.Index(Lit(field.ArrayLen))
 		}
 		if field.TypeID != "" {
-			// Для массивов указатели применяются к типу элемента
 			// ВАЖНО: используем ElementPointers, а не NumberOfPointers
 			s = s.Add(r.fieldTypeForClient(ctx, field.TypeID, field.ElementPointers, false))
+		} else {
+			// Пустой TypeID элемента (например, не удалось разрешить тип) — генерируем []any
+			s = s.Id("any")
 		}
 
 	case field.MapKeyID != "" && field.MapValueID != "":
-		// Обрабатываем мапы
 		keyType := r.fieldTypeForClient(ctx, field.MapKeyID, field.MapKeyPointers, false)
 		valueType := r.fieldTypeForClient(ctx, field.MapValueID, field.ElementPointers, false)
 		s = s.Map(keyType).Add(valueType)
@@ -237,7 +218,7 @@ func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *m
 		// ВАЖНО: проверяем анонимные интерфейсы и пустые typeID перед вызовом fieldTypeForClient
 		switch {
 		case field.TypeID == "":
-			// Пустой typeID обычно означает interface{} или any
+			// Пустой typeID обычно означает any
 			s = s.Id("any")
 		case strings.Contains(field.TypeID, ":interface:anonymous"):
 			s = s.Id("any")
@@ -246,9 +227,6 @@ func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *m
 		}
 	}
 
-	// Добавляем теги
-	// Сортируем ключи тегов для гарантии детерминированного порядка
-	// Используем итератор для получения отсортированных пар ключ-значение
 	tags := make(map[string]string)
 	for tagName, tagValues := range common.SortedPairs(field.Tags) {
 		if len(tagValues) > 0 {
@@ -259,7 +237,6 @@ func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *m
 		s = s.Tag(tags)
 	}
 
-	// Добавляем комментарии
 	if len(field.Docs) > 0 {
 		for _, doc := range field.Docs {
 			s = s.Comment(doc)
@@ -269,10 +246,8 @@ func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *m
 	return s
 }
 
-// generateClientInterface генерирует код для интерфейса.
 func (r *ClientRenderer) generateClientInterface(ctx context.Context, typeName string, typ *model.Type) Code {
 
-	// Сортируем встроенные интерфейсы по TypeID для гарантии детерминированного порядка
 	sortedEmbedded := slices.Clone(typ.EmbeddedInterfaces)
 	slices.SortFunc(sortedEmbedded, func(a, b *model.Variable) int {
 		if a.TypeID < b.TypeID {
@@ -284,7 +259,6 @@ func (r *ClientRenderer) generateClientInterface(ctx context.Context, typeName s
 		return 0
 	})
 
-	// Сортируем методы по имени для гарантии детерминированного порядка
 	sortedMethods := slices.Clone(typ.InterfaceMethods)
 	slices.SortFunc(sortedMethods, func(a, b *model.Function) int {
 		if a.Name < b.Name {
@@ -297,13 +271,11 @@ func (r *ClientRenderer) generateClientInterface(ctx context.Context, typeName s
 	})
 
 	return Type().Id(typeName).InterfaceFunc(func(gr *Group) {
-		// Добавляем встроенные интерфейсы
 		for _, embedded := range sortedEmbedded {
 			embeddedType := r.fieldTypeForClient(ctx, embedded.TypeID, 0, false)
 			gr.Add(embeddedType)
 		}
 
-		// Добавляем методы
 		for _, method := range sortedMethods {
 			methodCode := r.generateClientMethod(ctx, method)
 			gr.Add(methodCode)
@@ -311,12 +283,10 @@ func (r *ClientRenderer) generateClientInterface(ctx context.Context, typeName s
 	})
 }
 
-// generateClientMethod генерирует код для метода интерфейса.
 func (r *ClientRenderer) generateClientMethod(ctx context.Context, method *model.Function) *Statement {
 
 	s := Id(method.Name)
 
-	// Параметры
 	args := make([]Code, 0, len(method.Args))
 	for _, arg := range method.Args {
 		argType := r.fieldTypeFromVariableForClient(ctx, arg, false)
@@ -344,13 +314,11 @@ func (r *ClientRenderer) generateClientMethod(ctx context.Context, method *model
 	return s
 }
 
-// generateClientAlias генерирует код для алиаса типа или именованного типа с базовым типом.
 func (r *ClientRenderer) generateClientAlias(ctx context.Context, typeName string, typ *model.Type) Code {
 
 	// Для алиасов всегда используем базовый тип через AliasOf
 	// Это позволяет сохранить семантику алиаса в клиенте (type Alias = BaseType)
 	if typ.AliasOf != "" {
-		// Используем базовый тип - он будет правильно обработан (импорт или локальный тип)
 		baseType := r.fieldTypeForClient(ctx, typ.AliasOf, 0, false)
 		return Type().Id(typeName).Op("=").Add(baseType)
 	}
@@ -359,7 +327,6 @@ func (r *ClientRenderer) generateClientAlias(ctx context.Context, typeName strin
 		return Type().Id(typeName).Op("=").Add(baseType)
 	}
 
-	// Обрабатываем map типы отдельно
 	if typ.Kind == model.TypeKindMap {
 		if typ.MapKeyID != "" && typ.MapValueID != "" {
 			keyType := r.fieldTypeForClient(ctx, typ.MapKeyID, typ.MapKeyPointers, false)
@@ -385,18 +352,14 @@ func (r *ClientRenderer) generateClientAlias(ctx context.Context, typeName strin
 	return Type().Id(typeName).Op("=").Map(Id("string")).Id("any")
 }
 
-// fieldTypeForClient генерирует тип для клиента, используя локальные версии вместо импорта.
-// Это версия fieldType, которая использует локальные типы из dto пакета для типов из текущего проекта.
 func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, numberOfPointers int, allowEllipsis bool) *Statement {
 
 	c := &Statement{}
 
-	// Добавляем указатели
 	for i := 0; i < numberOfPointers; i++ {
 		c.Op("*")
 	}
 
-	// Получаем тип из проекта
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		// Тип не найден - проверяем, является ли он встроенным
@@ -451,7 +414,6 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		}
 	}
 
-	// Обрабатываем ellipsis
 	if typ.IsEllipsis && allowEllipsis {
 		c.Op("...")
 		if typ.ArrayOfID != "" {
@@ -460,7 +422,6 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		return c
 	}
 
-	// Обрабатываем в зависимости от вида типа
 	switch typ.Kind {
 	case model.TypeKindArray:
 		switch {
@@ -519,13 +480,11 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 	case model.TypeKindStruct, model.TypeKindInterface:
 		// ВАЖНО: все типы из текущего проекта должны генерироваться локально и использоваться из dto пакета
 		if typ.ImportPkgPath != "" && typ.TypeName != "" {
-			// Проверяем, является ли тип из текущего проекта
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта
 				// ВАЖНО: если мы генерируем код в пакете dto, то типы из того же пакета
 				// используем без импорта (просто по имени), чтобы избежать циклических импортов
 				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
-					// Генерируем код в пакете dto - используем просто имя типа без импорта
 					return c.Id(typ.TypeName)
 				}
 				// Тип из текущего проекта, но не генерируется в пакете dto - используем dto пакет
@@ -552,7 +511,7 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 			}
 			return c.Qual(typ.ImportPkgPath, typ.TypeName)
 		}
-		// Если TypeName пустой, это может быть анонимный интерфейс (interface{})
+		// Если TypeName пустой, это может быть анонимный интерфейс (any)
 		if strings.Contains(typeID, ":interface:anonymous") || typ.Kind == model.TypeKindAny {
 			return c.Id("any")
 		}
@@ -580,11 +539,9 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		// ВАЖНО: для алиасов из текущего проекта используем локальный тип из dto пакета
 		// Это позволяет сохранить семантику алиаса в клиенте
 		if typ.ImportPkgPath != "" && typ.TypeName != "" {
-			// Проверяем, является ли тип из текущего проекта
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта - используем локальный тип из dto пакета
 				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
-					// Генерируем код в пакете dto - используем просто имя типа без импорта
 					return c.Id(typ.TypeName)
 				}
 				// Тип из текущего проекта, но не генерируется в пакете dto - используем dto пакет
@@ -603,7 +560,6 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 			// ВАЖНО: если алиас имеет TypeName и ImportPkgPath из текущего проекта,
 			// используем имя алиаса, а не базовый тип, независимо от того, откуда базовый тип
 			if typ.TypeName != "" {
-				// Проверяем, является ли алиас из текущего проекта
 				isAliasFromCurrentProject := false
 				if typ.ImportPkgPath != "" {
 					isAliasFromCurrentProject = r.isTypeFromCurrentProject(typ.ImportPkgPath)
@@ -667,13 +623,11 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		// ВАЖНО: все типы из текущего проекта должны генерироваться локально и использоваться из dto пакета
 		// Если у типа есть ImportPkgPath и TypeName, это именованный тип (например, UserID int64, Email string)
 		if typ.ImportPkgPath != "" && typ.TypeName != "" {
-			// Проверяем, является ли тип из текущего проекта
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта
 				// ВАЖНО: если мы генерируем код в пакете dto, то типы из того же пакета
 				// используем без импорта (просто по имени), чтобы избежать циклических импортов
 				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
-					// Генерируем код в пакете dto - используем просто имя типа без импорта
 					return c.Id(typ.TypeName)
 				}
 				// Тип из текущего проекта, но не генерируется в пакете dto - используем dto пакет
@@ -704,7 +658,6 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 	}
 }
 
-// isBuiltinType проверяет, является ли тип встроенным типом Go.
 func (r *ClientRenderer) isBuiltinType(typeID string) bool {
 	builtinTypes := map[string]bool{
 		"string":  true,
@@ -729,14 +682,11 @@ func (r *ClientRenderer) isBuiltinType(typeID string) bool {
 	return builtinTypes[typeID]
 }
 
-// fieldTypeFromVariableForClient генерирует тип из Variable для клиента.
 func (r *ClientRenderer) fieldTypeFromVariableForClient(ctx context.Context, variable *model.Variable, allowEllipsis bool) *Statement {
 
 	c := &Statement{}
 
-	// Обрабатываем ellipsis
 	if variable.IsEllipsis && allowEllipsis {
-		// Добавляем указатели перед ellipsis
 		for i := 0; i < variable.NumberOfPointers; i++ {
 			c.Op("*")
 		}
@@ -747,7 +697,6 @@ func (r *ClientRenderer) fieldTypeFromVariableForClient(ctx context.Context, var
 		return c
 	}
 
-	// Обрабатываем массивы и слайсы
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		// ВАЖНО: если TypeID указывает на именованный тип из внешнего пакета (например, uuid.UUID),
 		// используем его как именованный тип, а не как массив [16]byte
@@ -756,11 +705,9 @@ func (r *ClientRenderer) fieldTypeFromVariableForClient(ctx context.Context, var
 			if ok && typ.ImportPkgPath != "" && typ.TypeName != "" {
 				if !r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 					// Это именованный тип из внешнего пакета - используем его как есть
-					// Добавляем указатели на переменной (если есть *uuid.UUID)
 					for i := 0; i < variable.NumberOfPointers; i++ {
 						c.Op("*")
 					}
-					// Используем именованный тип из внешнего пакета
 					if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
 						packageName := typ.PkgName
 						if packageName == "" {
@@ -773,7 +720,6 @@ func (r *ClientRenderer) fieldTypeFromVariableForClient(ctx context.Context, var
 				}
 			}
 		}
-		// Добавляем указатели на переменной (если есть *[]T)
 		for i := 0; i < variable.NumberOfPointers; i++ {
 			c.Op("*")
 		}
@@ -790,7 +736,6 @@ func (r *ClientRenderer) fieldTypeFromVariableForClient(ctx context.Context, var
 		return c.Add(Id("any"))
 	}
 
-	// Обрабатываем map
 	if variable.MapKeyID != "" && variable.MapValueID != "" {
 		// Указатели на переменной применяются к map
 		for i := 0; i < variable.NumberOfPointers; i++ {
@@ -801,6 +746,5 @@ func (r *ClientRenderer) fieldTypeFromVariableForClient(ctx context.Context, var
 		return c.Map(keyType).Add(valueType)
 	}
 
-	// Базовый тип
 	return c.Add(r.fieldTypeForClient(ctx, variable.TypeID, 0, false))
 }

@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package cache
 
 import (
@@ -23,13 +23,8 @@ const (
 	CacheBaseDir = "/tg/cache/astg"
 )
 
-// GetProject пытается получить проект из кэша.
-// Возвращает проект из кэша, если он валиден, иначе nil и false.
-// Также возвращает вычисленные projectID и marker для последующего использования.
-// rootDir - корневая директория проекта.
 func GetProject(rootDir string) (project *model.Project, fromCache bool, projectID string, currentMarker string) {
 
-	// Вычисление идентификатора проекта для кэширования
 	var err error
 	projectID, err = GetProjectID(rootDir)
 	if err != nil {
@@ -38,7 +33,6 @@ func GetProject(rootDir string) (project *model.Project, fromCache bool, project
 		return nil, false, "", ""
 	}
 
-	// Получаем ветку напрямую из Git (без полного парсинга)
 	branch := getGitBranchForCache(rootDir)
 	normalizedBranch := NormalizeBranch(branch)
 
@@ -64,17 +58,12 @@ func GetProject(rootDir string) (project *model.Project, fromCache bool, project
 	return nil, false, projectID, currentMarker
 }
 
-// SaveProject сохраняет проект в кэш.
-// projectID - идентификатор проекта (уже вычисленный).
-// currentMarker - маркер проекта (уже вычисленный).
-// project - проект для сохранения.
 func SaveProject(projectID string, currentMarker string, project *model.Project) {
 
 	// Заполняем метаданные в проекте
 	project.ProjectID = projectID
 	project.Marker = currentMarker
 
-	// Определяем ветку для сохранения
 	branch := ""
 	if project.Git != nil && project.Git.Branch != "" {
 		branch = project.Git.Branch
@@ -90,11 +79,8 @@ func SaveProject(projectID string, currentMarker string, project *model.Project)
 	}
 }
 
-// getGitBranchForCache получает имя ветки Git для использования в кэше.
-// Выполняется без полного парсинга проекта.
 func getGitBranchForCache(rootDir string) (branch string) {
 
-	// Используем функцию из marker для получения Git директории
 	var gitDir string
 	var err error
 	dir := rootDir
@@ -106,7 +92,6 @@ func getGitBranchForCache(rootDir string) (branch string) {
 				gitDir = gitPath
 				break
 			}
-			// Если .git - это файл (submodule)
 			var content []byte
 			if content, err = os.ReadFile(gitPath); err == nil {
 				gitDir = strings.TrimSpace(string(content))
@@ -144,7 +129,6 @@ func getGitBranchForCache(rootDir string) (branch string) {
 	if strings.HasPrefix(headStr, "ref: ") {
 		refPath := strings.TrimPrefix(headStr, "ref: ")
 		refPath = strings.TrimSpace(refPath)
-		// Извлекаем имя ветки из refs/heads/master -> master
 		if strings.HasPrefix(refPath, "refs/heads/") {
 			branch = strings.TrimPrefix(refPath, "refs/heads/")
 			return branch
@@ -154,12 +138,8 @@ func getGitBranchForCache(rootDir string) (branch string) {
 	return ""
 }
 
-// loadProject загружает проект из кэша.
-// Возвращает проект и true, если кэш валиден, иначе nil и false.
-// Все ошибки логируются только на уровне DEBUG.
 func loadProject(cacheFile string, projectID string, currentMarker string) (project *model.Project, valid bool) {
 
-	// 1. Проверка существования файла
 	var err error
 	var info os.FileInfo
 	if info, err = os.Stat(cacheFile); err != nil {
@@ -176,7 +156,6 @@ func loadProject(cacheFile string, projectID string, currentMarker string) (proj
 		return
 	}
 
-	// 2. Чтение файла
 	var file *os.File
 	if file, err = os.Open(cacheFile); err != nil {
 		slog.Debug(i18n.Msg("failed to open cache file"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
@@ -184,7 +163,6 @@ func loadProject(cacheFile string, projectID string, currentMarker string) (proj
 	}
 	defer file.Close()
 
-	// 3. Распаковка gzip
 	var gzipReader *gzip.Reader
 	if gzipReader, err = gzip.NewReader(file); err != nil {
 		slog.Debug(i18n.Msg("failed to create gzip reader"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
@@ -194,7 +172,6 @@ func loadProject(cacheFile string, projectID string, currentMarker string) (proj
 	}
 	defer gzipReader.Close()
 
-	// 4. Чтение JSON
 	var jsonData []byte
 	if jsonData, err = io.ReadAll(gzipReader); err != nil {
 		slog.Debug(i18n.Msg("failed to read cache data"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
@@ -244,8 +221,6 @@ func loadProject(cacheFile string, projectID string, currentMarker string) (proj
 	return cachedProject, true
 }
 
-// saveProject сохраняет проект в кэш.
-// Все ошибки логируются только на уровне DEBUG.
 func saveProject(cacheFile string, project *model.Project) (err error) {
 
 	// 1. Создание директории кэша
@@ -255,14 +230,12 @@ func saveProject(cacheFile string, project *model.Project) (err error) {
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	// 2. Сериализация проекта в JSON
 	var jsonData []byte
 	if jsonData, err = json.MarshalIndent(project, "", "  "); err != nil {
 		slog.Debug(i18n.Msg("failed to marshal project"), slog.String("error", err.Error()))
 		return fmt.Errorf("failed to marshal project: %w", err)
 	}
 
-	// 3. Создание файла и запись сжатых данных
 	var file *os.File
 	if file, err = os.Create(cacheFile); err != nil {
 		slog.Debug(i18n.Msg("failed to create cache file"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
@@ -294,7 +267,6 @@ func saveProject(cacheFile string, project *model.Project) (err error) {
 	return
 }
 
-// GetCachePath возвращает путь к файлу кэша для проекта и ветки.
 func GetCachePath(projectID string, branch string) string {
 
 	normalizedBranch := NormalizeBranch(branch)

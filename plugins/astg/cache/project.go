@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package cache
 
 import (
@@ -9,8 +9,6 @@ import (
 	"tgp/plugins/astg/marker"
 )
 
-// GetProjectID вычисляет идентификатор проекта (обертка над marker.ProjectID).
-// Все ошибки логируются только на уровне DEBUG.
 func GetProjectID(rootDir string) (id string, err error) {
 
 	id, err = marker.ProjectID(rootDir)

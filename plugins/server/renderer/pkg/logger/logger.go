@@ -8,13 +8,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Handler реализует slog.Handler используя zerolog в качестве backend
 type Handler struct {
 	logger zerolog.Logger
 	level  slog.Level
 }
 
-// New создает новый slog.Handler с zerolog backend
 func New(w io.Writer) *Handler {
 	logger := zerolog.New(w).With().Timestamp().Logger()
 	return &Handler{
@@ -23,7 +21,6 @@ func New(w io.Writer) *Handler {
 	}
 }
 
-// NewWithLogger создает новый slog.Handler из существующего zerolog.Logger
 func NewWithLogger(logger zerolog.Logger) *Handler {
 	return &Handler{
 		logger: logger,
@@ -31,12 +28,10 @@ func NewWithLogger(logger zerolog.Logger) *Handler {
 	}
 }
 
-// Enabled проверяет, включен ли указанный уровень логирования
 func (h *Handler) Enabled(ctx context.Context, level slog.Level) bool {
 	return level >= h.level
 }
 
-// Handle обрабатывает запись лога
 func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
 	logEvent := func(event *zerolog.Event) {
 		if event == nil {
@@ -68,7 +63,6 @@ func (h *Handler) Handle(ctx context.Context, record slog.Record) error {
 	return nil
 }
 
-// WithAttrs возвращает новый Handler с добавленными атрибутами
 func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	ctx := h.logger.With()
 	for _, attr := range attrs {
@@ -80,7 +74,6 @@ func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	}
 }
 
-// WithGroup возвращает новый Handler с группой атрибутов
 func (h *Handler) WithGroup(name string) slog.Handler {
 	return &Handler{
 		logger: h.logger.With().Str("group", name).Logger(),
@@ -88,7 +81,6 @@ func (h *Handler) WithGroup(name string) slog.Handler {
 	}
 }
 
-// zerologLevel преобразует slog.Level в zerolog.Level
 func zerologLevel(level slog.Level) zerolog.Level {
 	switch {
 	case level >= slog.LevelError:
@@ -104,7 +96,6 @@ func zerologLevel(level slog.Level) zerolog.Level {
 	}
 }
 
-// slogLevel преобразует zerolog.Level в slog.Level
 func slogLevel(level zerolog.Level) slog.Level {
 	switch level {
 	case zerolog.Disabled:
@@ -124,7 +115,6 @@ func slogLevel(level zerolog.Level) slog.Level {
 	}
 }
 
-// addAttr добавляет атрибут slog в zerolog event
 func addAttr(event *zerolog.Event, attr slog.Attr) *zerolog.Event {
 	key := attr.Key
 	value := attr.Value
@@ -151,7 +141,6 @@ func addAttr(event *zerolog.Event, attr slog.Attr) *zerolog.Event {
 	}
 }
 
-// addAttrToContext добавляет атрибут slog в zerolog context
 func addAttrToContext(ctx zerolog.Context, attr slog.Attr) zerolog.Context {
 	key := attr.Key
 	value := attr.Value
@@ -178,29 +167,24 @@ func addAttrToContext(ctx zerolog.Context, attr slog.Attr) zerolog.Context {
 	}
 }
 
-// SetLevel обновляет минимальный уровень логирования для slog.Logger
 func SetLevel(logger *slog.Logger, level slog.Level) {
 	if handler, ok := logger.Handler().(*Handler); ok {
 		handler.SetLevel(level)
 	}
 }
 
-// SetLevel устанавливает минимальный уровень логирования
 func (h *Handler) SetLevel(level slog.Level) {
 	h.level = level
 }
 
-// Logger возвращает базовый zerolog.Logger
 func (h *Handler) Logger() zerolog.Logger {
 	return h.logger
 }
 
-// NewLogger создает новый slog.Logger с zerolog backend
 func NewLogger(w io.Writer) *slog.Logger {
 	return slog.New(New(w))
 }
 
-// NewZerolog создает новый slog.Logger из существующего zerolog.Logger
 func NewZerolog(logger zerolog.Logger) *slog.Logger {
 	return slog.New(NewWithLogger(logger))
 }

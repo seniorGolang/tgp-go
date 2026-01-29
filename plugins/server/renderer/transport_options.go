@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -11,7 +11,6 @@ import (
 	"tgp/internal/model"
 )
 
-// RenderTransportOptions генерирует транспортный options файл.
 func (r *transportRenderer) RenderTransportOptions() error {
 
 	optionsPath := path.Join(r.outDir, "options.go")
@@ -34,7 +33,6 @@ func (r *transportRenderer) RenderTransportOptions() error {
 	return srcFile.Save(optionsPath)
 }
 
-// renderOptionsTypes генерирует типы для опций.
 func (r *transportRenderer) renderOptionsTypes(srcFile *GoFile) {
 
 	srcFile.Line().Type().Id("ServiceRoute").Interface(
@@ -46,7 +44,6 @@ func (r *transportRenderer) renderOptionsTypes(srcFile *GoFile) {
 	srcFile.Type().Id("ErrorHandler").Func().Params(Err().Error()).Params(Error())
 }
 
-// renderOptionsService генерирует функцию Service.
 func (r *transportRenderer) renderOptionsService(srcFile *GoFile) {
 
 	srcFile.Line().Func().Id("Service").
@@ -61,39 +58,32 @@ func (r *transportRenderer) renderOptionsService(srcFile *GoFile) {
 		)
 }
 
-// renderOptionsForContracts генерирует опции для контрактов.
 func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 
-	if r.hasHTTPService() {
-		// Находим контракт с аннотацией http-server
-		var httpContract *model.Contract
-		for _, contract := range r.project.Contracts {
-			if contract.Annotations.Contains(TagServerHTTP) {
-				httpContract = contract
-				break
+	for _, contract := range r.project.Contracts {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+			srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
+			block := func(gr *Group) {
+				gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
+				gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
+				if r.hasJsonRPC() {
+					gr.Id("httpSvc").Dot("maxBatchSize").Op("=").Id("srv").Dot("maxBatchSize")
+					gr.Id("httpSvc").Dot("maxParallelBatch").Op("=").Id("srv").Dot("maxParallelBatch")
+				}
+				gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
 			}
-		}
-		if httpContract != nil {
-			srcFile.ImportName(httpContract.PkgPath, filepath.Base(httpContract.PkgPath))
-			srcFile.Line().Func().Id("HTTPService").
-				Params(Id("svc").Qual(httpContract.PkgPath, httpContract.Name)).
+			srcFile.Line().Func().Id(contract.Name).
+				Params(Id("svc").Qual(contract.PkgPath, contract.Name)).
 				Id("Option").
 				Block(
 					Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
-						If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(func(gr *Group) {
-							gr.Id("httpSvc").Op(":=").Id("new" + httpContract.Name).Call(Id("svc"))
-							gr.Id("srv").Dot("httpHTTPService").Op("=").Id("httpSvc")
-							gr.Id("httpSvc").Dot("maxBatchSize").Op("=").Id("srv").Dot("maxBatchSize")
-							gr.Id("httpSvc").Dot("maxParallelBatch").Op("=").Id("srv").Dot("maxParallelBatch")
-							gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
-						}),
+						If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(block),
 					)),
 				)
 		}
 	}
-	// Добавляем опции для каждого контракта с jsonRPC
 	for _, contract := range r.project.Contracts {
-		if contract.Annotations.Contains(TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 			srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
 			srcFile.Line().Func().Id(contract.Name).
 				Params(Id("svc").Qual(contract.PkgPath, contract.Name)).
@@ -112,7 +102,6 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 	}
 }
 
-// renderOptionsConfig генерирует функции для конфигурации.
 func (r *transportRenderer) renderOptionsConfig(srcFile *GoFile) {
 
 	srcFile.Line().Func().Id("SetFiberCfg").
@@ -176,7 +165,6 @@ func (r *transportRenderer) renderOptionsConfig(srcFile *GoFile) {
 	}
 }
 
-// renderOptionsTimeouts генерирует функции для таймаутов.
 func (r *transportRenderer) renderOptionsTimeouts(srcFile *GoFile) {
 
 	srcFile.Line().Func().Id("ReadTimeout").
@@ -197,7 +185,6 @@ func (r *transportRenderer) renderOptionsTimeouts(srcFile *GoFile) {
 		)
 }
 
-// renderOptionsHeaders генерирует функции для заголовков.
 func (r *transportRenderer) renderOptionsHeaders(srcFile *GoFile) {
 
 	srcFile.Line().Func().Id("WithRequestID").
@@ -231,11 +218,10 @@ func (r *transportRenderer) renderOptionsHeaders(srcFile *GoFile) {
 		)
 }
 
-// renderOptionsUse генерирует функцию Use.
 func (r *transportRenderer) renderOptionsUse(srcFile *GoFile) {
 
 	srcFile.Line().Func().Id("Use").
-		Params(Id("args").Op("...").Interface()).
+		Params(Id("args").Op("...").Any()).
 		Id("Option").
 		Block(
 			Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(

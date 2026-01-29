@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -9,12 +9,10 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// jsonrpcGenerator генерирует файлы пакета jsonrpc.
 type jsonrpcGenerator struct {
 	jsonPkg string // Пакет для JSON операций (например, "encoding/json" или "github.com/goccy/go-json")
 }
 
-// RenderJsonRPCPackage генерирует все файлы пакета jsonrpc в указанную директорию.
 func (r *ClientRenderer) RenderJsonRPCPackage(outDir string) error {
 
 	jsonPkg := r.getPackageJSON(nil)
@@ -51,7 +49,6 @@ func (r *ClientRenderer) RenderJsonRPCPackage(outDir string) error {
 	return nil
 }
 
-// renderClient генерирует client.go.
 func (gen *jsonrpcGenerator) renderClient(outDir, jsonPkg string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
@@ -83,28 +80,36 @@ func (gen *jsonrpcGenerator) renderClient(outDir, jsonPkg string) error {
 	srcFile.Line().Func().Id("NewClient").Params(Id("endpoint").String(), Id("opts").Op("...").Id("Option")).Params(Id("client").Op("*").Id("ClientRPC")).BlockFunc(
 		func(bg *Group) {
 			bg.Line()
-			bg.Id("defaultTransport").Op(":=").Op("&").Qual(PackageHttp, "Transport").Values(Dict{
-				Id("MaxIdleConns"):          Lit(300),
-				Id("MaxIdleConnsPerHost"):   Lit(50),
-				Id("MaxConnsPerHost"):       Lit(100),
-				Id("IdleConnTimeout"):       Lit(60).Op("*").Qual(PackageTime, "Second"),
-				Id("ResponseHeaderTimeout"): Lit(10).Op("*").Qual(PackageTime, "Second"),
-				Id("ExpectContinueTimeout"): Lit(1).Op("*").Qual(PackageTime, "Second"),
-				Id("TLSHandshakeTimeout"):   Lit(10).Op("*").Qual(PackageTime, "Second"),
-				Id("DisableKeepAlives"):     False(),
-				Id("ForceAttemptHTTP2"):     True(),
-			})
-			bg.Id("defaultClient").Op(":=").Op("&").Qual(PackageHttp, "Client").Values(Dict{
-				Id("Timeout"):   Lit(10).Op("*").Qual(PackageTime, "Second"),
-				Id("Transport"): Id("defaultTransport"),
-			})
-			bg.Id("client").Op("=").Op("&").Id("ClientRPC").Values(Dict{
-				Id("endpoint"):   Id("endpoint"),
-				Id("httpClient"): Id("defaultClient"),
-				Id("options"):    Id("prepareOpts").Call(Id("opts")),
-			})
-			bg.If(Id("client").Dot("options").Dot("clientHTTP").Op("!=").Nil()).Block(
-				Id("client").Dot("httpClient").Op("=").Id("client").Dot("options").Dot("clientHTTP"),
+			bg.Id("optsPrepared").Op(":=").Id("prepareOpts").Call(Id("opts"))
+			bg.If(Id("optsPrepared").Dot("clientHTTP").Op("==").Nil()).BlockFunc(
+				func(ig *Group) {
+					ig.Id("defaultTransport").Op(":=").Op("&").Qual(PackageHttp, "Transport").Values(Dict{
+						Id("MaxIdleConns"):          Lit(300),
+						Id("MaxIdleConnsPerHost"):   Lit(50),
+						Id("MaxConnsPerHost"):       Lit(100),
+						Id("IdleConnTimeout"):       Lit(60).Op("*").Qual(PackageTime, "Second"),
+						Id("ResponseHeaderTimeout"): Lit(10).Op("*").Qual(PackageTime, "Second"),
+						Id("ExpectContinueTimeout"): Lit(1).Op("*").Qual(PackageTime, "Second"),
+						Id("TLSHandshakeTimeout"):   Lit(10).Op("*").Qual(PackageTime, "Second"),
+						Id("DisableKeepAlives"):     False(),
+						Id("ForceAttemptHTTP2"):     True(),
+					})
+					ig.Id("defaultClient").Op(":=").Op("&").Qual(PackageHttp, "Client").Values(Dict{
+						Id("Timeout"):   Lit(10).Op("*").Qual(PackageTime, "Second"),
+						Id("Transport"): Id("defaultTransport"),
+					})
+					ig.Id("client").Op("=").Op("&").Id("ClientRPC").Values(Dict{
+						Id("endpoint"):   Id("endpoint"),
+						Id("httpClient"): Id("defaultClient"),
+						Id("options"):    Id("optsPrepared"),
+					})
+				},
+			).Else().Block(
+				Id("client").Op("=").Op("&").Id("ClientRPC").Values(Dict{
+					Id("endpoint"):   Id("endpoint"),
+					Id("httpClient"): Id("optsPrepared").Dot("clientHTTP"),
+					Id("options"):    Id("optsPrepared"),
+				}),
 			)
 			bg.If(Id("client").Dot("options").Dot("tlsConfig").Op("!=").Nil()).BlockFunc(
 				func(ig *Group) {
@@ -153,7 +158,6 @@ func (gen *jsonrpcGenerator) renderClient(outDir, jsonPkg string) error {
 	return srcFile.Save(path.Join(outDir, "client.go"))
 }
 
-// renderJsonRPCError генерирует error.go.
 func (gen *jsonrpcGenerator) renderError(outDir, jsonPkg string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
@@ -165,11 +169,11 @@ func (gen *jsonrpcGenerator) renderError(outDir, jsonPkg string) error {
 		Id("Code").Int().Tag(map[string]string{"json": "code"}),
 		Id("Message").String().Tag(map[string]string{"json": "message"}),
 		Id("Data").Qual(jsonPkg, "RawMessage").Tag(map[string]string{"json": "data,omitempty"}),
+		Id("RawBytes").Qual(jsonPkg, "RawMessage").Tag(map[string]string{"json": "-"}),
 	)
 
 	srcFile.Line().Func().Params(Id("e").Op("*").Id("RPCError")).Id("Raw").Params().Params(Id("data").Qual(jsonPkg, "RawMessage")).Block(
-		List(Id("data"), Op("_")).Op("=").Qual(jsonPkg, "Marshal").Call(Id("e")),
-		Return(),
+		Return(Id("e").Dot("RawBytes")),
 	)
 
 	srcFile.Line().Func().Params(Id("e").Op("*").Id("RPCError")).Id("Error").Params().Params(String()).Block(
@@ -188,7 +192,6 @@ func (gen *jsonrpcGenerator) renderError(outDir, jsonPkg string) error {
 	return srcFile.Save(path.Join(outDir, "error.go"))
 }
 
-// renderJsonRPCRequest генерирует request.go.
 func (gen *jsonrpcGenerator) renderRequest(outDir string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
@@ -229,7 +232,6 @@ func (gen *jsonrpcGenerator) renderRequest(outDir string) error {
 	return srcFile.Save(path.Join(outDir, "request.go"))
 }
 
-// renderJsonRPCResponse генерирует response.go.
 func (gen *jsonrpcGenerator) renderResponse(outDir, jsonPkg string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
@@ -241,6 +243,34 @@ func (gen *jsonrpcGenerator) renderResponse(outDir, jsonPkg string) error {
 		Id("JSONRPC").String().Tag(map[string]string{"json": "jsonrpc"}),
 		Id("Error").Op("*").Id("RPCError").Tag(map[string]string{"json": "error,omitempty"}),
 		Id("Result").Qual(jsonPkg, "RawMessage").Tag(map[string]string{"json": "result,omitempty"}),
+	)
+
+	srcFile.Line().Func().Params(Id("r").Op("*").Id("ResponseRPC")).Id("UnmarshalJSON").Params(Id("data").Index().Byte()).Params(Err().Error()).BlockFunc(
+		func(bg *Group) {
+			bg.Type().Id("wire").Struct(
+				Id("ID").Id("ID").Tag(map[string]string{"json": "id"}),
+				Id("JSONRPC").String().Tag(map[string]string{"json": "jsonrpc"}),
+				Id("Error").Qual(jsonPkg, "RawMessage").Tag(map[string]string{"json": "error,omitempty"}),
+				Id("Result").Qual(jsonPkg, "RawMessage").Tag(map[string]string{"json": "result,omitempty"}),
+			)
+			bg.Var().Id("w").Id("wire")
+			bg.If(Err().Op(":=").Qual(jsonPkg, "Unmarshal").Call(Id("data"), Op("&").Id("w")).Op(";").Err().Op("!=").Nil()).Block(
+				Return(Err()),
+			)
+			bg.Id("r").Dot("ID").Op("=").Id("w").Dot("ID")
+			bg.Id("r").Dot("JSONRPC").Op("=").Id("w").Dot("JSONRPC")
+			bg.Id("r").Dot("Result").Op("=").Id("w").Dot("Result")
+			bg.If(Len(Id("w").Dot("Error")).Op(">").Lit(0)).BlockFunc(
+				func(ig *Group) {
+					ig.Id("r").Dot("Error").Op("=").Op("&").Id("RPCError").Values()
+					ig.If(Err().Op(":=").Qual(jsonPkg, "Unmarshal").Call(Id("w").Dot("Error"), Id("r").Dot("Error")).Op(";").Err().Op("!=").Nil()).Block(
+						Return(Err()),
+					)
+					ig.Id("r").Dot("Error").Dot("RawBytes").Op("=").Id("w").Dot("Error")
+				},
+			)
+			bg.Return(Nil())
+		},
 	)
 
 	srcFile.Line().Type().Id("ResponsesRPC").Index().Op("*").Id("ResponseRPC")
@@ -281,7 +311,6 @@ func (gen *jsonrpcGenerator) renderResponse(outDir, jsonPkg string) error {
 	return srcFile.Save(path.Join(outDir, "response.go"))
 }
 
-// renderJsonRPCInternal генерирует internal.go.
 func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
@@ -296,11 +325,11 @@ func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) error {
 
 	srcFile.Line().Func().Params(Id("client").Op("*").Id("ClientRPC")).Id("newRequest").Params(Id("ctx").Qual(PackageContext, "Context"), Id("reqBody").Any()).Params(Id("request").Op("*").Qual(PackageHttp, "Request"), Id("err").Error()).BlockFunc(
 		func(bg *Group) {
-			bg.Id("bodyReader").Op(":=").Qual(PackageBytes, "NewBuffer").Call(Nil())
-			bg.If(Err().Op("=").Qual(jsonPkg, "NewEncoder").Call(Id("bodyReader")).Dot("Encode").Call(Id("reqBody")).Op(";").Err().Op("!=").Nil()).Block(
+			bg.Var().Id("bodyBytes").Index().Byte()
+			bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(Id("reqBody")).Op(";").Err().Op("!=").Nil()).Block(
 				Return(),
 			)
-			bg.If(List(Id("request"), Id("err")).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id("ctx"), Qual(PackageHttp, "MethodPost"), Id("client").Dot("endpoint"), Id("bodyReader")).Op(";").Id("err").Op("!=").Nil()).Block(
+			bg.If(List(Id("request"), Id("err")).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id("ctx"), Qual(PackageHttp, "MethodPost"), Id("client").Dot("endpoint"), Qual(PackageBytes, "NewBuffer").Call(Id("bodyBytes"))).Op(";").Id("err").Op("!=").Nil()).Block(
 				Return(),
 			)
 			bg.Id("request").Dot("Header").Dot("Set").Call(Lit("Accept"), Lit("application/json"))
@@ -509,7 +538,6 @@ func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) error {
 	return srcFile.Save(path.Join(outDir, "internal.go"))
 }
 
-// renderJsonRPCOption генерирует option.go.
 func (gen *jsonrpcGenerator) renderOption(outDir string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
@@ -592,7 +620,6 @@ func (gen *jsonrpcGenerator) renderOption(outDir string) error {
 	return srcFile.Save(path.Join(outDir, "option.go"))
 }
 
-// renderJsonRPCPublic генерирует public.go.
 func (gen *jsonrpcGenerator) renderPublic(outDir string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
@@ -602,10 +629,16 @@ func (gen *jsonrpcGenerator) renderPublic(outDir string) error {
 
 	srcFile.Line().Func().Params(Id("client").Op("*").Id("ClientRPC")).Id("Call").Params(Id("ctx").Qual(PackageContext, "Context"), Id("method").String(), Id("params").Op("...").Any()).Params(Id("response").Op("*").Id("ResponseRPC"), Id("err").Error()).BlockFunc(
 		func(bg *Group) {
+			bg.Var().Id("paramsVal").Any()
+			bg.If(Len(Id("params")).Op("==").Lit(1)).Block(
+				Id("paramsVal").Op("=").Id("ParamsOne").Call(Id("params").Index(Lit(0))),
+			).Else().Block(
+				Id("paramsVal").Op("=").Id("Params").Call(Id("params").Op("...")),
+			)
 			bg.Id("request").Op(":=").Op("&").Id("RequestRPC").Values(DictFunc(func(d Dict) {
 				d[Id("ID")] = Id("NewID").Call()
 				d[Id("Method")] = Id("method")
-				d[Id("Params")] = Id("Params").Call(Id("params").Op("..."))
+				d[Id("Params")] = Id("paramsVal")
 				d[Id("JSONRPC")] = Id("Version")
 			}))
 			bg.Return(Id("client").Dot("doCall").Call(Id("ctx"), Id("request")))
@@ -649,12 +682,13 @@ func (gen *jsonrpcGenerator) renderPublic(outDir string) error {
 	return srcFile.Save(path.Join(outDir, "public.go"))
 }
 
-// renderJsonRPCParam генерирует param.go.
 func (gen *jsonrpcGenerator) renderParam(outDir string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
 
-	srcFile.ImportName(PackageReflect, "reflect")
+	srcFile.Line().Func().Id("ParamsOne").Params(Id("v").Any()).Params(Any()).Block(
+		Return(Id("v")),
+	)
 
 	srcFile.Line().Func().Id("Params").Params(Id("params").Op("...").Any()).Params(Any()).BlockFunc(
 		func(bg *Group) {
@@ -664,31 +698,8 @@ func (gen *jsonrpcGenerator) renderParam(outDir string) error {
 					ig.Switch(Len(Id("params"))).BlockFunc(
 						func(sg *Group) {
 							sg.Case(Lit(0))
-							sg.Case(Lit(1)).BlockFunc(
-								func(cg *Group) {
-									cg.If(Id("params").Index(Lit(0)).Op("!=").Nil()).BlockFunc(
-										func(fg *Group) {
-											fg.Var().Id("typeOf").Qual(PackageReflect, "Type")
-											fg.For(Id("typeOf").Op("=").Qual(PackageReflect, "TypeOf").Call(Id("params").Index(Lit(0))).Op(";").Id("typeOf").Op("!=").Nil().Op("&&").Id("typeOf").Dot("Kind").Call().Op("==").Qual(PackageReflect, "Ptr").Op(";").Id("typeOf").Op("=").Id("typeOf").Dot("Elem").Call()).Block()
-											fg.If(Id("typeOf").Op("!=").Nil()).BlockFunc(
-												func(tg *Group) {
-													tg.Switch(Id("typeOf").Dot("Kind").Call()).BlockFunc(
-														func(kg *Group) {
-															kg.Case(Qual(PackageReflect, "Struct"), Qual(PackageReflect, "Array"), Qual(PackageReflect, "Slice"), Qual(PackageReflect, "Interface"), Qual(PackageReflect, "Map")).Block(
-																Id("finalParams").Op("=").Id("params").Index(Lit(0)),
-															)
-															kg.Default().Block(
-																Id("finalParams").Op("=").Id("params"),
-															)
-														},
-													)
-												},
-											)
-										},
-									).Else().Block(
-										Id("finalParams").Op("=").Id("params"),
-									)
-								},
+							sg.Case(Lit(1)).Block(
+								Id("finalParams").Op("=").Id("ParamsOne").Call(Id("params").Index(Lit(0))),
 							)
 							sg.Default().Block(
 								Id("finalParams").Op("=").Id("params"),
@@ -703,7 +714,6 @@ func (gen *jsonrpcGenerator) renderParam(outDir string) error {
 	return srcFile.Save(path.Join(outDir, "param.go"))
 }
 
-// renderJsonRPCString генерирует string.go.
 func (gen *jsonrpcGenerator) renderString(outDir string) error {
 
 	srcFile := NewSrcFile("jsonrpc")
@@ -727,7 +737,6 @@ func (gen *jsonrpcGenerator) renderString(outDir string) error {
 	return srcFile.Save(path.Join(outDir, "string.go"))
 }
 
-// renderJsonRPCHttp2Curl генерирует http2curl.go.
 func (gen *jsonrpcGenerator) renderHttp2Curl(outDir string) error {
 
 	srcFile := NewSrcFile("jsonrpc")

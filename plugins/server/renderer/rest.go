@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -15,7 +15,6 @@ import (
 	"tgp/plugins/server/renderer/types"
 )
 
-// RenderREST генерирует REST обработчики.
 func (r *contractRenderer) RenderREST() error {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
@@ -42,7 +41,6 @@ func (r *contractRenderer) RenderREST() error {
 	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-rest.go"))
 }
 
-// httpMethodFunc генерирует функцию обработки HTTP метода.
 func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *model.Method) Code {
 
 	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
@@ -75,7 +73,6 @@ func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *mode
 		})
 }
 
-// httpServeMethodFunc генерирует функцию обработки HTTP запроса.
 func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) Code {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
@@ -85,7 +82,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 		BlockFunc(func(bg *Group) {
 			bg.Line()
 			bg.Var().Id("request").Id(requestStructName(r.contract.Name, method.Name))
-			if successCodeStr := method.Annotations.Value(TagHttpSuccess, ""); successCodeStr != "" {
+			if successCodeStr := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpSuccess, ""); successCodeStr != "" {
 				if successCode, err := strconv.Atoi(successCodeStr); err == nil && successCode != 0 {
 					bg.Id(VarNameFtx).Dot("Response").Call().Dot("SetStatusCode").Call(Lit(successCode))
 				}
@@ -121,7 +118,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 					ig.Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call())
 				})
 			}))
-			if responseMethod := method.Annotations.Value(TagHttpResponse, ""); responseMethod != "" {
+			if responseMethod := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpResponse, ""); responseMethod != "" {
 				// Для http-response передаем ftx, base (интерфейс сервиса) и параметры запроса напрямую в handler
 				args := argsWithoutContext(method)
 				callArgs := make([]Code, 0, len(args)+2)
@@ -129,14 +126,12 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 				for _, arg := range args {
 					callArgs = append(callArgs, Id("request").Dot(toCamel(arg.Name)))
 				}
-				// Используем toIDWithImport для добавления импорта и вызова обработчика
 				bg.Return().Add(toIDWithImport(responseMethod, srcFile).Call(callArgs...))
 			} else {
 				bg.Var().Id("response").Id(responseStructName(r.contract.Name, method.Name))
 				bg.If().List(Id("response"), Err()).Op("=").Id("http").Dot(toLowerCamel(method.Name)).Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("request")).Op(";").Err().Op("==").Nil().BlockFunc(func(bf *Group) {
 					var ex Statement
 					if len(r.retCookieMap(method)) > 0 {
-						// Используем отсортированные ключи для детерминированного порядка
 						for retName := range common.SortedPairs(r.retCookieMap(method)) {
 							if ret := r.resultByName(method, retName); ret != nil {
 								ex.If(List(Id("rCookie"), Id("ok")).Op(":=").
@@ -149,14 +144,14 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 						}
 					}
 					ex.Add(r.httpRetHeaders(method))
-					bf.Var().Id("iResponse").Interface().Op("=").Id("response")
+					bf.Var().Id("iResponse").Any().Op("=").Id("response")
 					bf.If(List(Id("redirect"), Id("ok")).Op(":=").Id("iResponse").Op(".").Call(Id("withRedirect")).Op(";").Id("ok")).Block(
 						Return().Id(VarNameFtx).Dot("Redirect").Call(Id("redirect").Dot("RedirectTo").Call()),
 					)
 					if len(ex) > 0 {
 						bf.Add(&ex)
 					}
-					if len(resultsWithoutError(method)) == 1 && method.Annotations.Contains(TagHttpEnableInlineSingle) {
+					if len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, TagHttpEnableInlineSingle) {
 						bf.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("response").Dot(toCamel(resultsWithoutError(method)[0].Name)))
 					} else {
 						bf.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("response"))

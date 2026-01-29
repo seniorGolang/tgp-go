@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 // Package piechart is mermaid pie chart builder.
 package piechart
 
@@ -9,7 +12,6 @@ import (
 	"tgp/internal/markdown/internal"
 )
 
-// PieChart is a pie chart builder.
 type PieChart struct {
 	// body is pie chart body.
 	body []string
@@ -21,7 +23,6 @@ type PieChart struct {
 	config *config
 }
 
-// NewPieChart returns a new PieChart.
 func NewPieChart(w io.Writer, opts ...Option) *PieChart {
 	c := newConfig()
 
@@ -56,12 +57,10 @@ func NewPieChart(w io.Writer, opts ...Option) *PieChart {
 	}
 }
 
-// String returns the pie chart body.
 func (p *PieChart) String() string {
 	return strings.Join(p.body, internal.LineFeed())
 }
 
-// Build writes the pie chart body to the output destination.
 func (p *PieChart) Build() error {
 	if _, err := fmt.Fprint(p.dest, p.String()); err != nil {
 		if p.err != nil {
@@ -72,14 +71,11 @@ func (p *PieChart) Build() error {
 	return nil
 }
 
-// LabelAndIntValue adds a label and value to the pie chart.
 func (p *PieChart) LabelAndIntValue(label string, value uint64) *PieChart {
 	p.body = append(p.body, fmt.Sprintf("    \"%s\" : %d", label, value))
 	return p
 }
 
-// LabelAndFloatValue adds a label and value to the pie chart.
-// The value is formatted with a precision of 6 digits after the decimal point.
 func (p *PieChart) LabelAndFloatValue(label string, value float64) *PieChart {
 	p.body = append(p.body, fmt.Sprintf("    \"%s\" : %f", label, value))
 	return p

@@ -1,12 +1,12 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+
 package arch
 
-// config is the configuration for the Architecture Diagrams.
 type config struct{}
 
-// newConfig returns a new config.
 func newConfig() *config {
 	return &config{}
 }
 
-// Option sets the options for the Architecture struct.
 type Option func(*config)

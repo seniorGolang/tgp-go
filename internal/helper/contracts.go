@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package helper
 
 import (
@@ -9,8 +9,6 @@ import (
 	"tgp/internal/model"
 )
 
-// FilterContracts фильтрует контракты проекта по списку имен или ID.
-// Если список пуст, возвращает все контракты без изменений.
 func FilterContracts(project *model.Project, filterNames []string) (filteredContracts []*model.Contract) {
 
 	if len(filterNames) == 0 {
@@ -30,11 +28,7 @@ func FilterContracts(project *model.Project, filterNames []string) (filteredCont
 	return
 }
 
-// FilterContractsByInterfaces фильтрует контракты проекта по списку интерфейсов с поддержкой include/exclude логики.
-// Если список пуст, возвращает все контракты без изменений.
-// Поддерживает префикс "!" для исключения интерфейсов (exclude).
-// Если указаны и include, и exclude одновременно, возвращает ошибку.
-// ifaces - список имен интерфейсов, где имена с префиксом "!" означают исключение.
+// FilterContractsByInterfaces: префикс "!" в имени интерфейса означает exclude; include и exclude одновременно не допускаются.
 func FilterContractsByInterfaces(project *model.Project, ifaces []string) (filteredContracts []*model.Contract, err error) {
 
 	if len(ifaces) == 0 {
@@ -60,28 +54,24 @@ func FilterContractsByInterfaces(project *model.Project, ifaces []string) (filte
 
 	switch {
 	case len(include) != 0:
-		// Режим include: включаем только указанные интерфейсы
 		for _, contract := range project.Contracts {
 			if contains(include, contract.Name) {
 				filteredContracts = append(filteredContracts, contract)
 			}
 		}
 	case len(exclude) != 0:
-		// Режим exclude: исключаем указанные интерфейсы
 		for _, contract := range project.Contracts {
 			if !contains(exclude, contract.Name) {
 				filteredContracts = append(filteredContracts, contract)
 			}
 		}
 	default:
-		// Если списки пусты (не должно произойти, но на всякий случай)
 		return project.Contracts, nil
 	}
 
 	return
 }
 
-// contains проверяет, содержится ли строка в слайсе.
 func contains(slice []string, item string) (found bool) {
 
 	for _, s := range slice {

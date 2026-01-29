@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -10,7 +10,6 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 )
 
-// RenderClientOptions генерирует файл options.go.
 func (r *ClientRenderer) RenderClientOptions() error {
 
 	outDir := r.outDir
@@ -114,9 +113,7 @@ func (r *ClientRenderer) RenderClientOptions() error {
 					Id("cli").Dot("httpClient").Dot("Transport").Op("=").Id("transport"),
 				)
 				if r.HasJsonRPC() {
-					returnBg.If(Id("cli").Dot("httpClient").Op("!=").Nil()).Block(
-						returnBg.Id("cli").Dot("rpcOpts").Op("=").Append(Id("cli").Dot("rpcOpts"), Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ClientHTTP").Call(Id("cli").Dot("httpClient"))),
-					)
+					returnBg.Id("cli").Dot("rpcOpts").Op("=").Append(Id("cli").Dot("rpcOpts"), Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ClientHTTP").Call(Id("cli").Dot("httpClient")))
 				}
 			})
 		})

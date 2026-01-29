@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -14,7 +14,6 @@ import (
 	"tgp/internal/model"
 )
 
-// RenderServiceClient генерирует объединенный клиент для сервиса с поддержкой JSON-RPC и HTTP методов
 func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 
 	outDir := r.outDir
@@ -26,7 +25,7 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 	ctx = context.WithValue(ctx, keyPackage, pkgName)                // nolint
 
 	// Импорты для JSON-RPC
-	if contract.Annotations.IsSet(TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
 		srcFile.ImportName(PackageUUID, "uuid")
 		srcFile.ImportName(PackageFiber, "fiber")
 		srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
@@ -36,7 +35,7 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 	}
 
 	// Импорты для HTTP
-	if contract.Annotations.IsSet(TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 		srcFile.ImportName(PackageContext, "context")
 		srcFile.ImportName(PackageFmt, "fmt")
 		srcFile.ImportName(PackageTime, "time")
@@ -54,7 +53,7 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 	}
 
 	// Импорты для метрик
-	if r.HasMetrics() && contract.Annotations.IsSet(TagMetrics) {
+	if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 		srcFile.ImportName(PackageStrconv, "strconv")
 		srcFile.ImportName(PackageTime, "time")
 	}
@@ -64,21 +63,17 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 		sg.Op("*").Id("Client")
 	}).Line()
 
-	// Генерируем типы для callback функций (только для JSON-RPC методов)
 	for _, method := range contract.Methods {
 		if r.methodIsJsonRPC(contract, method) {
 			srcFile.Type().Id("ret" + contract.Name + method.Name).Op("=").Func().Params(r.funcDefinitionParams(ctx, method.Results))
 		}
 	}
 
-	// Генерируем методы клиента
 	for _, method := range contract.Methods {
 		if r.methodIsJsonRPC(contract, method) {
-			// JSON-RPC методы
 			srcFile.Line().Add(r.jsonrpcClientMethodFunc(ctx, contract, method, outDir))
 			srcFile.Line().Add(r.jsonrpcClientRequestFunc(ctx, contract, method, outDir))
 		} else if r.methodIsHTTP(method) {
-			// HTTP методы
 			srcFile.Line().Add(r.httpClientMethodFunc(ctx, contract, method, outDir))
 		}
 	}

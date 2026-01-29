@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -12,12 +12,10 @@ import (
 	"tgp/internal/model"
 )
 
-// RenderClient генерирует базовый клиент с поддержкой JSON-RPC и HTTP
 func (r *ClientRenderer) RenderClient() error {
 
 	outDir := r.outDir
 
-	// Генерируем пакет jsonrpc (основа для клиента)
 	if err := r.RenderJsonRPCPackage(outDir); err != nil {
 		return fmt.Errorf("не удалось сгенерировать пакет jsonrpc: %w", err)
 	}
@@ -30,10 +28,8 @@ func (r *ClientRenderer) RenderClient() error {
 	srcFile.ImportName(PackageTime, "time")
 	srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
 
-	// Генерируем структуру клиента
 	srcFile.Line().Add(r.clientStructFunc(outDir))
 
-	// Генерируем функцию New для инициализации клиента
 	srcFile.Line().Func().Id("New").Params(Id("endpoint").String(), Id("opts").Op("...").Id("Option")).Params(Id("cli").Op("*").Id("Client")).BlockFunc(
 		func(bg *Group) {
 			bg.Line()
@@ -80,15 +76,12 @@ func (r *ClientRenderer) RenderClient() error {
 			bg.Return()
 		})
 
-	// Генерируем методы для получения клиентов сервисов
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
 	for _, contractName := range r.ContractKeys() {
 		contract := r.FindContract(contractName)
 		if contract == nil {
 			continue
 		}
-		// Генерируем метод для сервиса, если он помечен как JSON-RPC или HTTP сервер
-		if contract.Annotations.IsSet(TagServerJsonRPC) || contract.Annotations.IsSet(TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) || model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
 			srcFile.Line().Func().Params(Id("cli").Op("*").Id("Client")).Id(contract.Name).Params().Params(Op("*").Id("Client" + contract.Name)).Block(
 				Return(Op("&").Id("Client" + contract.Name).Values(Dict{
 					Id("Client"): Id("cli"),
@@ -99,7 +92,6 @@ func (r *ClientRenderer) RenderClient() error {
 	return srcFile.Save(path.Join(outDir, "client.go"))
 }
 
-// clientStructFunc генерирует структуру базового клиента
 func (r *ClientRenderer) clientStructFunc(outDir string) Code {
 
 	return Type().Id("Client").StructFunc(func(sg *Group) {
@@ -130,7 +122,6 @@ func (r *ClientRenderer) clientStructFunc(outDir string) Code {
 	})
 }
 
-// FindContract находит контракт по имени.
 func (r *ClientRenderer) FindContract(name string) *model.Contract {
 	for _, contract := range r.project.Contracts {
 		if contract.Name == name {

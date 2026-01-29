@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package generator
 
 import (
@@ -10,29 +10,28 @@ import (
 	"tgp/core/i18n"
 	"tgp/internal/common"
 	"tgp/internal/model"
+	"tgp/internal/validate"
 	"tgp/plugins/server/renderer"
-	"tgp/plugins/server/utils"
 )
 
-// GenerateServer генерирует код сервера для указанного контракта.
 func GenerateServer(project *model.Project, contractID string, outDir string) error {
 
-	if err := utils.ValidateProject(project); err != nil {
+	if err := validate.ValidateProject(project); err != nil {
 		return fmt.Errorf("invalid project: %w", err)
 	}
-	if err := utils.ValidateContractID(contractID); err != nil {
+	if err := validate.ValidateContractID(contractID); err != nil {
 		return fmt.Errorf("invalid contractID: %w", err)
 	}
-	if err := utils.ValidateOutDir(outDir); err != nil {
+	if err := validate.ValidateOutDir(outDir); err != nil {
 		return fmt.Errorf("invalid outDir: %w", err)
 	}
 
-	contract, err := utils.FindContract(project, contractID)
+	contract, err := validate.FindContract(project, contractID)
 	if err != nil {
 		return fmt.Errorf("find contract: %w", err)
 	}
 
-	if err := utils.ValidateContract(contract, project); err != nil {
+	if err := validate.ValidateContract(contract, project); err != nil {
 		return fmt.Errorf("validate contract: %w", err)
 	}
 
@@ -55,7 +54,7 @@ func GenerateServer(project *model.Project, contractID string, outDir string) er
 
 	logStats(contractID)
 
-	serverType := getServerType(contract)
+	serverType := getServerType(project, contract)
 	if serverType != "" {
 		slog.Debug(i18n.Msg("server generated successfully"),
 			slog.String("contract", contractID),
@@ -67,26 +66,29 @@ func GenerateServer(project *model.Project, contractID string, outDir string) er
 	return nil
 }
 
-// getServerType определяет тип сервера на основе аннотаций контракта.
-// Ищет аннотацию с суффиксом "-server" и возвращает тип без этого суффикса.
-func getServerType(contract *model.Contract) string {
+func getServerType(project *model.Project, contract *model.Contract) string {
 
-	// Используем отсортированные пары для детерминированного порядка
 	for annotation := range common.SortedPairs(contract.Annotations) {
 		if strings.HasSuffix(annotation, "-server") {
 			return strings.TrimSuffix(annotation, "-server")
 		}
 	}
+	if project != nil && project.Annotations != nil {
+		for annotation := range common.SortedPairs(project.Annotations) {
+			if strings.HasSuffix(annotation, "-server") {
+				return strings.TrimSuffix(annotation, "-server")
+			}
+		}
+	}
 	return ""
 }
 
-// GenerateTransportFiles генерирует транспортные файлы верхнего уровня один раз для всех контрактов.
 func GenerateTransportFiles(project *model.Project, outDir string, contracts ...string) error {
 
-	if err := utils.ValidateProject(project); err != nil {
+	if err := validate.ValidateProject(project); err != nil {
 		return fmt.Errorf("invalid project: %w", err)
 	}
-	if err := utils.ValidateOutDir(outDir); err != nil {
+	if err := validate.ValidateOutDir(outDir); err != nil {
 		return fmt.Errorf("invalid outDir: %w", err)
 	}
 
@@ -117,7 +119,6 @@ func GenerateTransportFiles(project *model.Project, outDir string, contracts ...
 	return nil
 }
 
-// generator содержит состояние генератора сервера.
 type generator struct {
 	project  *model.Project
 	contract *model.Contract
@@ -125,7 +126,6 @@ type generator struct {
 	renderer renderer.Renderer
 }
 
-// generate генерирует все файлы для контракта.
 func (g *generator) generate() error {
 
 	if err := g.renderer.RenderHTTP(); err != nil {
@@ -144,27 +144,27 @@ func (g *generator) generate() error {
 		return fmt.Errorf("render middleware: %w", err)
 	}
 
-	if g.contract.Annotations.Contains("trace") {
+	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "trace") {
 		if err := g.renderer.RenderTrace(); err != nil {
 			return fmt.Errorf("render trace: %w", err)
 		}
 	}
-	if g.contract.Annotations.Contains("metrics") {
+	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "metrics") {
 		if err := g.renderer.RenderMetrics(); err != nil {
 			return fmt.Errorf("render metrics: %w", err)
 		}
 	}
-	if g.contract.Annotations.Contains("log") {
+	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "log") {
 		if err := g.renderer.RenderLogger(); err != nil {
 			return fmt.Errorf("render logger: %w", err)
 		}
 	}
-	if g.contract.Annotations.Contains("jsonRPC-server") {
+	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "jsonRPC-server") {
 		if err := g.renderer.RenderJsonRPC(); err != nil {
 			return fmt.Errorf("render JSON-RPC: %w", err)
 		}
 	}
-	if g.contract.Annotations.Contains("http-server") {
+	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "http-server") {
 		if err := g.renderer.RenderREST(); err != nil {
 			return fmt.Errorf("render REST: %w", err)
 		}
@@ -173,7 +173,6 @@ func (g *generator) generate() error {
 	return nil
 }
 
-// generateTransport генерирует транспортные файлы.
 func (g *generator) generateTransport() error {
 
 	if err := g.renderer.RenderTransportHTTP(); err != nil {
@@ -225,7 +224,6 @@ func (g *generator) generateTransport() error {
 	return nil
 }
 
-// filterContracts фильтрует контракты по указанным именам или ID.
 func filterContracts(project *model.Project, contractNames []string) (*model.Project, error) {
 
 	contractMap := make(map[string]bool, len(contractNames))
@@ -245,11 +243,10 @@ func filterContracts(project *model.Project, contractNames []string) (*model.Pro
 	return &filteredProject, nil
 }
 
-// hasJsonRPC проверяет, есть ли контракты с JSON-RPC.
 func (g *generator) hasJsonRPC() bool {
 
 	for _, contract := range g.project.Contracts {
-		if contract.Annotations.Contains("jsonRPC-server") {
+		if model.IsAnnotationSet(g.project, contract, nil, nil, "jsonRPC-server") {
 			return true
 		}
 	}

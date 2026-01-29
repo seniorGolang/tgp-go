@@ -1,18 +1,20 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package parser
 
 import (
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/token"
 	"go/types"
+	"os"
+	"strings"
 	"sync"
 
 	"golang.org/x/mod/modfile"
 )
 
-// AutonomousPackageLoader загружает пакеты автономно без go list.
 type AutonomousPackageLoader struct {
 	modulePath         string
 	modFile            *modfile.File
@@ -22,12 +24,8 @@ type AutonomousPackageLoader struct {
 	versionASTgCacheMu sync.RWMutex
 	fset               *token.FileSet
 	mu                 sync.RWMutex
-
-	loadPackageStats   map[string]*loadPackageStat
-	loadPackageStatsMu sync.RWMutex
 }
 
-// NewAutonomousPackageLoader создает новый загрузчик пакетов.
 func NewAutonomousPackageLoader(modFile *modfile.File) (loader *AutonomousPackageLoader, err error) {
 
 	var resolver *PackageResolver
@@ -47,12 +45,10 @@ func NewAutonomousPackageLoader(modFile *modfile.File) (loader *AutonomousPackag
 		cache:            make(map[string]*PackageInfo),
 		versionASTgCache: make(map[string]bool),
 		fset:             token.NewFileSet(),
-		loadPackageStats: make(map[string]*loadPackageStat),
 	}
 	return
 }
 
-// LoadPackageLazy загружает пакет лениво (только если еще не загружен).
 func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *PackageInfo, err error) {
 
 	l.mu.RLock()
@@ -98,37 +94,27 @@ func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *Package
 		return
 	}
 
-	requiredImports := extractImportsFromMethodSignatures(files)
+	requiredImports := extractImportsFromExportedAndAliases(files)
 
 	importer := &FileSystemImporter{
 		loader:          l,
 		cache:           make(map[string]*types.Package),
-		buildCtx:        &buildCtx,
 		lazyMode:        true,
-		importedSet:     make(map[string]bool),
 		requiredImports: requiredImports,
 	}
 
 	cfg := &types.Config{
 		Importer: importer,
-		Error: func(err error) {
-			// Обрабатываем ошибки type checking, чтобы предотвратить панику
-			// Ошибки в телах методов (из-за stub-пакетов) не критичны и не логируются
-			// Особенно важно для стандартных библиотек с внутренними пакетами
-		},
+		Error:    func(error) {},
 	}
 
 	typeInfo := createTypeInfo()
 	var pkg *types.Package
 	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
-		// Ошибки type checking не критичны, если pkg != nil
-		// Ошибки в телах методов (из-за stub-пакетов) не влияют на method sets
 		if pkg == nil {
-			// Критичная ошибка - пакет не создан
 			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 			return
 		}
-		// Некритичные ошибки (pkg != nil) игнорируются - не логируются
 		err = nil
 	}
 
@@ -150,7 +136,6 @@ func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *Package
 	return
 }
 
-// LoadPackageFromFiles загружает пакет из уже распарсенных файлов без повторного парсинга.
 func (l *AutonomousPackageLoader) LoadPackageFromFiles(pkgPath string, pkgDir string, fset *token.FileSet, files []*ast.File) (info *PackageInfo, err error) {
 
 	l.mu.RLock()
@@ -177,40 +162,30 @@ func (l *AutonomousPackageLoader) LoadPackageFromFiles(pkgPath string, pkgDir st
 		return
 	}
 
-	buildCtx := buildContext()
-	requiredImports := extractImportsFromMethodSignatures(files)
+	requiredImports := extractImportsFromExportedAndAliases(files)
 
 	importer := &FileSystemImporter{
 		loader:          l,
 		cache:           make(map[string]*types.Package),
-		buildCtx:        &buildCtx,
 		lazyMode:        true,
-		importedSet:     make(map[string]bool),
 		requiredImports: requiredImports,
 	}
 
 	cfg := &types.Config{
 		Importer: importer,
-		Error: func(err error) {
-			// Обрабатываем ошибки type checking
-			// Ошибки в телах методов (из-за stub-пакетов) не критичны и не логируются
-		},
+		Error:    func(error) {},
 	}
 
 	typeInfo := createTypeInfo()
 	var pkg *types.Package
 	if pkg, err = cfg.Check(pkgPath, fset, files, typeInfo); err != nil {
-		// Ошибки type checking не критичны, если pkg != nil
-		// Ошибки в телах методов (из-за stub-пакетов) не влияют на method sets
 		if pkg == nil {
-			// Критичная ошибка - пакет не создан
 			l.mu.Lock()
 			delete(l.cache, pkgPath)
 			l.mu.Unlock()
 			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 			return
 		}
-		// Некритичные ошибки (pkg != nil) игнорируются - не логируются
 		err = nil
 	}
 
@@ -231,5 +206,53 @@ func (l *AutonomousPackageLoader) LoadPackageFromFiles(pkgPath string, pkgDir st
 	l.cache[pkgPath] = info
 	l.mu.Unlock()
 
+	return
+}
+
+func buildContext() (buildCtx build.Context) {
+
+	buildCtx = build.Default
+	var goos string
+	if goos = os.Getenv("GOOS"); goos != "" {
+		buildCtx.GOOS = goos
+	}
+	var goarch string
+	if goarch = os.Getenv("GOARCH"); goarch != "" {
+		buildCtx.GOARCH = goarch
+	}
+	return
+}
+
+func createTypeInfo() (typeInfo *types.Info) {
+
+	typeInfo = &types.Info{
+		Types:      make(map[ast.Expr]types.TypeAndValue),
+		Defs:       make(map[*ast.Ident]types.Object),
+		Uses:       make(map[*ast.Ident]types.Object),
+		Implicits:  make(map[ast.Node]types.Object),
+		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+		Scopes:     make(map[ast.Node]*types.Scope),
+	}
+	return
+}
+
+func collectImports(files []*ast.File) (imports map[string]string) {
+
+	imports = make(map[string]string)
+	for _, file := range files {
+		for _, imp := range file.Imports {
+			impPath := strings.Trim(imp.Path.Value, `"`)
+			var alias string
+			if imp.Name != nil {
+				alias = imp.Name.Name
+			} else {
+				parts := strings.Split(impPath, "/")
+				if len(parts) > 0 {
+					alias = parts[len(parts)-1]
+				}
+			}
+			imports[alias] = impPath
+		}
+	}
 	return
 }

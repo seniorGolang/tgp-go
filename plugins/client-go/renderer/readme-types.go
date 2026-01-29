@@ -1,5 +1,5 @@
-// Copyright (c) 2020 Khramtsov Aleksei (seniorGolang@gmail.com).
-// This file is subject to the terms and conditions defined in file 'LICENSE', which is part of this project source code.
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
 import (
@@ -10,7 +10,6 @@ import (
 	"tgp/internal/model"
 )
 
-// typeUsage содержит информацию об использовании типа
 type typeUsage struct {
 	typeName     string
 	pkgPath      string
@@ -18,35 +17,29 @@ type typeUsage struct {
 	locations    []string
 }
 
-// collectStructTypes собирает все используемые типы структур
 func (r *ClientRenderer) collectStructTypes() map[string]*typeUsage {
 	typeUsages := make(map[string]*typeUsage)
 
-	// Используем отсортированный список контрактов для гарантии детерминированного порядка
 	for _, contractName := range r.ContractKeys() {
 		contract := r.FindContract(contractName)
 		if contract == nil {
 			continue
 		}
 		for _, method := range contract.Methods {
-			// Параметры запроса
 			args := r.argsWithoutContext(method)
 			for _, arg := range args {
 				if structType, typeName, pkg := r.getStructType(arg.TypeID, contract.PkgPath); structType != nil {
-					// Формируем ключ
 					keyTypeName := typeName
 					if typeName == "" {
 						typeName = arg.Name
 						keyTypeName = arg.Name
 					}
-					// Если typeName содержит точку (импортированный тип), извлекаем только имя типа для ключа
 					if strings.Contains(keyTypeName, ".") {
 						parts := strings.Split(keyTypeName, ".")
 						keyTypeName = parts[len(parts)-1]
 					}
 					key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
 
-					// Формируем полное имя типа для ключа
 					fullTypeNameForKey := typeName
 					if fullTypeNameForKey == "" {
 						fullTypeNameForKey = arg.Name
@@ -69,20 +62,17 @@ func (r *ClientRenderer) collectStructTypes() map[string]*typeUsage {
 			results := r.resultsWithoutError(method)
 			for _, result := range results {
 				if structType, typeName, pkg := r.getStructType(result.TypeID, contract.PkgPath); structType != nil {
-					// Формируем ключ
 					keyTypeName := typeName
 					if typeName == "" {
 						typeName = result.Name
 						keyTypeName = result.Name
 					}
-					// Если typeName содержит точку (импортированный тип), извлекаем только имя типа для ключа
 					if strings.Contains(keyTypeName, ".") {
 						parts := strings.Split(keyTypeName, ".")
 						keyTypeName = parts[len(parts)-1]
 					}
 					key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
 
-					// Формируем полное имя типа для ключа
 					fullTypeNameForKey := typeName
 					if fullTypeNameForKey == "" {
 						fullTypeNameForKey = result.Name
@@ -106,19 +96,16 @@ func (r *ClientRenderer) collectStructTypes() map[string]*typeUsage {
 	return typeUsages
 }
 
-// getStructType получает структуру из типа (включая импортированные)
 func (r *ClientRenderer) getStructType(typeID, pkgPath string) (structType *model.Type, typeName string, pkg string) {
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		return nil, "", ""
 	}
 
-	// Проверяем, является ли тип структурой
 	if typ.Kind != model.TypeKindStruct || typ.TypeName == "" {
 		return nil, "", ""
 	}
 
-	// Это структура
 	typeName = typ.TypeName
 	pkg = typ.ImportPkgPath
 	if pkg == "" {
@@ -128,9 +115,7 @@ func (r *ClientRenderer) getStructType(typeID, pkgPath string) (structType *mode
 	return typ, typeName, pkg
 }
 
-// goTypeStringFromVariable возвращает строковое представление Go типа из Variable
 func (r *ClientRenderer) goTypeStringFromVariable(variable *model.Variable, pkgPath string) string {
-	// Обрабатываем массивы и слайсы
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		elemType := r.goTypeString(variable.TypeID, pkgPath)
 		if variable.IsSlice {
@@ -139,20 +124,16 @@ func (r *ClientRenderer) goTypeStringFromVariable(variable *model.Variable, pkgP
 		return fmt.Sprintf("[%d]%s", variable.ArrayLen, elemType)
 	}
 
-	// Обрабатываем map
 	if variable.MapKeyID != "" && variable.MapValueID != "" {
 		keyType := r.goTypeString(variable.MapKeyID, pkgPath)
 		valueType := r.goTypeString(variable.MapValueID, pkgPath)
 		return fmt.Sprintf("map[%s]%s", keyType, valueType)
 	}
 
-	// Базовый тип
 	return r.goTypeString(variable.TypeID, pkgPath)
 }
 
-// goTypeStringFromStructField возвращает строковое представление Go типа из StructField
 func (r *ClientRenderer) goTypeStringFromStructField(field *model.StructField, pkgPath string) string {
-	// Обрабатываем массивы и слайсы
 	if field.IsSlice || field.ArrayLen > 0 {
 		elemType := r.goTypeString(field.TypeID, pkgPath)
 		if field.IsSlice {
@@ -161,18 +142,15 @@ func (r *ClientRenderer) goTypeStringFromStructField(field *model.StructField, p
 		return fmt.Sprintf("[%d]%s", field.ArrayLen, elemType)
 	}
 
-	// Обрабатываем map
 	if field.MapKeyID != "" && field.MapValueID != "" {
 		keyType := r.goTypeString(field.MapKeyID, pkgPath)
 		valueType := r.goTypeString(field.MapValueID, pkgPath)
 		return fmt.Sprintf("map[%s]%s", keyType, valueType)
 	}
 
-	// Базовый тип
 	return r.goTypeString(field.TypeID, pkgPath)
 }
 
-// goTypeString возвращает строковое представление Go типа
 func (r *ClientRenderer) goTypeString(typeID, pkgPath string) string {
 	typ, ok := r.project.Types[typeID]
 	if !ok {
@@ -222,7 +200,6 @@ func (r *ClientRenderer) goTypeString(typeID, pkgPath string) string {
 		}
 	}
 
-	// Обрабатываем в зависимости от Kind
 	switch typ.Kind {
 	case model.TypeKindString, model.TypeKindInt, model.TypeKindInt8, model.TypeKindInt16, model.TypeKindInt32, model.TypeKindInt64,
 		model.TypeKindUint, model.TypeKindUint8, model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
@@ -299,7 +276,6 @@ func (r *ClientRenderer) goTypeString(typeID, pkgPath string) string {
 	return typeID
 }
 
-// jsonName извлекает имя JSON поля из тегов
 func (r *ClientRenderer) jsonName(field *model.StructField) (value string, inline bool) {
 	if tagValues, ok := field.Tags["json"]; ok {
 		for _, val := range tagValues {

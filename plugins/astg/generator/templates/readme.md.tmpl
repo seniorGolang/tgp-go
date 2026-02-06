@@ -1,0 +1,458 @@
+# ASTG - Автономные типы для генерации кода
+
+## Что такое ASTG?
+
+ASTG (AST Generator) - это пакет, содержащий автономные типы, сгенерированные из `internal/model` и `internal/tags`. Эти типы представляют структурированное описание Go проекта, включая контракты, методы, типы данных и аннотации.
+
+Пакет `astg` создан для использования в плагинах генерации кода и других инструментах, которым необходимо работать с метаданными проекта без зависимости от внутренних пакетов системы.
+
+## Структура пакета
+
+Пакет `astg` разбит на файлы по аспектам:
+
+- **tags.go** - типы и функции для работы с аннотациями (`DocTags`, `ParseTags`, методы работы с тегами)
+- **tag_scanner.go** - парсер аннотаций из комментариев (`TagScanner`)
+- **unquote.go** - утилиты для обработки экранированных строк
+- **project.go** - основные типы проекта (`Project`, `GitInfo`)
+- **service.go** - типы сервисов (`Service`)
+- **contract.go** - типы контрактов (`Contract`, `ImplementationInfo`, `ImplementationMethod`, `ErrorTypeReference`)
+- **method.go** - типы методов (`Method`, `HandlerInfo`, `ErrorInfo`)
+- **variable.go** - типы переменных (`Variable`)
+- **typeref.go** - типы ссылок на типы (`TypeRef`)
+- **types.go** - типы данных Go (`Type`, `TypeKind`, `StructField`, `Function`)
+
+## Тип Project
+
+`Project` - это центральный тип, который содержит всю информацию о проекте:
+
+```go
+type Project struct {
+    Version      string
+    ModulePath   string
+    ContractsDir string
+    
+    Git *GitInfo
+    
+    Annotations DocTags
+    
+    Services  []*Service
+    Contracts []*Contract
+    Types     map[string]*Type
+    
+    ExcludeDirs []string
+    
+    ProjectID string // Base58 UUIDv5 идентификатор проекта
+    Marker    string // SHA256 маркер состояния проекта
+}
+```
+
+### Использование Project в плагинах генерации кода
+
+Тип `Project` предоставляет полную информацию о проекте, которую можно использовать для:
+
+1. **Генерации клиентов** - создание клиентских библиотек на основе контрактов
+2. **Генерации серверов** - создание HTTP/gRPC серверов из контрактов
+3. **Генерации документации** - создание Swagger/OpenAPI документации
+4. **Генерации валидаторов** - создание валидации на основе типов
+5. **Анализа зависимостей** - анализ связей между контрактами и типами
+
+### Пример использования Project
+
+```go
+func GenerateClient(project *astg.Project) error {
+    for _, contract := range project.Contracts {
+        // Генерируем клиент для каждого контракта
+        for _, method := range contract.Methods {
+            // Генерируем методы клиента
+            generateMethod(method)
+        }
+    }
+    return nil
+}
+```
+
+## Аннотации (@tg)
+
+Аннотации - это специальные комментарии в Go коде, которые начинаются с `@tg` и используются для метаданных контрактов, методов и типов.
+
+### Что такое аннотации?
+
+Аннотации позволяют добавлять метаданные к Go коду без изменения его семантики. Они используются для:
+
+- **Конфигурации генерации** - указание параметров генерации кода
+- **Метаданных API** - описание HTTP путей, методов, кодов ответов
+- **Валидации** - правила валидации полей
+- **Документации** - дополнительная информация для генерации документации
+
+### Формат аннотаций
+
+Аннотации записываются в комментариях перед объявлениями:
+
+```go
+// @tg http-prefix=api/v1
+// @tg jsonRPC-server log metrics
+type MyService interface {
+    // @tg http-method=POST
+    // @tg http-path=/users
+    CreateUser(ctx context.Context, user User) (id string, err error)
+}
+```
+
+### Тип DocTags
+
+`DocTags` - это `map[string]string`, который хранит аннотации:
+
+```go
+type DocTags map[string]string
+```
+
+### Работа с аннотациями
+
+#### Парсинг аннотаций
+
+```go
+docs := []string{
+    "// @tg http-method=POST",
+    "// @tg http-path=/users",
+}
+tags := astg.ParseTags(docs)
+```
+
+#### Проверка наличия тега
+
+```go
+if tags.IsSet("http-method") {
+    method := tags.Value("http-method")
+    // Используем method
+}
+```
+
+#### Получение значений
+
+```go
+// Строковое значение
+path := tags.Value("http-path", "/default")
+
+// Числовое значение
+timeout := tags.ValueInt("timeout", 30)
+
+// Булево значение
+enabled := tags.ValueBool("enabled", false)
+```
+
+#### Работа с подтегами
+
+```go
+// Получить все теги с префиксом "http."
+httpTags := tags.Sub("http")
+// httpTags будет содержать теги без префикса "http."
+```
+
+#### Преобразование в map
+
+```go
+// Преобразовать значение тега в map[string]string
+// Формат: "key1=value1,key2=value2"
+m := tags.ToMap("params", ",", "=")
+```
+
+## Типы данных
+
+### TypeRef
+
+`TypeRef` описывает использование типа в конкретном месте: какой тип, указатели, слайс/массив/map.
+Рекурсивно используется в MapKey/MapValue для вложенных map. Не содержит имени, тегов и аннотаций.
+
+```go
+type TypeRef struct {
+    TypeID           string
+    NumberOfPointers int
+    IsSlice          bool
+    ArrayLen         int
+    IsEllipsis       bool
+    ElementPointers  int
+    MapKey           *TypeRef  // Рекурсивно для вложенных map
+    MapValue         *TypeRef  // Рекурсивно для вложенных map
+}
+```
+
+### Type и TypeKind
+
+Тип `Type` представляет любой тип Go в структурированном виде:
+
+```go
+type Type struct {
+    Kind TypeKind
+    
+    TypeName      string
+    ImportPkgPath string
+    PkgName       string
+    
+    // Для массивов и слайсов
+    IsSlice    bool
+    ArrayLen   int
+    ArrayOfID  string
+    
+    // Для map
+    MapKey   *TypeRef  // Использует TypeRef для рекурсивной поддержки вложенных map
+    MapValue *TypeRef
+    
+    // Для структур
+    StructFields []*StructField
+    
+    // Для интерфейсов
+    InterfaceMethods []*Function
+    
+    // И т.д.
+}
+```
+
+`TypeKind` определяет вид типа:
+
+```go
+const (
+    TypeKindString TypeKind = "string"
+    TypeKindInt    TypeKind = "int"
+    TypeKindStruct TypeKind = "struct"
+    TypeKindMap    TypeKind = "map"
+    // ...
+)
+```
+
+### Использование типов в генерации
+
+```go
+func GenerateTypeScriptType(typ *astg.Type, types map[string]*astg.Type) string {
+    switch typ.Kind {
+    case astg.TypeKindString:
+        return "string"
+    case astg.TypeKindInt:
+        return "number"
+    case astg.TypeKindStruct:
+        return generateStructType(typ, types)
+    case astg.TypeKindMap:
+        return generateMapType(typ, types)
+    }
+    return "any"
+}
+```
+
+## Контракты и методы
+
+### Contract
+
+`Contract` представляет Go интерфейс с аннотациями:
+
+```go
+type Contract struct {
+    Name        string
+    PkgPath     string
+    FilePath    string
+    ID          string
+    Docs        []string
+    Annotations DocTags
+    Methods     []*Method
+}
+```
+
+### Method
+
+`Method` представляет метод контракта:
+
+```go
+type Method struct {
+    Name        string
+    ContractID  string
+    Args        []*Variable
+    Results     []*Variable
+    Docs        []string
+    Annotations DocTags
+    Errors      []*ErrorInfo
+}
+```
+
+### Пример генерации из контрактов
+
+```go
+func GenerateServer(project *astg.Project) error {
+    for _, contract := range project.Contracts {
+        // Генерируем обработчики для каждого метода
+        for _, method := range contract.Methods {
+            // Получаем HTTP метод из аннотаций
+            httpMethod := method.Annotations.Value("http-method", "GET")
+            httpPath := method.Annotations.Value("http-path", "/")
+            
+            generateHandler(contract, method, httpMethod, httpPath)
+        }
+    }
+    return nil
+}
+```
+
+## Переменные и аргументы
+
+### Variable
+
+`Variable` — аргумент/результат метода или элемент описания (map key/value и т.д.). Содержит TypeRef + имя и метаданные:
+
+```go
+type Variable struct {
+    TypeRef     // Встроенный через json:",inline"
+    Name        string
+    Docs        []string
+    Annotations DocTags
+}
+```
+
+`Variable` использует встроенный `TypeRef`, что означает, что все поля `TypeRef` доступны напрямую в `Variable`.
+
+### StructField
+
+`StructField` — поле структуры. Содержит TypeRef + имя поля, теги и документацию:
+
+```go
+type StructField struct {
+    TypeRef  // Встроенный через json:",inline"
+    Name     string
+    Tags     map[string][]string
+    Docs     []string
+}
+```
+
+`StructField` также использует встроенный `TypeRef`, что позволяет работать с полями структуры так же, как с переменными.
+
+### Использование переменных
+
+```go
+func GenerateMethodSignature(method *astg.Method, types map[string]*astg.Type) string {
+    var args []string
+    for _, arg := range method.Args {
+        typeStr := resolveType(arg.TypeID, types)
+        args = append(args, fmt.Sprintf("%s %s", arg.Name, typeStr))
+    }
+    return strings.Join(args, ", ")
+}
+```
+
+## Создание плагинов генерации кода
+
+### Шаг 1: Получение Project
+
+Плагин генерации должен получать `Project` из запроса:
+
+```go
+func (p *MyGeneratorPlugin) Execute(rootDir string, request store.Storage, path ...string) (response store.Storage, err error) {
+    // Получаем project из request
+    project, ok, err := core.Get[*astg.Project](request, "project")
+    if err != nil {
+        return nil, err
+    }
+    if !ok {
+        return nil, fmt.Errorf("project not found in request")
+    }
+    
+    // Используем project для генерации
+    return generateCode(project)
+}
+```
+
+### Шаг 2: Использование типов
+
+```go
+func generateCode(project *astg.Project) error {
+    // Итерация по контрактам
+    for _, contract := range project.Contracts {
+        // Проверка аннотаций контракта
+        if contract.Annotations.IsSet("generate-client") {
+            generateClient(contract)
+        }
+        
+        // Итерация по методам
+        for _, method := range contract.Methods {
+            // Использование аннотаций метода
+            httpMethod := method.Annotations.Value("http-method")
+            generateMethod(method, httpMethod)
+        }
+    }
+    
+    // Работа с типами
+    for typeID, typ := range project.Types {
+        if typ.Kind == astg.TypeKindStruct {
+            generateStruct(typ)
+        }
+    }
+    
+    return nil
+}
+```
+
+### Шаг 3: Работа с аннотациями
+
+```go
+func processAnnotations(tags astg.DocTags) {
+    // Проверка наличия тега
+    if tags.IsSet("required") {
+        // Тег установлен
+    }
+    
+    // Получение значения с дефолтом
+    path := tags.Value("http-path", "/")
+    
+    // Получение числового значения
+    timeout := tags.ValueInt("timeout", 30)
+    
+    // Получение булева значения
+    enabled := tags.ValueBool("enabled", false)
+    
+    // Работа с подтегами
+    httpTags := tags.Sub("http")
+    method := httpTags.Value("method")
+}
+```
+
+## Лучшие практики
+
+1. **Всегда проверяйте наличие данных** - используйте проверки на `nil` и пустые значения
+2. **Используйте значения по умолчанию** - методы `Value`, `ValueInt`, `ValueBool` поддерживают дефолты
+3. **Обрабатывайте ошибки** - типы могут ссылаться на несуществующие типы через `TypeID`
+4. **Кэшируйте разрешение типов** - создавайте map для быстрого доступа к типам по `TypeID`
+5. **Используйте аннотации для конфигурации** - аннотации позволяют настраивать генерацию без изменения кода
+
+## Примеры использования
+
+### Генерация TypeScript клиента
+
+```go
+func GenerateTSClient(project *astg.Project) error {
+    for _, contract := range project.Contracts {
+        for _, method := range contract.Methods {
+            // Генерируем TypeScript метод
+            tsMethod := generateTSMethod(method, project.Types)
+            writeToFile(tsMethod)
+        }
+    }
+    return nil
+}
+```
+
+### Генерация валидаторов
+
+```go
+func GenerateValidators(project *astg.Project) error {
+    for typeID, typ := range project.Types {
+        if typ.Kind == astg.TypeKindStruct {
+            for _, field := range typ.StructFields {
+                // Проверяем теги валидации
+                if validateTags := field.Tags["validate"]; len(validateTags) > 0 {
+                    generateValidator(field, validateTags)
+                }
+            }
+        }
+    }
+    return nil
+}
+```
+
+## Заключение
+
+Пакет `astg` предоставляет все необходимые типы для работы с метаданными проекта в плагинах генерации кода. Используя эти типы, вы можете создавать мощные инструменты для автоматической генерации кода, документации и других артефактов на основе структурированного описания Go проекта.

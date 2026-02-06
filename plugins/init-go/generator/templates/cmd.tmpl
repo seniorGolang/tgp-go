@@ -1,0 +1,73 @@
+package main
+
+import (
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
+
+	_ "github.com/KimMachineGun/automemlimit"
+	"github.com/rs/zerolog/log"
+	_ "go.uber.org/automaxprocs"
+
+	"{{.Module}}/internal/config"
+{{range .ServicePackages}}
+	"{{$.Module}}/internal/services/{{.FileBase}}"
+{{end}}
+	"{{.Module}}/internal/transport"
+	"{{.Module}}/internal/transport/logger"
+)
+
+const (
+	serviceName     = "{{.ServiceName}}"
+	headerRequestID = "X-Request-Id"
+)
+
+var version = "local"
+
+func main() {
+
+    log.Logger = config.Service().Logger().With().
+        Str("version", version).
+        Str("service", serviceName).
+        Logger()
+	ctx := log.Logger.WithContext(context.Background())
+
+	serverLogger := logger.NewZerolog(log.Logger)
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT)
+
+	log.Ctx(ctx).Info().Msg("start service")
+	defer log.Info().Msg("shutdown server")
+
+	livenessSrv := transport.ServeHealth(serverLogger, "/liveness", config.Service().LivenessBind, "ok")
+	defer livenessSrv.Stop()
+
+{{ range .ServicePackages}}
+	svc{{.PublicName}} := {{.FileBase}}.New()
+{{- end}}
+
+	services := []transport.Option{
+		transport.WithRequestID(headerRequestID),
+{{- range .ServicePackages}}
+		transport.{{.PublicName}}(svc{{.PublicName}}),
+{{- end}}
+	}
+
+	srv := transport.New(serverLogger, services...).WithLog().WithMetrics()
+
+	srv.ServeMetrics(serverLogger, "/", config.Service().MetricsBind)
+
+	readinessSrv := transport.ServeHealth(serverLogger, "/readiness", config.Service().ReadinessBind, "ok")
+	defer readinessSrv.Stop()
+
+	go func() {
+		log.Info().Str("bind", config.Service().Bind).Msg("listen on")
+		if err := srv.Fiber().Listen(config.Service().Bind); err != nil {
+			log.Panic().Err(err).Stack().Msg("server error")
+		}
+	}()
+
+	<-shutdown
+}

@@ -1,0 +1,21 @@
+{
+  "Plugin base-go": "Плагин init",
+  "Base Go project generator": "Генератор базового Go-проекта",
+  "Initialize base Go project with contracts and service skeleton": "Инициализация базового Go-проекта с контрактами и каркасом сервиса",
+  "Module name": "Имя модуля",
+  "JSON-RPC interface name (e.g. some)": "Имя интерфейса JSON-RPC (например, some)",
+  "REST interface name (e.g. example)": "Имя интерфейса REST (например, example)",
+  "Output directory (default: current)": "Относительный путь от корня (по умолчанию — корень)",
+  "module option is required": "опция module обязательна",
+  "init generate": "init generate",
+  "out directory": "директория вывода",
+  "parse templates": "разбор шаблонов",
+  "run go commands": "выполнение go-команд",
+  "directory is not empty": "директория не пуста",
+  "path is not a directory": "путь не является директорией",
+  "go mod tidy failed": "go mod tidy",
+  "go generate failed": "go generate",
+  "mkdir failed": "ошибка создания каталога",
+  "execute template failed": "ошибка выполнения шаблона",
+  "write file failed": "ошибка записи файла"
+}

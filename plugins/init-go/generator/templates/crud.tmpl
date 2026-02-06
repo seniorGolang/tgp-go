@@ -1,0 +1,40 @@
+package {{.PackageName}}
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+
+	"{{.Module}}/contracts/dto"
+	"{{.Module}}/pkg/errs"
+)
+
+func (svc *Service) Create(ctx context.Context, some dto.SomeObject) (object *dto.SomeObject, err error) {
+
+	err = errs.NotImplemented
+	return
+}
+
+func (svc *Service) Get(ctx context.Context, id uuid.UUID) (object *dto.SomeObject, err error) {
+
+	err = errs.NotImplemented
+	return
+}
+
+func (svc *Service) Update(ctx context.Context, id uuid.UUID, update dto.SomeObject) (object *dto.SomeObject, err error) {
+
+	err = errs.NotImplemented
+	return
+}
+
+func (svc *Service) Delete(ctx context.Context, id uuid.UUID) (err error) {
+
+	err = errs.NotImplemented
+	return
+}
+
+func (svc *Service) List(ctx context.Context) (objects []dto.SomeObject, err error) {
+
+	err = errs.NotImplemented
+	return
+}

@@ -1,0 +1,37 @@
+// Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
+// conditions defined in file 'LICENSE', which is part of this project source code.
+package generator
+
+const (
+	contentJSON              = "application/json"
+	bearerSecuritySchema     = "bearer"
+	tagTitle                 = "title"
+	tagAppVersion            = "version"
+	tagDesc                  = "desc"
+	tagSummary               = "summary"
+	tagSecurity              = "security"
+	tagServers               = "servers"
+	tagSwaggerTags           = "swaggerTags"
+	tagMethodHTTP            = "http-method"
+	tagHttpPath              = "http-path"
+	tagHttpSuccess           = "http-success"
+	tagHttpHeader            = "http-headers"
+	tagHttpCookies           = "http-cookies"
+	tagHttpArg               = "http-args"
+	tagDeprecated            = "deprecated"
+	tagRequestContentType    = "requestContentType"
+	tagResponseContentType   = "responseContentType"
+	tagServerJsonRPC         = "jsonRPC-server"
+	tagServerHTTP            = "http-server"
+	tagHttpPrefix            = "http-prefix"
+	tagHttpMultipart         = "http-multipart"
+	tagHttpPartName          = "http-part-name"
+	tagHttpPartContent       = "http-part-content"
+	typeIDIOReader           = "io:Reader"
+	typeIDIOReadCloser       = "io:ReadCloser"
+	contentMultipartFormData = "multipart/form-data"
+	contentOctetStream       = "application/octet-stream"
+	openAPIVersion           = "3.0.0"
+	defaultVersion           = "1.0.0"
+	componentsSchemasPrefix  = "#/components/schemas/"
+)

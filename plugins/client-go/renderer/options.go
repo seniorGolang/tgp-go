@@ -144,7 +144,7 @@ func (r *ClientRenderer) RenderClientOptions() error {
 		srcFile.Line().Func().Id("WithMetrics").Params().Params(Id("Option")).Block(
 			Return(Func().Params(Id("cli").Op("*").Id("Client"))).Block(
 				If(Id("cli").Dot("metrics").Op("==").Nil()).Block(
-					Id("cli").Dot("metrics").Op("=").Id("NewMetrics").Call(),
+					List(Id("cli").Dot("metrics"), Id("cli").Dot("metricsReg")).Op("=").Id("cli").Dot("newMetrics").Call(),
 				),
 			),
 		)

@@ -314,10 +314,11 @@ cli := client.New("https://api.example.com",
 Количество отправленных запросов (успешных и неуспешных).
 
 - **Метки:**
-    - `service` - имя сервиса в формате `client_{serviceName}` (например, "client_userService")
+    - `service` - имя контракта в lowerCamel (совпадает с лейблом на сервере, например "userService")
     - `method` - имя метода в camelCase (например, "getUser")
     - `success` - результат запроса: "true" для успешных, "false" для ошибок
     - `errCode` - код ошибки (число в виде строки, "0" для успешных запросов)
+    - `client_id` - идентификатор клиента (значение `Client.name`, то же уходит в заголовок X-Client-Id)
 
 #### `client_requests_all_count` (Counter)
 
@@ -329,11 +330,7 @@ cli := client.New("https://api.example.com",
 
 Задержка выполнения запросов в секундах.
 
-- **Метки:**
-    - `service` - имя сервиса
-    - `method` - имя метода
-    - `success` - результат запроса
-    - `errCode` - код ошибки
+- **Метки:** те же, что и у `client_requests_count`
 
 ### Пример использования метрик
 

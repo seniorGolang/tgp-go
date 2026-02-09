@@ -694,17 +694,17 @@ func main() {
 		{
 			name:        "client_requests_count",
 			description: "Количество отправленных запросов",
-			labels:      "service, method, success, errCode",
+			labels:      "service, method, success, errCode, client_id",
 		},
 		{
 			name:        "client_requests_all_count",
 			description: "Общее количество всех запросов",
-			labels:      "service, method, success, errCode",
+			labels:      "service, method, success, errCode, client_id",
 		},
 		{
 			name:        "client_requests_latency_seconds",
 			description: "Задержка выполнения запросов в секундах",
-			labels:      "service, method, success, errCode",
+			labels:      "service, method, success, errCode, client_id",
 		},
 	}
 
@@ -715,27 +715,26 @@ func main() {
 		md.LF()
 	}
 
-	md.PlainText(markdown.Bold("Пример использования метрик:"))
+	md.PlainText(markdown.Bold("Экспорт метрик (один клиент):"))
 	md.LF()
-	md.CodeBlocks(markdown.SyntaxHighlightGo, fmt.Sprintf(`package main
-
-import (
-    "net/http"
-    "%s"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
-	"tgp/internal/model"
-)
-
-func main() {
-    // Создаем клиент с метриками
-    client := %s.New("http://localhost:9000",
-        %s.WithMetrics(),
-    )
-    
-    // Экспортируем метрики через HTTP endpoint
-    http.Handle("/metrics", promhttp.Handler())
-    http.ListenAndServe(":9090", nil)
-}`, pkgPath, pkgName, pkgName))
+	md.CodeBlocks(markdown.SyntaxHighlightGo, `reg := client.GetMetricsRegistry()
+if reg != nil {
+    http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+}
+http.ListenAndServe(":9090", nil)`)
+	md.LF()
+	md.PlainText(markdown.Bold("Несколько клиентов — объединение реестров в один /metrics:"))
+	md.LF()
+	md.CodeBlocks(markdown.SyntaxHighlightGo, `var gatherers []prometheus.Gatherer
+if reg := clientA.GetMetricsRegistry(); reg != nil {
+    gatherers = append(gatherers, reg)
+}
+if reg := clientB.GetMetricsRegistry(); reg != nil {
+    gatherers = append(gatherers, reg)
+}
+if len(gatherers) > 0 {
+    http.Handle("/metrics", promhttp.HandlerFor(prometheus.Gatherers(gatherers), promhttp.HandlerOpts{}))
+}`)
 	md.LF()
 	md.HorizontalRule()
 }

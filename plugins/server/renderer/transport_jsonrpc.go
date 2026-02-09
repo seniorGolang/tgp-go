@@ -185,10 +185,10 @@ func (r *transportRenderer) requestOverlayFromFiberFunc() Code {
 		BlockFunc(func(block *Group) {
 			block.Id("o").Op(":=").Id("requestOverlay").Values()
 			for _, name := range headerNames {
-				block.Id("o").Dot(overlayKeyToFieldName(name)).Op("=").Id("string").Call(Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Lit(name)))
+				block.Id("o").Dot(overlayKeyToFieldName(name)).Op("=").Qual(PackageStrings, "Clone").Call(Id("string").Call(Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Lit(name))))
 			}
 			for _, name := range cookieNames {
-				block.Id("o").Dot(overlayKeyToFieldName(name)).Op("=").Id(VarNameFtx).Dot("Cookies").Call(Lit(name))
+				block.Id("o").Dot(overlayKeyToFieldName(name)).Op("=").Qual(PackageStrings, "Clone").Call(Id(VarNameFtx).Dot("Cookies").Call(Lit(name)))
 			}
 			block.Return(Id("o"))
 		})

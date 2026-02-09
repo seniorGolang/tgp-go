@@ -26,11 +26,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code 
 		Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 		Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("missing boundary"))),
 	)
-	st.Line().Id("bodyStream").Op(":=").Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call()
-	st.Line().If(Id("bodyStream").Op("==").Nil()).Block(
-		Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
-		Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("failed to read request body"))),
-	)
+	st.Line().Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
 	st.Line().Id("mr").Op(":=").Qual(PackageMimeMultipart, "NewReader").Call(Id("bodyStream"), Id("boundary"))
 	if len(streamArgs) > 1 {
 		st.Line().Id("partBodies").Op(":=").Make(Map(String()).Index().Byte())

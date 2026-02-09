@@ -67,11 +67,12 @@ func (r *transportRenderer) initJsonRPCMethodMap() Code {
 		Params(Id("srv").Op("*").Id("Server")).
 		Params().
 		BlockFunc(func(bg *Group) {
-			bg.Id("srv").Dot("jsonRPCMethodMap").Op("=").Map(String()).Id("methodJsonRPC").Values(DictFunc(func(dict Dict) {
-				for _, contract := range r.project.Contracts {
-					if !model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
-						continue
-					}
+			bg.Id("srv").Dot("jsonRPCMethodMap").Op("=").Make(Map(String()).Id("methodJsonRPC"))
+			for _, contract := range r.project.Contracts {
+				if !model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+					continue
+				}
+				bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).BlockFunc(func(ib *Group) {
 					for _, method := range contract.Methods {
 						if !r.methodIsJsonRPCForContract(contract, method) {
 							continue
@@ -79,15 +80,16 @@ func (r *transportRenderer) initJsonRPCMethodMap() Code {
 						contractLCName := strings.ToLower(contract.Name)
 						methodLCName := strings.ToLower(method.Name)
 						methodKey := contractLCName + "." + methodLCName
-						dict[Lit(methodKey)] = Func().
+						handler := Func().
 							Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("requestBase").Id("baseJsonRPC")).
 							Params(Id("responseBase").Op("*").Id("baseJsonRPC")).
 							Block(
 								Return(Id("srv").Dot("http"+contract.Name).Dot(toLowerCamel(method.Name)+"WithContext").Call(Id(VarNameCtx), Id("requestBase"))),
 							)
+						ib.Id("srv").Dot("jsonRPCMethodMap").Index(Lit(methodKey)).Op("=").Add(handler)
 					}
-				}
-			}))
+				})
+			}
 		})
 }
 
@@ -220,7 +222,7 @@ func (r *transportRenderer) serveBatchFunc() Code {
 				)
 				ig.Return()
 			})
-			bg.Id("bodyStream").Op(":=").Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call()
+			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
 			bg.List(Id("firstByte"), Err()).Op(":=").Id("readUntilFirstNonWhitespace").Call(Id("bodyStream"))
 			bg.If(Err().Op("!=").Nil().Op("&&").Err().Op("!=").Qual("io", "EOF")).BlockFunc(func(ig *Group) {
 				ig.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
@@ -275,7 +277,7 @@ func (r *transportRenderer) serveBatchFunc() Code {
 				ig.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded")))
 			})
 			bg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-				Id("srv").Dot("metrics").Dot("BatchSize").Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
+				Id("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("/"), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
 			)
 			bg.If(Id("single")).BlockFunc(func(ig *Group) {
 				ig.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("requests").Op("[").Lit(0).Op("]")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(vg *Group) {

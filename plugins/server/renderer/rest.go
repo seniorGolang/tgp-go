@@ -114,7 +114,8 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 			if requestMultipart {
 				bg.Add(r.httpServeMultipartRequest(method))
 			} else if bodyStreamArg == nil && len(r.arguments(method)) != 0 {
-				bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call()).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+				bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+				bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
 					ig.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).Block(
 						Id("server").Dot("metrics").Dot("ErrorResponsesTotal").Dot("WithLabelValues").Call(Lit("rest"), Lit("400"), Id("clientID")).Dot("Inc").Call(),
 					)
@@ -124,7 +125,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 				})
 			}
 			if !requestMultipart && bodyStreamArg != nil {
-				bg.Id("request").Dot(toCamel(bodyStreamArg.Name)).Op("=").Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call()
+				bg.Id("request").Dot(toCamel(bodyStreamArg.Name)).Op("=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
 			}
 			bg.Add(r.urlArgs(srcFile, typeGen, method, func(arg, header string) *Statement {
 				return Line().If(Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {

@@ -28,6 +28,9 @@ func (r *ClientRenderer) RenderClient() error {
 	srcFile.ImportName(PackageSync, "sync")
 	srcFile.ImportName(PackageTime, "time")
 	srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
+	if r.HasMetrics() {
+		srcFile.ImportName(PackagePrometheus, "prometheus")
+	}
 
 	srcFile.Line().Add(r.clientStructFunc(outDir))
 
@@ -97,6 +100,11 @@ func (r *ClientRenderer) RenderClient() error {
 			)
 		}
 	}
+	if r.HasMetrics() {
+		srcFile.Line().Func().Params(Id("cli").Op("*").Id("Client")).Id("GetMetricsRegistry").Params().Params(Id("reg").Op("*").Qual(PackagePrometheus, "Registry")).Block(
+			Return(Id("cli").Dot("metricsReg")),
+		)
+	}
 	return srcFile.Save(path.Join(outDir, "client.go"))
 }
 
@@ -122,6 +130,7 @@ func (r *ClientRenderer) clientStructFunc(outDir string) Code {
 		}
 		if r.HasMetrics() {
 			sg.Line().Id("metrics").Op("*").Id("Metrics")
+			sg.Id("metricsReg").Op("*").Qual(PackagePrometheus, "Registry")
 		}
 	})
 }

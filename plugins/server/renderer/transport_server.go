@@ -182,13 +182,13 @@ func (r *transportRenderer) clientIDMiddleware() Code {
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
 		Params(Error()).
 		BlockFunc(func(bg *Group) {
-			bg.Id("clientID").Op(":=").Qual(PackageStrings, "TrimSpace").Call(String().Call(Id(VarNameFtx).Dot("Get").Call(Lit("X-Client-Id"))))
+			bg.Id("clientID").Op(":=").Qual(PackageStrings, "Clone").Call(Qual(PackageStrings, "TrimSpace").Call(Id(VarNameFtx).Dot("Get").Call(Lit("X-Client-Id"))))
 			bg.If(Id("clientID").Op("==").Lit("")).Block(
 				Id("clientID").Op("=").Lit("unknown"),
 			)
 			bg.Id("ctx").Op(":=").Id(VarNameFtx).Dot("UserContext").Call()
 			bg.Id(VarNameFtx).Dot("SetUserContext").Call(
-				Qual(srvctxPkgPath, "WithCtx").Types(String()).Call(Id("ctx"), Id("clientID")),
+				Qual(srvctxPkgPath, "WithCtx").Call(Id("ctx"), Qual(srvctxPkgPath, "ClientID").Call(Id("clientID"))),
 			)
 			bg.Return(Id(VarNameFtx).Dot("Next").Call())
 		})
@@ -196,15 +196,18 @@ func (r *transportRenderer) clientIDMiddleware() Code {
 
 func (r *transportRenderer) inFlightMiddleware() Code {
 
+	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("inFlightMiddleware").
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
 		Params(Error()).
 		BlockFunc(func(bg *Group) {
-			bg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-				Id("srv").Dot("metrics").Dot("RequestsInFlight").Dot("Inc").Call(),
-				Defer().Id("srv").Dot("metrics").Dot("RequestsInFlight").Dot("Dec").Call(),
-			)
+			bg.If(Id("srv").Dot("metrics").Op("!=").Nil()).BlockFunc(func(ig *Group) {
+				ig.Id("path").Op(":=").Qual(PackageStrings, "Clone").Call(Id(VarNameFtx).Dot("Path").Call())
+				ig.Id("clientID").Op(":=").Qual(srvctxPkgPath, "GetClientID").Call(Id(VarNameFtx).Dot("UserContext").Call())
+				ig.Id("srv").Dot("metrics").Dot("RequestsInFlight").Dot("WithLabelValues").Call(Id("path"), Id("clientID")).Dot("Inc").Call()
+				ig.Defer().Id("srv").Dot("metrics").Dot("RequestsInFlight").Dot("WithLabelValues").Call(Id("path"), Id("clientID")).Dot("Dec").Call()
+			})
 			bg.Return(Id(VarNameFtx).Dot("Next").Call())
 		})
 }

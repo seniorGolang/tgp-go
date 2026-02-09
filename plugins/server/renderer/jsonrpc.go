@@ -156,7 +156,7 @@ func (r *contractRenderer) serveMethodFunc(jsonPkg string) Code {
 			})
 			bg.Var().Id("request").Id("baseJsonRPC")
 			bg.Var().Id("response").Op("*").Id("baseJsonRPC")
-			bg.List(Id("body"), Err()).Op(":=").Qual("io", "ReadAll").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+			bg.List(Id("body"), Err()).Op(":=").Qual("io", "ReadAll").Call(Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call()))
 			bg.If(Err().Op("!=").Nil()).Block(
 				Return().Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call()),
 			)
@@ -206,7 +206,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) Code {
 				)
 				ig.Return()
 			})
-			bg.Id("bodyStream").Op(":=").Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call()
+			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
 			bg.List(Id("firstByte"), Err()).Op(":=").Id("readUntilFirstNonWhitespace").Call(Id("bodyStream"))
 			bg.If(Err().Op("!=").Nil().Op("&&").Err().Op("!=").Qual("io", "EOF")).BlockFunc(func(ig *Group) {
 				ig.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
@@ -261,7 +261,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) Code {
 				ig.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded")))
 			})
 			bg.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-				Id("http").Dot("srv").Dot("metrics").Dot("BatchSize").Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
+				Id("http").Dot("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit(r.batchPath()), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
 			)
 			bg.If(Id("single")).BlockFunc(func(ig *Group) {
 				ig.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("requests").Op("[").Lit(0).Op("]")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(vg *Group) {

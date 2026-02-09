@@ -9,11 +9,12 @@ import (
 	"time"
 )
 
+type ClientID string
 type contextKey string
 
 func keyFor[T any]() string {
 
-	return reflect.TypeOf((*T)(nil)).Elem().String()
+	return cachedKey(reflect.TypeOf((*T)(nil)).Elem())
 }
 
 func WithCtx[T any](ctx context.Context, value T) context.Context {
@@ -47,8 +48,8 @@ func WithCancel(parent context.Context) (context.Context, context.CancelFunc) {
 
 func GetClientID(ctx context.Context) string {
 
-	if clientID := FromCtx[string](ctx); clientID != "" {
-		return clientID
+	if id := FromCtx[ClientID](ctx); id != "" {
+		return string(id)
 	}
 	return "unknown"
 }

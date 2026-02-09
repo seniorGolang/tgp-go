@@ -13,7 +13,7 @@ import (
 // Логика метрик вынесена в хелпер, чтобы не дублировать код в каждом HTTP-методе.
 func (r *ClientRenderer) httpRecordHTTPMetricsHelper(contract *model.Contract) Code {
 
-	contractLabel := "client_" + r.contractNameToLowerCamel(contract)
+	serviceLabel := r.contractNameToLowerCamel(contract)
 	return Line().
 		Func().Params(Id("cli").Op("*").Id("Client"+contract.Name)).
 		Id("recordHTTPMetrics").Params(
@@ -36,46 +36,34 @@ func (r *ClientRenderer) httpRecordHTTPMetricsHelper(contract *model.Contract) C
 					Id("errCode").Op("=").Id("ec").Dot("Code").Call(),
 				),
 			),
+			Var().Id("successStr").String(),
+			Var().Id("errCodeStr").String(),
 			If(Id("success")).Block(
-				Id("cli").Dot("Client").Dot("metrics").Dot("RequestCount").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("true"),
-					Lit("0")).
-					Dot("Add").Call(Lit(1)),
-				Id("cli").Dot("Client").Dot("metrics").Dot("RequestCountAll").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("true"),
-					Lit("0")).
-					Dot("Add").Call(Lit(1)),
-				Id("cli").Dot("Client").Dot("metrics").Dot("RequestLatency").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("true"),
-					Lit("0")).
-					Dot("Observe").Call(Qual(PackageTime, "Since").Call(Id("_begin")).Dot("Seconds").Call()),
+				List(Id("successStr"), Id("errCodeStr")).Op("=").List(Lit("true"), Lit("0")),
 			).Else().Block(
-				Id("errCodeStr").Op(":=").Qual(PackageStrconv, "Itoa").Call(Id("errCode")),
-				Id("cli").Dot("Client").Dot("metrics").Dot("RequestCount").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("false"),
-					Id("errCodeStr")).
-					Dot("Add").Call(Lit(1)),
-				Id("cli").Dot("Client").Dot("metrics").Dot("RequestCountAll").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("false"),
-					Id("errCodeStr")).
-					Dot("Add").Call(Lit(1)),
-				Id("cli").Dot("Client").Dot("metrics").Dot("RequestLatency").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("false"),
-					Id("errCodeStr")).
-					Dot("Observe").Call(Qual(PackageTime, "Since").Call(Id("_begin")).Dot("Seconds").Call()),
+				List(Id("successStr"), Id("errCodeStr")).Op("=").List(Lit("false"), Qual(PackageStrconv, "Itoa").Call(Id("errCode"))),
 			),
+			Id("cli").Dot("Client").Dot("metrics").Dot("RequestCount").Dot("WithLabelValues").Call(
+				Lit(serviceLabel),
+				Id("method"),
+				Id("successStr"),
+				Id("errCodeStr"),
+				Id("cli").Dot("Client").Dot("name")).
+				Dot("Add").Call(Lit(1)),
+			Id("cli").Dot("Client").Dot("metrics").Dot("RequestCountAll").Dot("WithLabelValues").Call(
+				Lit(serviceLabel),
+				Id("method"),
+				Id("successStr"),
+				Id("errCodeStr"),
+				Id("cli").Dot("Client").Dot("name")).
+				Dot("Add").Call(Lit(1)),
+			Id("cli").Dot("Client").Dot("metrics").Dot("RequestLatency").Dot("WithLabelValues").Call(
+				Lit(serviceLabel),
+				Id("method"),
+				Id("successStr"),
+				Id("errCodeStr"),
+				Id("cli").Dot("Client").Dot("name")).
+				Dot("Observe").Call(Qual(PackageTime, "Since").Call(Id("_begin")).Dot("Seconds").Call()),
 		)
 }
 
@@ -92,7 +80,7 @@ func (r *ClientRenderer) httpMetricsDefer(contract *model.Contract, method *mode
 
 func (r *ClientRenderer) rpcRecordMetricsHelper(contract *model.Contract) Code {
 
-	contractLabel := "client_" + r.contractNameToLowerCamel(contract)
+	serviceLabel := r.contractNameToLowerCamel(contract)
 	return Line().
 		Func().Params(Id("cli").Op("*").Id("Client"+contract.Name)).
 		Id("recordRPCMetrics").Params(
@@ -115,46 +103,34 @@ func (r *ClientRenderer) rpcRecordMetricsHelper(contract *model.Contract) Code {
 					Id("errCode").Op("=").Id("ec").Dot("Code").Call(),
 				),
 			),
+			Var().Id("successStr").String(),
+			Var().Id("errCodeStr").String(),
 			If(Id("success")).Block(
-				Id("cli").Dot("metrics").Dot("RequestCount").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("true"),
-					Lit("0")).
-					Dot("Add").Call(Lit(1)),
-				Id("cli").Dot("metrics").Dot("RequestCountAll").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("true"),
-					Lit("0")).
-					Dot("Add").Call(Lit(1)),
-				Id("cli").Dot("metrics").Dot("RequestLatency").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("true"),
-					Lit("0")).
-					Dot("Observe").Call(Qual(PackageTime, "Since").Call(Id("_begin")).Dot("Seconds").Call()),
+				List(Id("successStr"), Id("errCodeStr")).Op("=").List(Lit("true"), Lit("0")),
 			).Else().Block(
-				Id("errCodeStr").Op(":=").Qual(PackageStrconv, "Itoa").Call(Id("errCode")),
-				Id("cli").Dot("metrics").Dot("RequestCount").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("false"),
-					Id("errCodeStr")).
-					Dot("Add").Call(Lit(1)),
-				Id("cli").Dot("metrics").Dot("RequestCountAll").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("false"),
-					Id("errCodeStr")).
-					Dot("Add").Call(Lit(1)),
-				Id("cli").Dot("metrics").Dot("RequestLatency").Dot("WithLabelValues").Call(
-					Lit(contractLabel),
-					Id("method"),
-					Lit("false"),
-					Id("errCodeStr")).
-					Dot("Observe").Call(Qual(PackageTime, "Since").Call(Id("_begin")).Dot("Seconds").Call()),
+				List(Id("successStr"), Id("errCodeStr")).Op("=").List(Lit("false"), Qual(PackageStrconv, "Itoa").Call(Id("errCode"))),
 			),
+			Id("cli").Dot("metrics").Dot("RequestCount").Dot("WithLabelValues").Call(
+				Lit(serviceLabel),
+				Id("method"),
+				Id("successStr"),
+				Id("errCodeStr"),
+				Id("cli").Dot("Client").Dot("name")).
+				Dot("Add").Call(Lit(1)),
+			Id("cli").Dot("metrics").Dot("RequestCountAll").Dot("WithLabelValues").Call(
+				Lit(serviceLabel),
+				Id("method"),
+				Id("successStr"),
+				Id("errCodeStr"),
+				Id("cli").Dot("Client").Dot("name")).
+				Dot("Add").Call(Lit(1)),
+			Id("cli").Dot("metrics").Dot("RequestLatency").Dot("WithLabelValues").Call(
+				Lit(serviceLabel),
+				Id("method"),
+				Id("successStr"),
+				Id("errCodeStr"),
+				Id("cli").Dot("Client").Dot("name")).
+				Dot("Observe").Call(Qual(PackageTime, "Since").Call(Id("_begin")).Dot("Seconds").Call()),
 		)
 }
 

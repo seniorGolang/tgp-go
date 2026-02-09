@@ -25,6 +25,7 @@ func (r *transportRenderer) RenderTransportHeader() error {
 	jsonPkg := r.getPackageJSON()
 	srcFile.ImportName(jsonPkg, "json")
 	srcFile.ImportName(PackageFmt, "fmt")
+	srcFile.ImportName(PackageStrings, "strings")
 
 	r.renderHeaderTypes(&srcFile)
 	r.renderHeaderHandler(&srcFile)
@@ -71,7 +72,7 @@ func (r *transportRenderer) renderHeaderHandler(srcFile *GoFile) {
 			bg.Id("updatedCtx").Op(":=").Id("ctx")
 			bg.For(List(Id("headerName"), Id("handler")).Op(":=").Range().Id("srv").Dot("headerHandlers")).Block(
 				Id("value").Op(":=").Id("req").Dot("Header").Dot("Peek").Call(Id("headerName")),
-				Id("header").Op(":=").Id("handler").Call(String().Call(Id("value"))),
+				Id("header").Op(":=").Id("handler").Call(Qual(PackageStrings, "Clone").Call(String().Call(Id("value")))),
 				If(Id("header").Dot("RequestValue").Op("!=").Nil()).Block(
 					Id("req").Dot("Header").Dot("Set").Call(Id("header").Dot("RequestKey"), Id("headerValue").Call(Id("header").Dot("RequestValue"))),
 				),

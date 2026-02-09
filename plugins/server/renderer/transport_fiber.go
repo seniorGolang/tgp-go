@@ -22,10 +22,14 @@ func (r *transportRenderer) RenderTransportFiber() error {
 	srcFile.ImportName(PackageErrors, "errors")
 	srcFile.ImportName(PackageSlog, "slog")
 	srcFile.ImportName(PackageContext, "context")
+	srcFile.ImportName(PackageStrings, "strings")
 	srcFile.ImportName(srvctxPkgPath, "srvctx")
 	srcFile.ImportName(PackageFmt, "fmt")
+	srcFile.ImportName(PackageBytes, "bytes")
+	srcFile.ImportName("io", "io")
 	srcFile.ImportName("runtime/debug", "debug")
 
+	srcFile.Line().Add(r.ensureBodyReaderFunc())
 	srcFile.Line().Const().Id("logLevelHeader").Op("=").Lit("X-Log-Level")
 
 	srcFile.Line().Type().Id("levelHandler").Struct(
@@ -73,6 +77,19 @@ func (r *transportRenderer) RenderTransportFiber() error {
 	return srcFile.Save(fiberPath)
 }
 
+func (r *transportRenderer) ensureBodyReaderFunc() Code {
+
+	return Func().Id("ensureBodyReader").
+		Params(Id("r").Qual("io", "Reader")).
+		Params(Qual("io", "Reader")).
+		Block(
+			If(Id("r").Op("==").Nil()).Block(
+				Return(Qual(PackageBytes, "NewReader").Call(Nil())),
+			),
+			Return(Id("r")),
+		)
+}
+
 func (r *transportRenderer) renderFiberLogger(srcFile *GoFile) {
 
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
@@ -94,7 +111,7 @@ func (r *transportRenderer) renderFiberLogger(srcFile *GoFile) {
 			bg.If(fromCtxLogger(Id("ctx")).Op("!=").Nil()).Block(
 				Return(Id(VarNameFtx).Dot("Next").Call()),
 			)
-			bg.Id("levelName").Op(":=").String().Call(Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Id("logLevelHeader")))
+			bg.Id("levelName").Op(":=").Qual(PackageStrings, "Clone").Call(String().Call(Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Id("logLevelHeader"))))
 			bg.If(Id("levelName").Op("==").Lit("")).Block(
 				Id(VarNameFtx).Dot("SetUserContext").Call(withCtxLogger(Id("ctx"), Id("srv").Dot("log"))),
 				Return(Id(VarNameFtx).Dot("Next").Call()),
@@ -128,20 +145,24 @@ func (r *transportRenderer) renderFiberRecover(srcFile *GoFile) {
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
 		Error().
 		BlockFunc(func(bg *Group) {
+			bg.Id("path").Op(":=").Qual(PackageStrings, "Clone").Call(Id(VarNameFtx).Dot("Path").Call())
+			bg.Id("method").Op(":=").Qual(PackageStrings, "Clone").Call(Id(VarNameFtx).Dot("Method").Call())
+			bg.Id("originalURL").Op(":=").Qual(PackageStrings, "Clone").Call(Id(VarNameFtx).Dot("OriginalURL").Call())
 			bg.Defer().Func().Params().BlockFunc(func(dg *Group) {
 				dg.If(Id("r").Op(":=").Recover().Op(";").Id("r").Op("!=").Nil()).BlockFunc(func(ig *Group) {
 					ig.List(Err(), Id("ok")).Op(":=").Id("r").Op(".").Call(Error())
 					ig.If(Op("!").Id("ok")).Block(
 						Err().Op("=").Qual(PackageErrors, "New").Call(Qual(PackageFmt, "Sprintf").Call(Lit("%v"), Id("r"))),
 					)
-					ig.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).Block(
-						Id("server").Dot("metrics").Dot("PanicsTotal").Dot("Inc").Call(),
-					)
+					ig.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).BlockFunc(func(pg *Group) {
+						pg.Id("clientID").Op(":=").Qual(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "GetClientID").Call(Id(VarNameFtx).Dot("UserContext").Call())
+						pg.Id("server").Dot("metrics").Dot("PanicsTotal").Dot("WithLabelValues").Call(Id("path"), Id("method"), Id("clientID")).Dot("Inc").Call()
+					})
 					ig.If(Id("logger").Op(":=").Qual(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id(VarNameFtx).Dot("UserContext").Call()).Op(";").Id("logger").Op("!=").Nil()).Block(
 						Id("logger").Dot("Error").Call(Lit("panic occurred"),
 							Qual(PackageSlog, "Any").Call(Lit("error"), Qual(PackageErrors, "Wrap").Call(Err(), Lit("recover"))),
-							Qual(PackageSlog, "String").Call(Lit("method"), Id(VarNameFtx).Dot("Method").Call()),
-							Qual(PackageSlog, "String").Call(Lit("path"), Id(VarNameFtx).Dot("OriginalURL").Call()),
+							Qual(PackageSlog, "String").Call(Lit("method"), Id("method")),
+							Qual(PackageSlog, "String").Call(Lit("path"), Id("originalURL")),
 							Qual(PackageSlog, "String").Call(Lit("stack"), Id("string").Call(Qual("runtime/debug", "Stack").Call())),
 						),
 					)

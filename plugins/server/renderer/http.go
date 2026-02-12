@@ -40,7 +40,7 @@ func (r *contractRenderer) renderHTTPTypes(srcFile *GoFile) {
 	if r.hasJsonRPC() {
 		fields = append(fields, Id("maxBatchSize").Int(), Id("maxParallelBatch").Int())
 	}
-	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) {
 		fields = append(fields, Id("srv").Op("*").Id("Server"))
 	}
 	srcFile.Type().Id("http" + r.contract.Name).Struct(fields...)
@@ -81,7 +81,7 @@ func (r *contractRenderer) renderHTTPWithFuncs(srcFile *GoFile) {
 		srcFile.Line().Add(r.httpWithMetricsFunc())
 	}
 	srcFile.Line().Add(r.httpWithErrorHandler())
-	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerHTTP) {
 		srcFile.Line().Add(r.httpWithRedirectFunc())
 	}
 }
@@ -92,7 +92,7 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 		Id("SetRoutes").
 		Params(Id("route").Op("*").Qual(PackageFiber, "App")).
 		BlockFunc(func(bg *Group) {
-			if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerJsonRPC) {
+			if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) {
 				bg.Id("route").Dot("Post").Call(Lit(r.batchPath()), Id("http").Dot("serveBatch"))
 				for _, method := range r.contract.Methods {
 					if !r.methodIsJsonRPC(method) {
@@ -101,7 +101,7 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 					bg.Id("route").Dot("Post").Call(Lit(r.methodJsonRPCPath(method)), Id("http").Dot("serve"+method.Name))
 				}
 			}
-			if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerHTTP) {
+			if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerHTTP) {
 				for _, method := range r.contract.Methods {
 					if !r.methodIsHTTP(method) {
 						continue

@@ -20,7 +20,7 @@ const (
 	ptrHexPrefix           = "0x"
 )
 
-func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node interface{}, err error) {
+func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
 
 	kind := v.Kind()
 	if kind == reflect.Invalid {
@@ -82,7 +82,7 @@ func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *Config
 	}
 }
 
-func toJSONTreePtr(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node interface{}, err error) {
+func toJSONTreePtr(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
 
 	if v.IsNil() {
 		return nil, nil
@@ -124,7 +124,7 @@ func unpackValue(v reflect.Value) reflect.Value {
 	return v
 }
 
-func toJSONTreeSlice(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node interface{}, err error) {
+func toJSONTreeSlice(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
 
 	if v.Kind() == reflect.Slice && v.IsNil() {
 		return nil, nil
@@ -135,7 +135,7 @@ func toJSONTreeSlice(v reflect.Value, depth int, pointers map[uintptr]int, cs *C
 	}
 	n := v.Len()
 	if n > sliceMaxLen {
-		arr := make([]interface{}, 0, 2*sliceHeadTail+1)
+		arr := make([]any, 0, 2*sliceHeadTail+1)
 		for i := 0; i < sliceHeadTail; i++ {
 			item, itemErr := toJSONTree(unpackValue(v.Index(i)), childDepth, pointers, cs, opt)
 			if itemErr != nil {
@@ -153,7 +153,7 @@ func toJSONTreeSlice(v reflect.Value, depth int, pointers map[uintptr]int, cs *C
 		}
 		return arr, nil
 	}
-	arr := make([]interface{}, 0, n)
+	arr := make([]any, 0, n)
 	for i := 0; i < n; i++ {
 		item, itemErr := toJSONTree(unpackValue(v.Index(i)), childDepth, pointers, cs, opt)
 		if itemErr != nil {
@@ -164,7 +164,7 @@ func toJSONTreeSlice(v reflect.Value, depth int, pointers map[uintptr]int, cs *C
 	return arr, nil
 }
 
-func toJSONTreeMap(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node interface{}, err error) {
+func toJSONTreeMap(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
 
 	if v.IsNil() {
 		return nil, nil
@@ -173,7 +173,7 @@ func toJSONTreeMap(v reflect.Value, depth int, pointers map[uintptr]int, cs *Con
 	if cs.MaxDepth != 0 && childDepth > cs.MaxDepth {
 		return jsonPlaceholderMax, nil
 	}
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	keys := v.MapKeys()
 	for _, key := range keys {
 		keyStr, keyErr := mapKeyString(key, childDepth, pointers, cs, opt)
@@ -213,7 +213,7 @@ func mapKeyString(v reflect.Value, depth int, pointers map[uintptr]int, cs *Conf
 	}
 }
 
-func toJSONTreeStruct(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node interface{}, err error) {
+func toJSONTreeStruct(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
 
 	if v.Type() == reflect.TypeOf(time.Time{}) {
 		return v.Interface().(time.Time).Format(time.RFC3339), nil
@@ -222,7 +222,7 @@ func toJSONTreeStruct(v reflect.Value, depth int, pointers map[uintptr]int, cs *
 	if cs.MaxDepth != 0 && childDepth > cs.MaxDepth {
 		return jsonPlaceholderMax, nil
 	}
-	m := make(map[string]interface{})
+	m := make(map[string]any)
 	vt := v.Type()
 	for i := 0; i < v.NumField(); i++ {
 		fieldOpt := tagToOption(vt.Field(i).Tag.Get(tagName))

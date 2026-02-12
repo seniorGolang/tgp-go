@@ -16,7 +16,7 @@ import (
 func (r *contractRenderer) varHeaderMap(method *model.Method) map[string]string {
 
 	headers := make(map[string]string)
-	if httpHeaders := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpHeader, ""); httpHeaders != "" {
+	if httpHeaders := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpHeader, ""); httpHeaders != "" {
 		headerPairs := strings.Split(httpHeaders, ",")
 		for _, pair := range headerPairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -32,7 +32,7 @@ func (r *contractRenderer) varHeaderMap(method *model.Method) map[string]string 
 func (r *contractRenderer) varCookieMap(method *model.Method) map[string]string {
 
 	cookies := make(map[string]string)
-	if httpCookies := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpCookies, ""); httpCookies != "" {
+	if httpCookies := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpCookies, ""); httpCookies != "" {
 		cookiePairs := strings.Split(httpCookies, ",")
 		for _, pair := range cookiePairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -51,7 +51,7 @@ func usedHeaderNamesForMethod(project *model.Project, contract *model.Contract, 
 		return nil
 	}
 	headers := make(map[string]struct{})
-	if httpHeaders := model.GetAnnotationValue(project, contract, method, nil, TagHttpHeader, ""); httpHeaders != "" {
+	if httpHeaders := model.GetAnnotationValue(project, contract, method, nil, model.TagHttpHeader, ""); httpHeaders != "" {
 		for _, pair := range strings.Split(httpHeaders, ",") {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
 				header := strings.TrimSpace(pairTokens[1])
@@ -70,7 +70,7 @@ func usedCookieNamesForMethod(project *model.Project, contract *model.Contract, 
 		return nil
 	}
 	cookies := make(map[string]struct{})
-	if httpCookies := model.GetAnnotationValue(project, contract, method, nil, TagHttpCookies, ""); httpCookies != "" {
+	if httpCookies := model.GetAnnotationValue(project, contract, method, nil, model.TagHttpCookies, ""); httpCookies != "" {
 		for _, pair := range strings.Split(httpCookies, ",") {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
 				cookie := strings.TrimSpace(pairTokens[1])
@@ -86,7 +86,7 @@ func usedCookieNamesForMethod(project *model.Project, contract *model.Contract, 
 func (r *contractRenderer) argPathMap(method *model.Method) map[string]string {
 
 	paths := make(map[string]string)
-	if urlPath := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpPath, ""); urlPath != "" {
+	if urlPath := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpPath, ""); urlPath != "" {
 		urlTokens := strings.Split(urlPath, "/")
 		for _, token := range urlTokens {
 			if strings.HasPrefix(token, ":") {
@@ -101,7 +101,7 @@ func (r *contractRenderer) argPathMap(method *model.Method) map[string]string {
 func (r *contractRenderer) argParamMap(method *model.Method) map[string]string {
 
 	params := make(map[string]string)
-	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpArg, ""); urlArgs != "" {
+	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, ""); urlArgs != "" {
 		paramPairs := strings.Split(urlArgs, ",")
 		for _, pair := range paramPairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -215,7 +215,7 @@ func (r *contractRenderer) methodRequestMultipart(method *model.Method) bool {
 	if len(readerArgs) > 1 {
 		return true
 	}
-	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, TagHttpMultipart) {
+	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpMultipart) {
 		return true
 	}
 	return false
@@ -227,7 +227,7 @@ func (r *contractRenderer) methodResponseMultipart(method *model.Method) bool {
 	if len(readCloserResults) > 1 {
 		return true
 	}
-	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, TagHttpMultipart) {
+	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpMultipart) {
 		return true
 	}
 	return false
@@ -236,12 +236,12 @@ func (r *contractRenderer) methodResponseMultipart(method *model.Method) bool {
 func (r *contractRenderer) streamPartName(method *model.Method, v *model.Variable) string {
 
 	if v != nil && v.Annotations != nil {
-		if val, found := v.Annotations[TagHttpPartName]; found && val != "" {
+		if val, found := v.Annotations[model.TagHttpPartName]; found && val != "" {
 			return val
 		}
 	}
 	if method != nil && method.Annotations != nil {
-		if val, found := method.Annotations[TagHttpPartName]; found && val != "" {
+		if val, found := method.Annotations[model.TagHttpPartName]; found && val != "" {
 			if partName := r.varValueFromMethodMap(val, v.Name); partName != "" {
 				return partName
 			}
@@ -253,12 +253,12 @@ func (r *contractRenderer) streamPartName(method *model.Method, v *model.Variabl
 func (r *contractRenderer) streamPartContent(method *model.Method, v *model.Variable) string {
 
 	if v != nil && v.Annotations != nil {
-		if val, found := v.Annotations[TagHttpPartContent]; found && val != "" {
+		if val, found := v.Annotations[model.TagHttpPartContent]; found && val != "" {
 			return val
 		}
 	}
 	if method != nil && method.Annotations != nil {
-		if val, found := method.Annotations[TagHttpPartContent]; found && val != "" {
+		if val, found := method.Annotations[model.TagHttpPartContent]; found && val != "" {
 			return r.varValueFromMethodMap(val, v.Name)
 		}
 	}
@@ -442,8 +442,7 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 					}
 					bg.Add(r.argToTypeConverter(srcFile, typeGen, Id("_"+argVarName), fieldVar, Id(argVarName), errStatement(argVarName, srcName)))
 
-					// Присваиваем значение в request
-					reqID := bg.Id("request").Dot(toCamel(argName))
+					reqID := bg.Id("request").Dot(r.requestStructFieldName(method, arg))
 					if len(argTokens) > 1 {
 						for _, token := range argTokens[1:] {
 							reqID = reqID.Dot(toCamel(token))
@@ -622,8 +621,7 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 					}
 					bg.Add(r.argToTypeConverter(srcFile, typeGen, Id("_"+argVarName), fieldVar, Id(argVarName), errStatement(argVarName, srcName)))
 
-					// Присваиваем значение в request
-					reqID := bg.Id("request").Dot(toCamel(argName))
+					reqID := bg.Id("request").Dot(r.requestStructFieldName(method, arg))
 					if len(argTokens) > 1 {
 						for _, token := range argTokens[1:] {
 							reqID = reqID.Dot(toCamel(token))
@@ -771,7 +769,7 @@ func (r *contractRenderer) urlArgs(srcFile *GoFile, typeGen *types.Generator, me
 
 func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
 	queryParams := make(map[string]string)
-	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpArg, ""); urlArgs != "" {
+	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, ""); urlArgs != "" {
 		paramPairs := strings.Split(urlArgs, ",")
 		for _, pair := range paramPairs {
 			pair = strings.TrimSpace(pair)
@@ -791,7 +789,7 @@ func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, 
 		}
 	}
 	var orderedArgs []string
-	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpArg, ""); urlArgs != "" {
+	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, ""); urlArgs != "" {
 		paramPairs := strings.Split(urlArgs, ",")
 		for _, pair := range paramPairs {
 			pair = strings.TrimSpace(pair)
@@ -862,15 +860,20 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 	inner := Line()
 	inner.Add(r.argFromString(srcFile, typeGen, method, "header", headerMap, overlayFromMap, errStatement))
 	inner.Add(r.argFromString(srcFile, typeGen, method, "cookie", cookieMap, overlayFromMap, errStatement))
-	var assertBlock *Statement
+	var block *Statement
 	if overlayAsStruct {
-		assertBlock = If(List(Id("overlay"), Id("ok")).Op(":=").Id("overlayVal").Assert(Id("requestOverlay")).Op(";").Id("ok")).Block(inner)
+		block = Id("getterVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
+			Line().If(Id("getterVal").Op("!=").Nil()).Block(
+			Id("getter").Op(":=").Id("getterVal").Assert(Id("requestOverlayGetter")),
+			Id("overlay").Op(":=").Id("getter").Call(),
+			inner,
+		)
 	} else {
-		assertBlock = If(List(Id("overlay"), Id("ok")).Op(":=").Id("overlayVal").Assert(Map(String()).String()).Op(";").Id("ok")).Block(inner)
+		assertBlock := If(List(Id("overlay"), Id("ok")).Op(":=").Id("overlayVal").Assert(Map(String()).String()).Op(";").Id("ok")).Block(inner)
+		block = Id("overlayVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
+			Line().If(Id("overlayVal").Op("!=").Nil()).Block(assertBlock)
 	}
-	return Line().
-		Id("overlayVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
-		Line().If(Id("overlayVal").Op("!=").Nil()).Block(assertBlock)
+	return Line().Add(block)
 }
 
 func (r *contractRenderer) httpCookies(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
@@ -887,7 +890,7 @@ func (r *contractRenderer) httpRetHeaders(method *model.Method) *Statement {
 	headerMap := r.varHeaderMap(method)
 	for varName, headerName := range common.SortedPairs(headerMap) {
 		if ret := r.resultByName(method, varName); ret != nil {
-			ex.Id(VarNameFtx).Dot("Set").Call(Lit(headerName), Id("response").Dot(toCamel(varName)))
+			ex.Id(VarNameFtx).Dot("Set").Call(Lit(headerName), Id("response").Dot(r.responseStructFieldName(method, ret)))
 		}
 	}
 	return ex

@@ -31,7 +31,7 @@ func NewClientRenderer(project *model.Project, outDir string) *ClientRenderer {
 func (r *ClientRenderer) HasJsonRPC() bool {
 
 	for _, contract := range r.project.Contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			return true
 		}
 	}
@@ -41,7 +41,7 @@ func (r *ClientRenderer) HasJsonRPC() bool {
 func (r *ClientRenderer) HasHTTP() bool {
 
 	for _, contract := range r.project.Contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			return true
 		}
 	}

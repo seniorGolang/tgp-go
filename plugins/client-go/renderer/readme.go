@@ -60,7 +60,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 	hasJsonRPC := false
 
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			hasJsonRPC = true
 		}
 
@@ -71,7 +71,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 			anchor: contractAnchor,
 		})
 
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					methodAnchor := methodAnchorID(contract.Name, method.Name)
@@ -84,11 +84,11 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 			}
 		}
 
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(contract, method) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "/"+ToLowerCamel(method.Name))
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+ToLowerCamel(method.Name))
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					_ = append(tocItems, tocItem{
@@ -126,7 +126,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 		md.PlainText(fmt.Sprintf("- [%s](#%s)", contract.Name, contractAnchor))
 		md.LF()
 
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					methodAnchor := methodAnchorID(contract.Name, method.Name)
@@ -136,11 +136,11 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 			}
 		}
 
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(contract, method) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "/"+ToLowerCamel(method.Name))
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+ToLowerCamel(method.Name))
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
@@ -247,7 +247,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 		if contract == nil {
 			continue
 		}
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					exampleContract = contract
@@ -259,7 +259,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 				break
 			}
 		}
-		if exampleContract == nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if exampleContract == nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(contract, method) {
 					exampleContract = contract
@@ -446,7 +446,7 @@ func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.C
 		md.LF()
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 		for _, method := range contract.Methods {
 			if !r.methodIsJsonRPC(contract, method) {
 				continue
@@ -455,7 +455,7 @@ func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.C
 		}
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 		for _, method := range contract.Methods {
 			if !r.methodIsHTTP(contract, method) {
 				continue

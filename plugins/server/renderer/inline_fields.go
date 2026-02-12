@@ -29,7 +29,7 @@ func (r *contractRenderer) expandInlineFields(vars []*model.Variable, methodTags
 func (r *contractRenderer) isInlineField(v *model.Variable, methodTags tags.DocTags) bool {
 
 	for key, value := range common.SortedPairs(methodTags.Sub(v.Name)) {
-		if key == "tag" {
+		if key == model.TagParamTags {
 			// Формат: tag:json:fieldName,inline|tag:xml:fieldName
 			if list := strings.Split(value, "|"); len(list) > 0 {
 				for _, item := range list {
@@ -94,6 +94,23 @@ func (r *contractRenderer) expandInlineStruct(v *model.Variable) []*model.Variab
 	}
 
 	return result
+}
+
+func (r *contractRenderer) requestStructFieldName(method *model.Method, v *model.Variable) string {
+
+	if r.isInlineField(v, method.Annotations) {
+		return typeNameFromTypeID(r.project, v.TypeID)
+	}
+	return toCamel(v.Name)
+}
+
+func (r *contractRenderer) responseStructFieldName(method *model.Method, ret *model.Variable) string {
+
+	results := resultsWithoutError(method)
+	if len(results) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
+		return typeNameFromTypeID(r.project, ret.TypeID)
+	}
+	return toCamel(ret.Name)
 }
 
 func (r *contractRenderer) ArgsFieldsWithoutContext(method *model.Method) []*model.Variable {

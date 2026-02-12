@@ -96,13 +96,13 @@ func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *ty
 			bg.Line()
 			bg.ListFunc(func(lg *Group) {
 				for _, ret := range resultsWithoutError(method) {
-					lg.Id("response").Dot(toCamel(ret.Name))
+					lg.Id("response").Dot(r.responseStructFieldName(method, ret))
 				}
 				lg.Err()
 			}).Op("=").Id("http").Dot("svc").Dot(method.Name).CallFunc(func(cg *Group) {
 				cg.Id(VarNameCtx)
 				for _, arg := range argsWithoutContext(method) {
-					argCode := Id("request").Dot(toCamel(arg.Name))
+					argCode := Id("request").Dot(r.requestStructFieldName(method, arg))
 					if arg.IsEllipsis {
 						argCode.Op("...")
 					}
@@ -124,8 +124,8 @@ func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *ty
 				Id("Version"): Id("Version"),
 			})
 			resp := Id("response")
-			if len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, TagHttpEnableInlineSingle) {
-				resp = Id("response").Dot(toCamel(resultsWithoutError(method)[0].Name))
+			if len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
+				resp = Id("response").Dot(r.responseStructFieldName(method, resultsWithoutError(method)[0]))
 			}
 			bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(resp).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
 				ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("parseError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
@@ -156,11 +156,8 @@ func (r *contractRenderer) serveMethodFunc(jsonPkg string) Code {
 			})
 			bg.Var().Id("request").Id("baseJsonRPC")
 			bg.Var().Id("response").Op("*").Id("baseJsonRPC")
-			bg.List(Id("body"), Err()).Op(":=").Qual("io", "ReadAll").Call(Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call()))
-			bg.If(Err().Op("!=").Nil()).Block(
-				Return().Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call()),
-			)
-			bg.If(Err().Op("=").Qual(jsonPkg, "Unmarshal").Call(Id("body"), Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+			bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
 				ig.Return().Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call())
 			})
 			bg.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {

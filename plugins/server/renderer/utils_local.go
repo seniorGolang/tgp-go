@@ -41,6 +41,17 @@ func resultsWithoutError(method *model.Method) []*model.Variable {
 	return method.Results
 }
 
+func typeNameFromTypeID(project *model.Project, typeID string) string {
+
+	if typ, ok := project.Types[typeID]; ok && typ.TypeName != "" {
+		return typ.TypeName
+	}
+	if idx := strings.Index(typeID, ":"); idx >= 0 && idx+1 < len(typeID) {
+		return typeID[idx+1:]
+	}
+	return typeID
+}
+
 func removeSkippedFields(vars []*model.Variable, skipFields []string) []*model.Variable {
 
 	result := make([]*model.Variable, 0, len(vars))

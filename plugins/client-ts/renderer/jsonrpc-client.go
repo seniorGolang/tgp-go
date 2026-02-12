@@ -316,7 +316,7 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 			mg.Add(tsg.NewStatement().Const("result").Colon().Id(responseTypeName).Op("=").Id("execResult").Dot("result").Op("as").Id(responseTypeName).Semicolon())
 
 			if len(results) == 1 {
-				if model.IsAnnotationSet(r.project, contract, method, nil, TagEnableInlineSingle) {
+				if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
 					mg.Return(tsg.NewStatement().Id("result"))
 				} else {
 					// Один результат: возвращаем значение поля (как в Go), не обёртку.
@@ -461,7 +461,7 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 
 										callbackArgs := []*tsg.Statement{}
 										if len(results) == 1 {
-											if model.IsAnnotationSet(r.project, contract, method, nil, TagEnableInlineSingle) {
+											if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
 												callbackArgs = append(callbackArgs, tsg.NewStatement().Id("result"))
 											} else {
 												callbackArgs = append(callbackArgs, tsg.NewStatement().Id("result").Dot(tsSafeName(results[0].Name)))

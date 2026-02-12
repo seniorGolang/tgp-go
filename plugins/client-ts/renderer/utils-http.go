@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"tgp/internal/common"
+	"tgp/internal/content"
 	"tgp/internal/model"
 	"tgp/plugins/client-ts/tsg"
 )
@@ -18,12 +19,12 @@ func (r *ClientRenderer) isHTTP(method *model.Method, contract *model.Contract) 
 	if method == nil || contract == nil {
 		return false
 	}
-	contractHasHTTP := model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP)
+	contractHasHTTP := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP)
 	if !contractHasHTTP {
 		return false
 	}
-	contractHasJsonRPC := model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC)
-	methodHasExplicitHTTP := model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
+	contractHasJsonRPC := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC)
+	methodHasExplicitHTTP := model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
 	return !contractHasJsonRPC || methodHasExplicitHTTP
 }
 
@@ -116,7 +117,7 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		urlStmt.Const(tsLocalVar("baseURL")).Op("=").Id("this").Dot("baseClient").Dot("getEndpoint").Call().Semicolon()
 		mg.Add(urlStmt)
 
-		pathPrefix := model.GetAnnotationValue(r.project, contract, nil, nil, TagHttpPrefix, "")
+		pathPrefix := model.GetAnnotationValue(r.project, contract, nil, nil, model.TagHttpPrefix, "")
 		path := r.httpPath(method, contract)
 		fullPath := strings.TrimPrefix(path, "/")
 		if pathPrefix != "" {
@@ -250,8 +251,8 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		mg.Add(fetchStmt.Semicolon())
 
 		successCode := 200
-		if model.IsAnnotationSet(r.project, contract, method, nil, TagHttpSuccess) {
-			if code, err := strconv.Atoi(model.GetAnnotationValue(r.project, contract, method, nil, TagHttpSuccess, "200")); err == nil {
+		if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpSuccess) {
+			if code, err := strconv.Atoi(model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpSuccess, "200")); err == nil {
 				successCode = code
 			}
 		}
@@ -296,10 +297,7 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 
 func (r *ClientRenderer) httpPath(method *model.Method, contract *model.Contract) string {
 
-	if model.IsAnnotationSet(r.project, contract, method, nil, TagHttpPath) {
-		return model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
-	}
-	return "/" + r.lcName(method.Name)
+	return model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+r.lcName(method.Name))
 }
 
 func (r *ClientRenderer) httpPathParamNames(method *model.Method, contract *model.Contract) []string {
@@ -318,7 +316,7 @@ func (r *ClientRenderer) httpPathParamNames(method *model.Method, contract *mode
 func (r *ClientRenderer) httpArgParamMap(contract *model.Contract, method *model.Method) map[string]string {
 
 	out := make(map[string]string)
-	if v := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpArg, ""); v != "" {
+	if v := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpArg, ""); v != "" {
 		for _, pair := range strings.Split(v, ",") {
 			parts := strings.SplitN(strings.TrimSpace(pair), "|", 2)
 			if len(parts) == 2 {
@@ -335,7 +333,7 @@ func (r *ClientRenderer) httpArgParamMap(contract *model.Contract, method *model
 func (r *ClientRenderer) httpHeaderParamMap(contract *model.Contract, method *model.Method) map[string]string {
 
 	out := make(map[string]string)
-	if v := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpHeader, ""); v != "" {
+	if v := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpHeader, ""); v != "" {
 		for _, pair := range strings.Split(v, ",") {
 			parts := strings.SplitN(strings.TrimSpace(pair), "|", 2)
 			if len(parts) == 2 {
@@ -352,7 +350,7 @@ func (r *ClientRenderer) httpHeaderParamMap(contract *model.Contract, method *mo
 func (r *ClientRenderer) httpCookieParamMap(contract *model.Contract, method *model.Method) map[string]string {
 
 	out := make(map[string]string)
-	if v := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpCookies, ""); v != "" {
+	if v := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpCookies, ""); v != "" {
 		for _, pair := range strings.Split(v, ",") {
 			parts := strings.SplitN(strings.TrimSpace(pair), "|", 2)
 			if len(parts) == 2 {
@@ -364,6 +362,83 @@ func (r *ClientRenderer) httpCookieParamMap(contract *model.Contract, method *mo
 		}
 	}
 	return out
+}
+
+func (r *ClientRenderer) formFieldName(method *model.Method, variable *model.Variable) (key string) {
+
+	if method == nil || method.Annotations == nil {
+		return toLowerCamel(variable.Name)
+	}
+	sub := method.Annotations.Sub(variable.Name)
+	paramTags := sub.Value(model.TagParamTags, "")
+	for _, item := range strings.Split(paramTags, "|") {
+		tokens := strings.SplitN(strings.TrimSpace(item), ":", 2)
+		if len(tokens) == 2 && strings.TrimSpace(tokens[0]) == "form" {
+			return strings.TrimSpace(tokens[1])
+		}
+	}
+	return toLowerCamel(variable.Name)
+}
+
+func (r *ClientRenderer) renderFormParseHelper() (stmt *tsg.Statement) {
+
+	stmt = tsg.NewStatement()
+	stmt.Func("parseFormValue")
+	stmt.Params(func(pg *tsg.Group) {
+		pg.Add(tsg.NewStatement().Id("val").Colon().Id("string").Op("|").Id("null"))
+		pg.Add(tsg.NewStatement().Id("kind").Colon().Lit("string").Op("|").Lit("number").Op("|").Lit("boolean").Op("|").Lit("json"))
+	})
+	stmt.Colon().Id("string").Op("|").Id("number").Op("|").Id("boolean").Op("|").Id("unknown").Op("|").Id("undefined")
+	stmt.BlockFunc(func(bg *tsg.Group) {
+		bg.Add(tsg.NewStatement().If(tsg.NewStatement().Id("val").Op("==").Id("null"), func(ig *tsg.Group) {
+			ig.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("undefined")).Semicolon())
+		}))
+		bg.Add(tsg.NewStatement().If(tsg.NewStatement().Id("kind").Op("===").Lit("string"), func(ig *tsg.Group) {
+			ig.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("val")).Semicolon())
+		}))
+		bg.Add(tsg.NewStatement().If(tsg.NewStatement().Id("kind").Op("===").Lit("number"), func(ig *tsg.Group) {
+			ig.Add(tsg.NewStatement().Const(tsLocalVar("n")).Op("=").Id("Number").Call(tsg.NewStatement().Id("val")).Semicolon())
+			ig.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("Number").Dot("isNaN").Call(tsg.NewStatement().Id(tsLocalVar("n"))).Op("?").Id("undefined").Op(":").Id(tsLocalVar("n"))).Semicolon())
+		}))
+		bg.Add(tsg.NewStatement().If(tsg.NewStatement().Id("kind").Op("===").Lit("boolean"), func(ig *tsg.Group) {
+			ig.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("val").Op("===").Lit("true")).Semicolon())
+		}))
+		bg.Add(tsg.NewStatement().If(tsg.NewStatement().Id("kind").Op("===").Lit("json"), func(ig *tsg.Group) {
+			ig.Add(tsg.NewStatement().Try(func(tg *tsg.Group) {
+				tg.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("JSON").Dot("parse").Call(tsg.NewStatement().Id("val"))).Semicolon())
+			}, func(cg *tsg.Group) {
+				cg.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("undefined")).Semicolon())
+			}))
+		}))
+		bg.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("val")).Semicolon())
+	})
+	stmt.Line()
+	return stmt
+}
+
+func (r *ClientRenderer) formParseKind(variable *model.Variable) (kind string) {
+
+	typ, ok := r.project.Types[variable.TypeID]
+	if !ok {
+		return "string"
+	}
+	if typ.Kind == model.TypeKindAlias && typ.AliasOf != "" {
+		if aliasTyp, ok := r.project.Types[typ.AliasOf]; ok {
+			typ = aliasTyp
+		}
+	}
+	switch typ.Kind {
+	case model.TypeKindBool:
+		return "boolean"
+	case model.TypeKindInt, model.TypeKindInt8, model.TypeKindInt16, model.TypeKindInt32, model.TypeKindInt64,
+		model.TypeKindUint, model.TypeKindUint8, model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
+		model.TypeKindFloat32, model.TypeKindFloat64, model.TypeKindByte, model.TypeKindRune:
+		return "number"
+	case model.TypeKindString:
+		return "string"
+	default:
+		return "json"
+	}
 }
 
 func (r *ClientRenderer) renderHTTPBody(mg *tsg.Group, contract *model.Contract, method *model.Method, args []*model.Variable, httpMethod string, requestMultipart bool, bodyStreamArg *model.Variable, bodyStreamArgs []*model.Variable) {
@@ -386,13 +461,39 @@ func (r *ClientRenderer) renderHTTPBody(mg *tsg.Group, contract *model.Contract,
 		return
 	}
 	if len(args) > 0 {
-		bodyObj := tsg.NewStatement()
-		bodyObj.Values(func(bg *tsg.Group) {
+		reqKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json"))
+		if reqKind == content.KindForm {
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("bodyParams")).Op("=").Id("new URLSearchParams").Call().Semicolon())
 			for _, arg := range args {
-				bg.Add(tsg.NewStatement().Id(tsSafeName(arg.Name)).Colon().Id(tsLocalVar("params")).Dot(tsSafeName(arg.Name)))
+				formKey := r.formFieldName(method, arg)
+				mg.Add(tsg.NewStatement().If(
+					tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(arg.Name)).Op("!==").Id("undefined"),
+					func(bg *tsg.Group) {
+						bg.Add(tsg.NewStatement().Id(tsLocalVar("bodyParams")).Dot("append").Call(tsg.NewStatement().Lit(formKey), tsg.NewStatement().Id("String").Call(tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(arg.Name)))).Semicolon())
+					}))
 			}
-		})
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("JSON").Dot("stringify").Call(bodyObj).Semicolon())
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id(tsLocalVar("bodyParams")).Dot("toString").Call().Semicolon())
+		} else {
+			bodyObj := tsg.NewStatement()
+			bodyObj.Values(func(bg *tsg.Group) {
+				for _, arg := range args {
+					bg.Add(tsg.NewStatement().Id(tsSafeName(arg.Name)).Colon().Id(tsLocalVar("params")).Dot(tsSafeName(arg.Name)))
+				}
+			})
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("bodyObj")).Op("=").Add(bodyObj).Semicolon())
+			switch reqKind {
+			case content.KindXML:
+				mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("new XMLBuilder").Call().Dot("build").Call(tsg.NewStatement().Id(tsLocalVar("bodyObj"))).Semicolon())
+			case content.KindMsgpack:
+				mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("new Blob").Call(tsg.NewStatement().Id("Msgpack").Dot("encode").Call(tsg.NewStatement().Id(tsLocalVar("bodyObj")))).Semicolon())
+			case content.KindCBOR:
+				mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("new Blob").Call(tsg.NewStatement().Id("Cbor").Dot("encode").Call(tsg.NewStatement().Id(tsLocalVar("bodyObj")))).Semicolon())
+			case content.KindYAML:
+				mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("YAML").Dot("stringify").Call(tsg.NewStatement().Id(tsLocalVar("bodyObj"))).Semicolon())
+			default:
+				mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("JSON").Dot("stringify").Call(tsg.NewStatement().Id(tsLocalVar("bodyObj"))).Semicolon())
+			}
+		}
 	} else {
 		mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Lit("null").Semicolon())
 	}
@@ -411,7 +512,7 @@ func (r *ClientRenderer) renderHTTPHeaders(mg *tsg.Group, contract *model.Contra
 			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("application/json")).Semicolon())
 		}
 	case bodyStreamArg != nil:
-		requestContentType := model.GetAnnotationValue(r.project, contract, method, nil, "requestContentType", "application/octet-stream")
+		requestContentType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/octet-stream")
 		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Lit(requestContentType)).Semicolon())
 		switch {
 		case responseMultipart:
@@ -422,8 +523,10 @@ func (r *ClientRenderer) renderHTTPHeaders(mg *tsg.Group, contract *model.Contra
 			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("application/json")).Semicolon())
 		}
 	default:
-		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Lit("application/json")).Semicolon())
-		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("application/json")).Semicolon())
+		reqCT := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")
+		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Lit(reqCT)).Semicolon())
+		resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit(content.CanonicalMIME(resKind))).Semicolon())
 	}
 	mg.Add(tsg.NewStatement().
 		ForOf("["+tsLocalVar("key")+", "+tsLocalVar("value")+"]", "Object.entries("+tsLocalVar("clientHeaders")+")", func(fg *tsg.Group) {
@@ -471,10 +574,43 @@ func (r *ClientRenderer) renderHTTPResponse(mg *tsg.Group, contract *model.Contr
 		mg.Return(returnObj)
 		return
 	}
-	mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("json").Call()).Op("as").Id(responseTypeName).Semicolon())
-	if len(results) == 1 {
+	resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+	switch resKind {
+	case content.KindForm:
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("formParams")).Op("=").Id("new URLSearchParams").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Semicolon())
+		responseDataObj := tsg.NewStatement()
+		responseDataObj.Values(func(rg *tsg.Group) {
+			for _, ret := range results {
+				formKey := r.formFieldName(method, ret)
+				kind := r.formParseKind(ret)
+				rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Id("parseFormValue").Call(tsg.NewStatement().Id(tsLocalVar("formParams")).Dot("get").Call(tsg.NewStatement().Lit(formKey)), tsg.NewStatement().Lit(kind)))
+			}
+		})
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Add(responseDataObj).Semicolon())
+	case content.KindXML:
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("new XMLParser").Call().Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
+	case content.KindMsgpack:
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Msgpack").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
+	case content.KindCBOR:
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Cbor").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
+	case content.KindYAML:
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("YAML").Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
+	default:
+		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("json").Call()).Op("as").Id(responseTypeName).Semicolon())
+	}
+	switch {
+	case len(results) == 1 && (model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) || r.resultHasJsonInline(method, results[0])):
+		mg.Return(tsg.NewStatement().Id(tsLocalVar("responseData")))
+	case len(results) == 1:
 		mg.Return(tsg.NewStatement().Id(tsLocalVar("responseData")).Dot(tsSafeName(results[0].Name)))
-	} else {
+	case r.responseHasAnyInline(method, results):
+		mg.Return(tsg.NewStatement().Id(tsLocalVar("responseData")))
+	default:
 		returnObj := tsg.NewStatement()
 		returnObj.Values(func(rg *tsg.Group) {
 			for _, ret := range results {
@@ -483,4 +619,36 @@ func (r *ClientRenderer) renderHTTPResponse(mg *tsg.Group, contract *model.Contr
 		})
 		mg.Return(returnObj)
 	}
+}
+
+func (r *ClientRenderer) resultHasJsonInline(method *model.Method, v *model.Variable) bool {
+
+	sub := method.Annotations.Sub(v.Name)
+	for key, value := range sub {
+		if key != model.TagParamTags {
+			continue
+		}
+		for _, item := range strings.Split(value, "|") {
+			tokens := strings.SplitN(strings.TrimSpace(item), ":", 2)
+			if len(tokens) < 2 {
+				continue
+			}
+			tagName := strings.TrimSpace(tokens[0])
+			tagValue := strings.TrimSpace(tokens[1])
+			if tagName == "json" && (tagValue == "inline" || strings.Contains(tagValue, ",inline")) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (r *ClientRenderer) responseHasAnyInline(method *model.Method, results []*model.Variable) bool {
+
+	for _, v := range results {
+		if r.resultHasJsonInline(method, v) {
+			return true
+		}
+	}
+	return false
 }

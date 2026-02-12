@@ -133,7 +133,7 @@ func findContractsInMainFile(file *ast.File, filePath string, project *model.Pro
 		contractNames[contract.Name] = contract
 	}
 
-	importAliases := collectImports([]*ast.File{file})
+	importAliases := collectImports([]*ast.File{file}, loader.resolver)
 
 	transportAliases := make(map[string]bool)
 	for alias, impPath := range importAliases {
@@ -231,7 +231,7 @@ func isServiceMain(file *ast.File, mainFunc *ast.FuncDecl, project *model.Projec
 		contractNames[contract.Name] = true
 	}
 
-	importAliases := collectImports([]*ast.File{file})
+	importAliases := collectImports([]*ast.File{file}, loader.resolver)
 	transportAliases := make(map[string]string)
 	for alias, impPath := range importAliases {
 		if loader.HasVersionASTgConstant(impPath) {

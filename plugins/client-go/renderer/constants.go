@@ -26,26 +26,10 @@ const (
 	PackageSlog               = "log/slog"
 	PackagePrometheus         = "github.com/prometheus/client_golang/prometheus"
 	PackagePrometheusAuto     = "github.com/prometheus/client_golang/prometheus/promauto"
-	tagPackageJSON            = "packageJSON"
-	TagServerJsonRPC          = "jsonRPC-server"
-	TagServerHTTP             = "http-server"
-	TagMetrics                = "metrics"
-	TagHttpEnableInlineSingle = "enableInlineSingle"
-	tagSummary                = "summary"
-	tagDesc                   = "desc"
-	tagRequired               = "required"
-	TagHttpArg                = "http-args"
-	TagHttpHeader             = "http-headers"
-	TagHttpCookies            = "http-cookies"
-	TagMethodHTTP             = "http-method"
-	TagHttpPath               = "http-path"
-	TagHttpPrefix             = "http-prefix"
-	TagHttpSuccess            = "http-success"
-	TagRequestContentType     = "requestContentType"
-	TagResponseContentType    = "responseContentType"
-	TagHttpMultipart          = "http-multipart"
-	TagHttpPartName           = "http-part-name"
-	TagHttpPartContent        = "http-part-content"
+	tagPackageJSON = "packageJSON"
+	TagMetrics     = "metrics"
+	tagSummary     = "summary"
+	tagDesc        = "desc"
 )
 
 const (
@@ -53,6 +37,10 @@ const (
 	PackageMimeMultipart = "mime/multipart"
 	PackageNetTextproto  = "net/textproto"
 	PackageSync          = "sync"
+	PackageXML           = "encoding/xml"
+	PackageMsgpack       = "github.com/vmihailenco/msgpack/v5"
+	PackageCBOR          = "github.com/fxamacker/cbor/v2"
+	PackageYAML          = "gopkg.in/yaml.v3"
 )
 
 const (

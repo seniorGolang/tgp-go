@@ -81,7 +81,7 @@ var statusText = map[int]string{
 	511: "Network Authentication Required",
 }
 
-func JSONRPCSchema(key string, schema Schema) (result Schema) {
+func JSONRPCSchemaPerPath(key string, schema Schema) (result Schema) {
 	return Schema{
 		Type: "object",
 		Properties: Properties{
@@ -89,15 +89,12 @@ func JSONRPCSchema(key string, schema Schema) (result Schema) {
 				Type:    "string",
 				Example: "2.0",
 			},
-			"method": Schema{
-				Type: "string",
-			},
 			"id": Schema{
 				Type: "number",
 			},
 			key: schema,
 		},
-		Required: []string{"jsonrpc", "method", "id", key},
+		Required: []string{"jsonrpc", key},
 	}
 }
 

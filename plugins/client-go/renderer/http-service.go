@@ -12,6 +12,7 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/common"
+	"tgp/internal/content"
 	"tgp/internal/model"
 )
 
@@ -28,10 +29,10 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				bg.Add(r.httpMetricsDefer(contract, method))
 			}
 			httpMethod := model.GetHTTPMethod(r.project, contract, method)
-			successStatusCode := model.GetAnnotationValueInt(r.project, contract, method, nil, TagHttpSuccess, http.StatusOK)
-			methodPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, ToLowerCamel(method.Name))
+			successStatusCode := model.GetAnnotationValueInt(r.project, contract, method, nil, model.TagHttpSuccess, http.StatusOK)
+			methodPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+ToLowerCamel(method.Name))
 			pathParams := r.argPathMap(contract, method)
-			svcPrefix := model.GetAnnotationValue(r.project, contract, nil, nil, TagHttpPrefix, "")
+			svcPrefix := model.GetAnnotationValue(r.project, contract, nil, nil, model.TagHttpPrefix, "")
 			argsMappings := r.argParamMap(contract, method)
 			cookieMappings := r.varCookieMap(contract, method)
 			headerMappings := r.varHeaderMap(contract, method)
@@ -50,7 +51,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				}
 				if strings.HasPrefix(seg, ":") {
 					paramName := strings.TrimPrefix(seg, ":")
-					paramVar := r.argByName(method, paramName)
+					paramVar := r.argByPathParamName(contract, method, paramName)
 					pathJoinArgs = append(pathJoinArgs, Qual(PackageURL, "PathEscape").Call(r.varToString(ctx, paramVar)))
 				} else {
 					pathJoinArgs = append(pathJoinArgs, Lit(seg))
@@ -133,7 +134,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			case bodyStreamArg != nil:
 				bg.Var().Id("httpReq").Op("*").Qual(PackageHttp, "Request")
 				bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(httpMethod), Id("baseURL").Dot("String").Call(), Qual(PackageIO, "NopCloser").Call(Id(ToLowerCamel(bodyStreamArg.Name)))).Op(";").Err().Op("!=").Nil()).Block(Return())
-				requestContentType := model.GetAnnotationValue(r.project, contract, method, nil, TagRequestContentType, "application/octet-stream")
+				requestContentType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/octet-stream")
 				bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Content-Type"), Lit(requestContentType))
 				bg.Id("httpReq").Dot("Close").Op("=").True()
 			case hasBody:
@@ -166,10 +167,8 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 					}
 				}))
 				jsonPkg := r.getPackageJSON(contract)
-				bg.Var().Id("bodyBytes").Index().Byte()
-				bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(Id("_request")).Op(";").Err().Op("!=").Nil()).Block(Return())
-				bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(httpMethod), Id("baseURL").Dot("String").Call(), Qual(PackageBytes, "NewReader").Call(Id("bodyBytes"))).Op(";").Err().Op("!=").Nil()).Block(Return())
-				bg.Id("httpReq").Dot("ContentLength").Op("=").Int64().Call(Id("len").Call(Id("bodyBytes")))
+				reqKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json"))
+				r.httpRequestBodyEncode(bg, contract, method, r.requestStructName(contract, method), "_request", jsonPkg, reqKind)
 			}
 
 			if !requestMultipart && bodyStreamArg == nil && !hasBody {
@@ -178,9 +177,11 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			}
 
 			if !requestMultipart && bodyStreamArg == nil {
-				bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Accept"), Lit("application/json"))
+				resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+				bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Accept"), Lit(content.CanonicalMIME(resKind)))
 				if hasBody {
-					bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Content-Type"), Lit("application/json"))
+					reqCT := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")
+					bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Content-Type"), Lit(reqCT))
 				}
 			}
 			for paramName, headerName := range common.SortedPairs(headerMappings) {
@@ -226,13 +227,11 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 					}
 				}
 				bg.Return()
-			case len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpEnableInlineSingle):
+			case len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle):
 				bg.Var().Id("_response").Id(r.responseStructName(contract, method))
 				jsonPkg := r.getPackageJSON(contract)
-				bg.Var().Id("decoder").Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("httpResp").Dot("Body"))
-				bg.If(Err().Op("=").Id("decoder").Dot("Decode").Call(Op("&").Id("_response").Dot(ToCamel(resultsWithoutErr[0].Name))).Op(";").Err().Op("!=").Nil()).Block(
-					Return(),
-				)
+				resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+				r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response")
 				for i, ret := range resultsWithoutErr {
 					if i >= len(fieldsResult) {
 						bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(Id("_response").Dot(ToCamel(ret.Name)))
@@ -254,10 +253,8 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			default:
 				bg.Var().Id("_response").Id(r.responseStructName(contract, method))
 				jsonPkg := r.getPackageJSON(contract)
-				bg.Var().Id("decoder").Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("httpResp").Dot("Body"))
-				bg.If(Err().Op("=").Id("decoder").Dot("Decode").Call(Op("&").Id("_response")).Op(";").Err().Op("!=").Nil()).Block(
-					Return(),
-				)
+				resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+				r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response")
 				for i, ret := range resultsWithoutErr {
 					if i >= len(fieldsResult) {
 						bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(Id("_response").Dot(ToCamel(ret.Name)))

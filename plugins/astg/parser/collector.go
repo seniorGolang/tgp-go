@@ -159,7 +159,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 			}
 		}
 
-		imports := collectImports([]*ast.File{astFile})
+		imports := collectImports([]*ast.File{astFile}, loader.resolver)
 
 		if astFile.Doc != nil && len(project.Annotations) == 0 {
 			packageDocs := extractComments(astFile.Doc)

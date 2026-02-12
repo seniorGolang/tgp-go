@@ -11,6 +11,7 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/content"
 	"tgp/internal/model"
 )
 
@@ -24,7 +25,7 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 	ctx := context.WithValue(context.Background(), keyCode, srcFile) // nolint
 	ctx = context.WithValue(ctx, keyPackage, pkgName)                // nolint
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 		srcFile.ImportName(PackageUUID, "uuid")
 		srcFile.ImportName(PackageFiber, "fiber")
 		srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
@@ -32,7 +33,7 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 		srcFile.ImportName(jsonPkg, "json")
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 		srcFile.ImportName(PackageContext, "context")
 		srcFile.ImportName(PackageFmt, "fmt")
 		srcFile.ImportName(PackageTime, "time")
@@ -57,6 +58,34 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 		if r.contractHasResponseMultipart(contract) {
 			srcFile.ImportName(PackageSync, "sync")
 		}
+		kindsUsed := make(map[string]struct{})
+		for _, method := range contract.Methods {
+			if !r.methodIsHTTP(contract, method) {
+				continue
+			}
+			kindsUsed[content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json"))] = struct{}{}
+			kindsUsed[content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))] = struct{}{}
+		}
+		for k := range kindsUsed {
+			switch k {
+			case content.KindForm:
+				// form.go генерируется в outDir
+			case content.KindXML:
+				srcFile.ImportName(PackageXML, "xml")
+			case content.KindMsgpack:
+				srcFile.ImportName(PackageMsgpack, "msgpack")
+			case content.KindCBOR:
+				srcFile.ImportName(PackageCBOR, "cbor")
+			case content.KindYAML:
+				srcFile.ImportName(PackageYAML, "yaml")
+			}
+		}
+		if _, formUsed := kindsUsed[content.KindForm]; formUsed {
+			if err := r.copySchemaTo(outDir); err != nil {
+				return err
+			}
+			srcFile.ImportName(fmt.Sprintf("%s/schema", r.pkgPath(outDir)), "schema")
+		}
 	}
 
 	if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
@@ -68,17 +97,17 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 		sg.Op("*").Id("Client")
 	}).Line()
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) && r.contractHasResponseMultipart(contract) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) && r.contractHasResponseMultipart(contract) {
 		srcFile.Add(r.StreamingMultipartHelperTypes())
 	}
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) && r.contractHasHTTPMethods(contract) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) && r.contractHasHTTPMethods(contract) {
 		srcFile.Add(r.httpApplyHeadersFromCtxHelper(contract))
 		srcFile.Add(r.httpDoRoundTripHelper(contract, outDir))
 		if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 			srcFile.Add(r.httpRecordHTTPMetricsHelper(contract))
 		}
 	}
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) && r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 		srcFile.Add(r.rpcRecordMetricsHelper(contract))
 	}
 

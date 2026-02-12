@@ -14,7 +14,7 @@ import (
 func (r *ClientRenderer) varHeaderMap(contract *model.Contract, method *model.Method) map[string]string {
 
 	headers := make(map[string]string)
-	if httpHeaders := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpHeader, ""); httpHeaders != "" {
+	if httpHeaders := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpHeader, ""); httpHeaders != "" {
 		headerPairs := strings.Split(httpHeaders, ",")
 		for _, pair := range headerPairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -30,7 +30,7 @@ func (r *ClientRenderer) varHeaderMap(contract *model.Contract, method *model.Me
 func (r *ClientRenderer) varCookieMap(contract *model.Contract, method *model.Method) map[string]string {
 
 	cookies := make(map[string]string)
-	if httpCookies := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpCookies, ""); httpCookies != "" {
+	if httpCookies := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpCookies, ""); httpCookies != "" {
 		cookiePairs := strings.Split(httpCookies, ",")
 		for _, pair := range cookiePairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
@@ -43,25 +43,38 @@ func (r *ClientRenderer) varCookieMap(contract *model.Contract, method *model.Me
 	return cookies
 }
 
-func (r *ClientRenderer) argPathMap(contract *model.Contract, method *model.Method) map[string]string {
+func (r *ClientRenderer) argPathMap(contract *model.Contract, method *model.Method) map[string]struct{} {
 
-	paths := make(map[string]string)
-	if urlPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, ""); urlPath != "" {
-		urlTokens := strings.Split(urlPath, "/")
-		for _, token := range urlTokens {
-			if strings.HasPrefix(token, ":") {
-				arg := strings.TrimSpace(strings.TrimPrefix(token, ":"))
-				paths[arg] = arg
+	out := make(map[string]struct{})
+	if urlPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, ""); urlPath != "" {
+		for _, token := range strings.Split(urlPath, "/") {
+			token = strings.TrimSpace(token)
+			if !strings.HasPrefix(token, ":") {
+				continue
+			}
+			segmentName := strings.TrimPrefix(token, ":")
+			if arg := r.argByPathParamName(contract, method, segmentName); arg != nil {
+				out[arg.Name] = struct{}{}
 			}
 		}
 	}
-	return paths
+	return out
+}
+
+func (r *ClientRenderer) argByPathParamName(contract *model.Contract, method *model.Method, pathSegmentName string) *model.Variable {
+
+	for _, arg := range method.Args {
+		if arg.Name == pathSegmentName || ToLowerCamel(arg.Name) == pathSegmentName {
+			return arg
+		}
+	}
+	return nil
 }
 
 func (r *ClientRenderer) argParamMap(contract *model.Contract, method *model.Method) map[string]string {
 
 	params := make(map[string]string)
-	if urlArgs := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpArg, ""); urlArgs != "" {
+	if urlArgs := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpArg, ""); urlArgs != "" {
 		paramPairs := strings.Split(urlArgs, ",")
 		for _, pair := range paramPairs {
 			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {

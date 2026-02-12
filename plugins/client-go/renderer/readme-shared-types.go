@@ -160,7 +160,7 @@ func (r *ClientRenderer) renderStructTypeTable(md *markdown.Markdown, structType
 		fieldTags := r.parseTagsFromDocs(strings.Join(field.Docs, "\n"))
 		fieldDesc := fieldTags[tagDesc]
 
-		isRequired := fieldTags[tagRequired] != ""
+		isRequired := fieldTags[model.TagRequired] != ""
 		requiredStr := "Нет"
 		if isRequired {
 			requiredStr = "Да"

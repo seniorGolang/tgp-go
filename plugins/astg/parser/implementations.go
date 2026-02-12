@@ -246,7 +246,7 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 						}
 
 						if methodAST != nil && methodAST.Body != nil {
-							errorTypes := findErrorTypesInMethodBody(methodAST.Body, mergedFile, pkgPath)
+							errorTypes := findErrorTypesInMethodBody(methodAST.Body, mergedFile, pkgPath, loader.resolver)
 							implMethod.ErrorTypes = errorTypes
 						}
 
@@ -485,7 +485,7 @@ func findMethodInFile(file *ast.File, structName string, methodName string) (met
 	return
 }
 
-func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath string) (errorTypes []*model.ErrorTypeReference) {
+func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath string, resolver *PackageResolver) (errorTypes []*model.ErrorTypeReference) {
 
 	errorTypes = make([]*model.ErrorTypeReference, 0)
 	errorTypesMap := make(map[string]bool)
@@ -493,7 +493,7 @@ func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath str
 	ast.Inspect(body, func(n ast.Node) bool {
 		if retStmt, ok := n.(*ast.ReturnStmt); ok {
 			for _, result := range retStmt.Results {
-				extractErrorTypeFromExpr(result, file, pkgPath, errorTypesMap, &errorTypes)
+				extractErrorTypeFromExpr(result, file, pkgPath, errorTypesMap, &errorTypes, resolver)
 			}
 			return true
 		}
@@ -502,7 +502,7 @@ func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath str
 			for i, lhs := range assignStmt.Lhs {
 				if ident, ok := lhs.(*ast.Ident); ok && ident.Name == "err" {
 					if i < len(assignStmt.Rhs) {
-						extractErrorTypeFromExpr(assignStmt.Rhs[i], file, pkgPath, errorTypesMap, &errorTypes)
+						extractErrorTypeFromExpr(assignStmt.Rhs[i], file, pkgPath, errorTypesMap, &errorTypes, resolver)
 					}
 				}
 			}
@@ -515,7 +515,7 @@ func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath str
 	return
 }
 
-func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, errorTypesMap map[string]bool, errorTypes *[]*model.ErrorTypeReference) {
+func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, errorTypesMap map[string]bool, errorTypes *[]*model.ErrorTypeReference, resolver *PackageResolver) {
 	if expr == nil {
 		return
 	}
@@ -523,20 +523,20 @@ func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, err
 	switch e := expr.(type) {
 	case *ast.UnaryExpr:
 		if e.Op == token.AND || e.Op == token.MUL {
-			extractErrorTypeFromExpr(e.X, file, pkgPath, errorTypesMap, errorTypes)
+			extractErrorTypeFromExpr(e.X, file, pkgPath, errorTypesMap, errorTypes, resolver)
 		}
 	case *ast.CompositeLit:
 		if e.Type == nil {
 			return
 		}
-		extractErrorTypeFromTypeExpr(e.Type, file, pkgPath, errorTypesMap, errorTypes)
+		extractErrorTypeFromTypeExpr(e.Type, file, pkgPath, errorTypesMap, errorTypes, resolver)
 	case *ast.CallExpr:
 		for _, arg := range e.Args {
-			extractErrorTypeFromExpr(arg, file, pkgPath, errorTypesMap, errorTypes)
+			extractErrorTypeFromExpr(arg, file, pkgPath, errorTypesMap, errorTypes, resolver)
 		}
-		extractErrorTypeFromExpr(e.Fun, file, pkgPath, errorTypesMap, errorTypes)
+		extractErrorTypeFromExpr(e.Fun, file, pkgPath, errorTypesMap, errorTypes, resolver)
 	case *ast.SelectorExpr:
-		extractErrorTypeFromTypeExpr(e, file, pkgPath, errorTypesMap, errorTypes)
+		extractErrorTypeFromTypeExpr(e, file, pkgPath, errorTypesMap, errorTypes, resolver)
 	case *ast.Ident:
 		if !isBuiltinTypeName(e.Name) {
 			key := fmt.Sprintf("%s:%s", pkgPath, e.Name)
@@ -552,7 +552,7 @@ func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, err
 	}
 }
 
-func extractErrorTypeFromTypeExpr(typeExpr ast.Expr, file *ast.File, pkgPath string, errorTypesMap map[string]bool, errorTypes *[]*model.ErrorTypeReference) {
+func extractErrorTypeFromTypeExpr(typeExpr ast.Expr, file *ast.File, pkgPath string, errorTypesMap map[string]bool, errorTypes *[]*model.ErrorTypeReference, resolver *PackageResolver) {
 	if typeExpr == nil {
 		return
 	}
@@ -562,7 +562,7 @@ func extractErrorTypeFromTypeExpr(typeExpr ast.Expr, file *ast.File, pkgPath str
 		if x, ok := t.X.(*ast.Ident); ok {
 			pkgName := x.Name
 			typeName := t.Sel.Name
-			importAliases := collectImports([]*ast.File{file})
+			importAliases := collectImports([]*ast.File{file}, resolver)
 			if impPath, ok := importAliases[pkgName]; ok {
 				key := fmt.Sprintf("%s:%s", impPath, typeName)
 				if !errorTypesMap[key] {

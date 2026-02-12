@@ -180,7 +180,7 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 		stmt.Void()
 		stmt.Semicolon()
 	case 1:
-		if model.IsAnnotationSet(r.project, contract, method, nil, TagEnableInlineSingle) {
+		if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
 			typeStr := r.walkVariable(results[0].Name, contract.PkgPath, results[0], method.Annotations, false).typeLink()
 			stmt.Export().TypeAlias(responseName)
 			stmt.Add(tsg.TypeFromString(typeStr))
@@ -201,21 +201,68 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 			})
 		}
 	default:
-		stmt.Export().Interface(responseName, func(grp *tsg.Group) {
-			for _, ret := range results {
-				typeStr := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
-
-				field := tsg.NewStatement()
-				field.Id(tsSafeName(ret.Name))
-				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
-					field.Optional()
+		if r.responseHasAnyInline(method, results) {
+			seen := make(map[string]bool)
+			stmt.Export().Interface(responseName, func(grp *tsg.Group) {
+				for _, ret := range results {
+					if r.resultHasJsonInline(method, ret) {
+						typ, ok := r.project.Types[ret.TypeID]
+						if ok && typ.Kind == model.TypeKindStruct && typ.StructFields != nil {
+							for _, f := range typ.StructFields {
+								jsonName, inline := r.jsonName(f)
+								if jsonName == "" || jsonName == "-" || inline {
+									continue
+								}
+								if seen[jsonName] {
+									continue
+								}
+								seen[jsonName] = true
+								fieldVar := &model.Variable{TypeRef: f.TypeRef, Name: f.Name}
+								typeStr := r.walkVariable(f.Name, typ.ImportPkgPath, fieldVar, nil, false).typeLink()
+								field := tsg.NewStatement()
+								field.Id(tsSafeName(jsonName))
+								field.Colon()
+								field.Add(tsg.TypeFromString(typeStr))
+								field.Semicolon()
+								grp.Add(field)
+							}
+						}
+					} else {
+						name := tsSafeName(ret.Name)
+						if seen[name] {
+							continue
+						}
+						seen[name] = true
+						typeStr := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
+						field := tsg.NewStatement()
+						field.Id(name)
+						if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
+							field.Optional()
+						}
+						field.Colon()
+						field.Add(tsg.TypeFromString(typeStr))
+						field.Semicolon()
+						grp.Add(field)
+					}
 				}
-				field.Colon()
-				field.Add(tsg.TypeFromString(typeStr))
-				field.Semicolon()
-				grp.Add(field)
-			}
-		})
+			})
+		} else {
+			stmt.Export().Interface(responseName, func(grp *tsg.Group) {
+				for _, ret := range results {
+					typeStr := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
+
+					field := tsg.NewStatement()
+					field.Id(tsSafeName(ret.Name))
+					if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
+						field.Optional()
+					}
+					field.Colon()
+					field.Add(tsg.TypeFromString(typeStr))
+					field.Semicolon()
+					grp.Add(field)
+				}
+			})
+		}
 	}
 	return stmt
 }

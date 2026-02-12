@@ -29,6 +29,7 @@ func (r *contractRenderer) RenderLogger() error {
 	srcFile.ImportName(PackageSlog, "slog")
 	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
 	srcFile.ImportName(PackageTime, "time")
+	srcFile.ImportName(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "viewer")
 	srcFile.ImportName(r.contract.PkgPath, filepath.Base(r.contract.PkgPath))
 
 	typeGen := types.NewGenerator(r.project, &srcFile)
@@ -133,34 +134,49 @@ func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method
 		Qual(PackageSlog, "String").Call(Lit("took"), Qual(PackageTime, "Since").Call(Id("_begin_")).Dot("String").Call()),
 	)
 	if !skipRequest {
-		params := removeSkippedFields(r.ArgsFieldsWithoutContext(method), skipFields)
+		params := removeSkippedFields(argsWithoutContext(method), skipFields)
 		originParams := removeSkippedFields(argsWithoutContext(method), skipFields)
-		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(PackageSlog, "Any").Call(Lit("request"), Id(requestStructName(r.contract.Name, method.Name)).Values(r.dictByNormalVariables(params, originParams))))
+		reqStruct := Id(requestStructName(r.contract.Name, method.Name)).Values(r.dictByRequestParams(method, params, originParams))
+		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("request"), reqStruct))
 	}
 	if !skipResponse {
 		returns := r.ResultFieldsWithoutError(method)
 		originReturns := resultsWithoutError(method)
-		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(PackageSlog, "Any").Call(Lit("response"), Id(responseStructName(r.contract.Name, method.Name)).Values(r.dictByNormalVariables(returns, originReturns))))
+		respStruct := Id(responseStructName(r.contract.Name, method.Name)).Values(r.dictByResponseReturns(method, returns, originReturns))
+		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("response"), respStruct))
 	}
 }
 
-func (r *contractRenderer) dictByNormalVariables(fields []*model.Variable, normals []*model.Variable) Dict {
+func (r *contractRenderer) dictByRequestParams(method *model.Method, params []*model.Variable, originParams []*model.Variable) Dict {
 
-	if len(fields) != len(normals) {
-		panic("len of fields and normals not the same")
+	if len(params) != len(originParams) {
+		panic("len of params and originParams not the same")
 	}
 	return DictFunc(func(d Dict) {
-		for i, field := range fields {
-			normalVar := normals[i]
+		for i, field := range params {
+			normalVar := originParams[i]
 			normalVarCode := Id(toLowerCamel(normalVar.Name))
-
-			// Если поле в структуре НЕ указатель, а нормальная переменная - указатель,
-			// то нужно разыменовать указатель при использовании в struct literal
 			if field.NumberOfPointers == 0 && normalVar.NumberOfPointers > 0 {
 				normalVarCode = Op("*").Add(normalVarCode)
 			}
+			d[Id(r.requestStructFieldName(method, field))] = normalVarCode
+		}
+	})
+}
 
-			d[Id(toCamel(field.Name))] = normalVarCode
+func (r *contractRenderer) dictByResponseReturns(method *model.Method, returns []*model.Variable, originReturns []*model.Variable) Dict {
+
+	if len(returns) != len(originReturns) {
+		panic("len of returns and originReturns not the same")
+	}
+	return DictFunc(func(d Dict) {
+		for i, field := range returns {
+			normalVar := originReturns[i]
+			normalVarCode := Id(toLowerCamel(normalVar.Name))
+			if field.NumberOfPointers == 0 && normalVar.NumberOfPointers > 0 {
+				normalVarCode = Op("*").Add(normalVarCode)
+			}
+			d[Id(r.responseStructFieldName(method, field))] = normalVarCode
 		}
 	})
 }

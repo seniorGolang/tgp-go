@@ -13,7 +13,7 @@ import (
 	"tgp/plugins/swagger/types"
 )
 
-func (g *generator) registerStruct(name string, pkgPath string, methodTags tags.DocTags, variables []*model.Variable) {
+func (g *generator) registerStruct(name string, pkgPath string, methodTags tags.DocTags, variables []*model.Variable, requestContentType string) {
 
 	if len(variables) == 0 {
 		g.schemas[name] = types.Schema{Type: "object"}
@@ -24,6 +24,7 @@ func (g *generator) registerStruct(name string, pkgPath string, methodTags tags.
 	properties := make(types.Properties)
 
 	isArgument := !strings.Contains(name, "Response") && !strings.Contains(name, "response")
+	useFormNames := requestContentType == contentForm && isArgument
 
 	for _, variable := range variables {
 		if g.isContextType(variable.TypeID) {
@@ -33,16 +34,22 @@ func (g *generator) registerStruct(name string, pkgPath string, methodTags tags.
 			continue
 		}
 
-		jsonName := g.getJSONFieldName(variable)
-		if jsonName == "" || jsonName == "-" {
-			jsonName = types.ToLowerCamel(variable.Name)
+		var propName string
+		if useFormNames {
+			propName = g.getFormFieldName(variable, methodTags)
+		}
+		if propName == "" {
+			propName = g.getJSONFieldName(variable)
+		}
+		if propName == "" || propName == "-" {
+			propName = types.ToLowerCamel(variable.Name)
 		}
 
 		schema := g.variableToSchema(variable, pkgPath, isArgument)
 		if schema != nil {
-			properties[jsonName] = *schema
-			if variable.Annotations != nil && variable.Annotations.IsSet("required") {
-				required = append(required, jsonName)
+			properties[propName] = *schema
+			if variable.Annotations != nil && variable.Annotations.IsSet(model.TagRequired) {
+				required = append(required, propName)
 			}
 		}
 	}
@@ -460,6 +467,16 @@ func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTag
 	}
 }
 
+func (g *generator) resolveRefToSchema(ref string) (resolved types.Schema, ok bool) {
+
+	if ref == "" {
+		return types.Schema{}, false
+	}
+	typeName := strings.TrimPrefix(ref, componentsSchemasPrefix)
+	resolved, ok = g.schemas[typeName]
+	return resolved, ok
+}
+
 func (g *generator) basicTypeToSchema(typeID string, varTags tags.DocTags) (result *types.Schema) {
 
 	schema := &types.Schema{}
@@ -550,6 +567,22 @@ func (g *generator) normalizeTypeName(typeInfo *model.Type, typeID string, defau
 	}
 
 	return typeName
+}
+
+func (g *generator) getFormFieldName(variable *model.Variable, methodTags tags.DocTags) (formName string) {
+
+	sub := methodTags.Sub(variable.Name)
+	if sub == nil {
+		return ""
+	}
+	paramTags := sub.Value(model.TagParamTags, "")
+	for _, item := range strings.Split(paramTags, "|") {
+		tokens := strings.SplitN(strings.TrimSpace(item), ":", 2)
+		if len(tokens) == 2 && strings.TrimSpace(tokens[0]) == "form" {
+			return strings.TrimSpace(tokens[1])
+		}
+	}
+	return ""
 }
 
 func (g *generator) getJSONFieldName(variable *model.Variable) (jsonName string) {

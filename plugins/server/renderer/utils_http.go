@@ -14,10 +14,10 @@ import (
 
 func (r *contractRenderer) batchPath() string {
 
-	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, TagHttpPrefix, "")
-	pathValue := model.GetAnnotationValue(r.project, r.contract, nil, nil, TagHttpPath, "/"+toLowerCamel(r.contract.Name))
+	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPrefix, "")
+	pathValue := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPath, "/"+toLowerCamel(r.contract.Name))
 	if prefix != "" {
-		return "/" + prefix + pathValue
+		return path.Join("/", prefix, strings.TrimPrefix(pathValue, "/"))
 	}
 	return pathValue
 }
@@ -46,10 +46,10 @@ func (r *contractRenderer) methodHTTPMethod(method *model.Method) string {
 
 func (r *contractRenderer) methodHTTPPath(method *model.Method) string {
 
-	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, TagHttpPrefix, "")
-	methodPath := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpPath, "/"+toLowerCamel(method.Name))
+	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPrefix, "")
+	methodPath := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpPath, "/"+toLowerCamel(method.Name))
 	if prefix != "" {
-		return "/" + prefix + methodPath
+		return path.Join("/", prefix, strings.TrimPrefix(methodPath, "/"))
 	}
 	return methodPath
 }
@@ -58,8 +58,8 @@ func (r *contractRenderer) methodJsonRPCPath(method *model.Method) string {
 
 	elements := make([]string, 0, 3)
 	elements = append(elements, "/")
-	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, TagHttpPrefix, "")
-	urlPath := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpPath, "/"+toLowerCamel(method.Name))
+	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPrefix, "")
+	urlPath := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpPath, "/"+toLowerCamel(method.Name))
 	urlPath = strings.Split(urlPath, ":")[0]
 	return path.Join(append(elements, prefix, urlPath)...)
 }
@@ -69,7 +69,7 @@ func (r *contractRenderer) methodIsJsonRPC(method *model.Method) bool {
 	if method == nil {
 		return false
 	}
-	return r.contract != nil && model.IsAnnotationSet(r.project, r.contract, nil, nil, TagServerJsonRPC) && !model.IsAnnotationSet(r.project, r.contract, method, nil, TagMethodHTTP)
+	return r.contract != nil && model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPMethod)
 }
 
 func (r *contractRenderer) methodHandlerQual(srcFile *GoFile, method *model.Method) Code {

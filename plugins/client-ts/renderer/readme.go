@@ -55,7 +55,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 	md.LF()
 
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			hasJsonRPC = true
 		}
 
@@ -63,7 +63,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 		md.PlainText(fmt.Sprintf("- [%s](#%s)", contract.Name, contractAnchor))
 		md.LF()
 
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					methodAnchor := methodAnchorID(contract.Name, method.Name)
@@ -73,11 +73,11 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 			}
 		}
 
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method, contract) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "")
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
@@ -251,7 +251,7 @@ func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model
 	if method == nil {
 		return false
 	}
-	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
+	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
 }
 
 func (r *ClientRenderer) methodIsHTTP(method *model.Method, contract *model.Contract) bool {
@@ -298,7 +298,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		return contracts[i].Name < contracts[j].Name
 	})
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					exampleContract = contract
@@ -310,7 +310,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 				break
 			}
 		}
-		if exampleContract == nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if exampleContract == nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method, contract) {
 					exampleContract = contract
@@ -338,7 +338,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
 			}
 		}
-		if exampleContract.Annotations.IsSet(TagServerHTTP) {
+		if exampleContract.Annotations.IsSet(model.TagServerHTTP) {
 			serviceVar += "HTTP"
 		}
 		args := r.argsWithoutContext(exampleMethod)
@@ -399,7 +399,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
 			}
 		}
-		if exampleContract.Annotations.IsSet(TagServerHTTP) {
+		if exampleContract.Annotations.IsSet(model.TagServerHTTP) {
 			serviceVar += "HTTP"
 		}
 		args := r.argsWithoutContext(exampleMethod)
@@ -460,7 +460,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
 			}
 		}
-		if exampleContract.Annotations.IsSet(TagServerHTTP) {
+		if exampleContract.Annotations.IsSet(model.TagServerHTTP) {
 			serviceVar += "HTTP"
 		}
 		args := r.argsWithoutContext(exampleMethod)
@@ -524,7 +524,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
 			}
 		}
-		if exampleContract.Annotations.IsSet(TagServerHTTP) {
+		if exampleContract.Annotations.IsSet(model.TagServerHTTP) {
 			serviceVar += "HTTP"
 		}
 		args := r.argsWithoutContext(exampleMethod)
@@ -588,7 +588,7 @@ func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model
 		md.LF()
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 		for _, method := range contract.Methods {
 			if !r.methodIsJsonRPC(contract, method) {
 				continue
@@ -597,7 +597,7 @@ func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model
 		}
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 		for _, method := range contract.Methods {
 			if !r.methodIsHTTP(method, contract) {
 				continue
@@ -649,7 +649,7 @@ func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.
 func (r *ClientRenderer) renderHTTPMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string) {
 
 	httpMethod := model.GetHTTPMethod(r.project, contract, method)
-	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "")
+	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "")
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 	methodAnchor := methodAnchorID(contract.Name, methodTitle)
@@ -889,7 +889,7 @@ func (r *ClientRenderer) renderBatchSectionTS(md *markdown.Markdown, contracts [
 func (r *ClientRenderer) renderBatchExampleTS(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
 	var jsonRPCContracts []*model.Contract
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			hasJsonRPCMethods := false
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
@@ -1050,7 +1050,7 @@ func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, outDir str
 		return contracts[i].Name < contracts[j].Name
 	})
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			for _, method := range contract.Methods {
 				if r.methodIsJsonRPC(contract, method) {
 					jsonrpcContract = contract
@@ -1138,7 +1138,7 @@ try {
 	var httpContract *model.Contract
 	var httpMethod *model.Method
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method, contract) {
 					httpContract = contract
@@ -1288,7 +1288,7 @@ func (r *ClientRenderer) getClientMethodName(contract *model.Contract) string {
 		}
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 		methodName += "HTTP"
 	}
 

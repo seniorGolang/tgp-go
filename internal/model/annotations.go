@@ -3,8 +3,24 @@
 package model
 
 const (
-	TagHTTPMethod     = "http-method"
-	DefaultHTTPMethod = "POST"
+	TagHTTPMethod            = "http-method"
+	DefaultHTTPMethod         = "POST"
+	TagHttpPrefix             = "http-prefix"
+	TagHttpPath               = "http-path"
+	TagHttpSuccess            = "http-success"
+	TagHttpArg                = "http-args"
+	TagHttpHeader             = "http-headers"
+	TagHttpCookies            = "http-cookies"
+	TagRequestContentType     = "requestContentType"
+	TagResponseContentType    = "responseContentType"
+	TagHttpMultipart          = "http-multipart"
+	TagHttpPartName           = "http-part-name"
+	TagHttpPartContent        = "http-part-content"
+	TagServerJsonRPC          = "jsonRPC-server"
+	TagServerHTTP             = "http-server"
+	TagHttpEnableInlineSingle = "enableInlineSingle"
+	TagParamTags              = "tags"
+	TagRequired               = "required"
 )
 
 // GetHTTPMethod возвращает HTTP-метод для метода контракта. Если аннотация http-method не задана, возвращает DefaultHTTPMethod.

@@ -7,10 +7,10 @@ import (
 	"go/token"
 )
 
-func extractImportsFromExportedAndAliases(files []*ast.File) (requiredImports map[string]bool) {
+func extractImportsFromExportedAndAliases(files []*ast.File, resolver *PackageResolver) (requiredImports map[string]bool) {
 
 	requiredImports = make(map[string]bool)
-	importAliases := collectImports(files)
+	importAliases := collectImports(files, resolver)
 
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -51,10 +51,10 @@ func extractImportsFromExportedAndAliases(files []*ast.File) (requiredImports ma
 	return requiredImports
 }
 
-func extractImportsFromTypeDefinition(files []*ast.File, typeName string) (requiredImports map[string]bool) {
+func extractImportsFromTypeDefinition(files []*ast.File, typeName string, resolver *PackageResolver) (requiredImports map[string]bool) {
 
 	requiredImports = make(map[string]bool)
-	importAliases := collectImports(files)
+	importAliases := collectImports(files, resolver)
 
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
@@ -83,10 +83,10 @@ func extractImportsFromTypeDefinition(files []*ast.File, typeName string) (requi
 	return
 }
 
-func extractImportsFromErrorType(files []*ast.File, typeName string) (requiredImports map[string]bool) {
+func extractImportsFromErrorType(files []*ast.File, typeName string, resolver *PackageResolver) (requiredImports map[string]bool) {
 
 	requiredImports = make(map[string]bool)
-	importAliases := collectImports(files)
+	importAliases := collectImports(files, resolver)
 
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {

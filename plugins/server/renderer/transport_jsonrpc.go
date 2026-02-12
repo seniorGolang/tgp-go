@@ -52,6 +52,7 @@ func (r *transportRenderer) renderJsonRPCTypes(srcFile *GoFile) {
 	srcFile.Add(r.requestOverlayKeyType()).Line()
 	srcFile.Add(r.requestOverlayStructType()).Line()
 	srcFile.Add(r.requestOverlayGetMethod()).Line()
+	srcFile.Add(r.requestOverlayGetterType()).Line()
 	srcFile.Add(r.requestOverlayFromFiberFunc())
 	srcFile.Add(r.requestOverlayMiddlewareFunc())
 }
@@ -176,6 +177,11 @@ func (r *transportRenderer) requestOverlayGetMethod() Code {
 	)
 }
 
+func (r *transportRenderer) requestOverlayGetterType() Code {
+
+	return Type().Id("requestOverlayGetter").Func().Params().Params(Id("requestOverlay"))
+}
+
 func (r *transportRenderer) requestOverlayFromFiberFunc() Code {
 
 	headerNames, cookieNames := r.jsonRPCUsedOverlayKeys()
@@ -204,7 +210,7 @@ func (r *transportRenderer) requestOverlayMiddlewareFunc() Code {
 				Qual(PackageContext, "WithValue").Call(
 					Id(VarNameFtx).Dot("UserContext").Call(),
 					Id("keyRequestOverlay"),
-					Id("requestOverlayFromFiber").Call(Id(VarNameFtx)),
+					Id("requestOverlayGetter").Call(Func().Params().Params(Id("requestOverlay")).Block(Return(Id("requestOverlayFromFiber").Call(Id(VarNameFtx))))),
 				),
 			)
 			bg.Return(Id(VarNameFtx).Dot("Next").Call())

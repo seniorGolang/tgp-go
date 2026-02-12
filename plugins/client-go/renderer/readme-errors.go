@@ -131,7 +131,7 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 	}
 
 	for _, contract := range contracts {
-		if !model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			continue
 		}
 		for _, method := range contract.Methods {

@@ -467,7 +467,7 @@ func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model
 	if method == nil {
 		return false
 	}
-	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
+	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
 }
 
 func (r *ClientRenderer) methodIsHTTP(contract *model.Contract, method *model.Method) bool {
@@ -475,12 +475,12 @@ func (r *ClientRenderer) methodIsHTTP(contract *model.Contract, method *model.Me
 	if contract == nil || method == nil {
 		return false
 	}
-	contractHasHTTP := model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP)
+	contractHasHTTP := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP)
 	if !contractHasHTTP {
 		return false
 	}
-	contractHasJsonRPC := model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC)
-	methodHasExplicitHTTP := model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
+	contractHasJsonRPC := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC)
+	methodHasExplicitHTTP := model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
 	return !contractHasJsonRPC || methodHasExplicitHTTP
 }
 
@@ -530,7 +530,7 @@ func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method
 	if len(readerArgs) > 1 {
 		return true
 	}
-	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpMultipart) {
+	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpMultipart) {
 		return true
 	}
 	return false
@@ -542,7 +542,7 @@ func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, metho
 	if len(readCloserResults) > 1 {
 		return true
 	}
-	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpMultipart) {
+	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpMultipart) {
 		return true
 	}
 	return false
@@ -571,12 +571,12 @@ func (r *ClientRenderer) contractHasHTTPMethods(contract *model.Contract) bool {
 func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) string {
 
 	if v != nil && v.Annotations != nil {
-		if val, found := v.Annotations[TagHttpPartName]; found && val != "" {
+		if val, found := v.Annotations[model.TagHttpPartName]; found && val != "" {
 			return val
 		}
 	}
 	if method != nil && method.Annotations != nil {
-		if val, found := method.Annotations[TagHttpPartName]; found && val != "" {
+		if val, found := method.Annotations[model.TagHttpPartName]; found && val != "" {
 			if partName := r.varValueFromMethodMap(val, v.Name); partName != "" {
 				return partName
 			}
@@ -588,12 +588,12 @@ func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.
 func (r *ClientRenderer) streamPartContent(contract *model.Contract, method *model.Method, v *model.Variable) string {
 
 	if v != nil && v.Annotations != nil {
-		if val, found := v.Annotations[TagHttpPartContent]; found && val != "" {
+		if val, found := v.Annotations[model.TagHttpPartContent]; found && val != "" {
 			return val
 		}
 	}
 	if method != nil && method.Annotations != nil {
-		if val, found := method.Annotations[TagHttpPartContent]; found && val != "" {
+		if val, found := method.Annotations[model.TagHttpPartContent]; found && val != "" {
 			return r.varValueFromMethodMap(val, v.Name)
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/common"
+	"tgp/internal/content"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
@@ -39,7 +40,28 @@ func (r *contractRenderer) RenderREST() error {
 			break
 		}
 	}
-
+	kindsUsed := make(map[string]struct{})
+	for _, method := range r.contract.Methods {
+		if !r.methodIsHTTP(method) {
+			continue
+		}
+		kindsUsed[content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagRequestContentType, "application/json"))] = struct{}{}
+		kindsUsed[content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json"))] = struct{}{}
+	}
+	for k := range kindsUsed {
+		switch k {
+		case content.KindForm:
+			srcFile.ImportName(PackageURL, "url")
+		case content.KindXML:
+			srcFile.ImportName(PackageXML, "xml")
+		case content.KindMsgpack:
+			srcFile.ImportName(PackageMsgpack, "msgpack")
+		case content.KindCBOR:
+			srcFile.ImportName(PackageCBOR, "cbor")
+		case content.KindYAML:
+			srcFile.ImportName(PackageYAML, "yaml")
+		}
+	}
 	typeGen := types.NewGenerator(r.project, &srcFile)
 
 	for _, method := range r.contract.Methods {
@@ -65,13 +87,13 @@ func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *mode
 			bg.Line()
 			bg.If(ListFunc(func(lg *Group) {
 				for _, ret := range r.ResultFieldsWithoutError(method) {
-					lg.Id("response").Dot(toCamel(ret.Name))
+					lg.Id("response").Dot(r.responseStructFieldName(method, ret))
 				}
 				lg.Err()
 			}).Op("=").Id("http").Dot("svc").Dot(method.Name).CallFunc(func(cg *Group) {
 				cg.Id(VarNameCtx)
-				for _, arg := range r.ArgsFieldsWithoutContext(method) {
-					argCode := Id("request").Dot(toCamel(arg.Name))
+				for _, arg := range argsWithoutContext(method) {
+					argCode := Id("request").Dot(r.requestStructFieldName(method, arg))
 					if arg.IsEllipsis {
 						argCode.Op("...")
 					}
@@ -104,7 +126,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 				).Call()
 			})
 			bg.Var().Id("request").Id(requestStructName(r.contract.Name, method.Name))
-			if successCodeStr := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpSuccess, ""); successCodeStr != "" {
+			if successCodeStr := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpSuccess, ""); successCodeStr != "" {
 				if successCode, err := strconv.Atoi(successCodeStr); err == nil && successCode != 0 {
 					bg.Id(VarNameFtx).Dot("Response").Call().Dot("SetStatusCode").Call(Lit(successCode))
 				}
@@ -114,18 +136,11 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 			if requestMultipart {
 				bg.Add(r.httpServeMultipartRequest(method))
 			} else if bodyStreamArg == nil && len(r.arguments(method)) != 0 {
-				bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-				bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-					ig.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).Block(
-						Id("server").Dot("metrics").Dot("ErrorResponsesTotal").Dot("WithLabelValues").Call(Lit("rest"), Lit("400"), Id("clientID")).Dot("Inc").Call(),
-					)
-					ig.Id(VarNameFtx).Dot("Response").Call().Dot("SetStatusCode").Call(Qual(PackageFiber, "StatusBadRequest"))
-					ig.List(Id("_"), Err()).Op("=").Id(VarNameFtx).Dot("WriteString").Call(Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call())
-					ig.Return()
-				})
+				reqKind := content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagRequestContentType, "application/json"))
+				bg.Add(r.httpServeRequestBodyDecode(jsonPkg, method, reqKind))
 			}
 			if !requestMultipart && bodyStreamArg != nil {
-				bg.Id("request").Dot(toCamel(bodyStreamArg.Name)).Op("=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+				bg.Id("request").Dot(r.requestStructFieldName(method, bodyStreamArg)).Op("=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
 			}
 			bg.Add(r.urlArgs(srcFile, typeGen, method, func(arg, header string) *Statement {
 				return Line().If(Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
@@ -156,7 +171,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 				callArgs := make([]Code, 0, len(args)+2)
 				callArgs = append(callArgs, Id(VarNameFtx), Id("http").Dot("base"))
 				for _, arg := range args {
-					callArgs = append(callArgs, Id("request").Dot(toCamel(arg.Name)))
+					callArgs = append(callArgs, Id("request").Dot(r.requestStructFieldName(method, arg)))
 				}
 				bg.Return().Add(toIDWithImport(responseMethod, srcFile).Call(callArgs...))
 			} else {
@@ -172,7 +187,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 						for retName := range common.SortedPairs(r.retCookieMap(method)) {
 							if ret := r.resultByName(method, retName); ret != nil {
 								ex.If(List(Id("rCookie"), Id("ok")).Op(":=").
-									Qual(PackageReflect, "ValueOf").Call(Id("response").Dot(toCamel(retName))).Dot("Interface").Call().
+									Qual(PackageReflect, "ValueOf").Call(Id("response").Dot(r.responseStructFieldName(method, ret))).Dot("Interface").Call().
 									Op(".").Call(Id("cookieType"))).Op(";").Id("ok").Block(
 									Id("cookie").Op(":=").Id("rCookie").Dot("Cookie").Call(),
 									Id(VarNameFtx).Dot("Cookie").Call(Op("&").Id("cookie")),
@@ -193,15 +208,15 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 						bf.Add(r.httpServeMultipartResponse(method))
 						bf.Return()
 					case responseStreamResult != nil:
-						contentType := model.GetAnnotationValue(r.project, r.contract, method, nil, TagResponseContentType, "application/octet-stream")
-						bf.Defer().Id("response").Dot(toCamel(responseStreamResult.Name)).Dot("Close").Call()
+						contentType := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/octet-stream")
+						bf.Defer().Id("response").Dot(r.responseStructFieldName(method, responseStreamResult)).Dot("Close").Call()
 						bf.Id(VarNameFtx).Dot("Response").Call().Dot("Header").Dot("SetContentType").Call(Lit(contentType))
-						bf.List(Id("_"), Err()).Op("=").Qual("io", "Copy").Call(Id(VarNameFtx).Dot("Response").Call().Dot("BodyWriter").Call(), Id("response").Dot(toCamel(responseStreamResult.Name)))
+						bf.List(Id("_"), Err()).Op("=").Qual("io", "Copy").Call(Id(VarNameFtx).Dot("Response").Call().Dot("BodyWriter").Call(), Id("response").Dot(r.responseStructFieldName(method, responseStreamResult)))
 						bf.Return()
-					case len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, TagHttpEnableInlineSingle):
-						bf.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("response").Dot(toCamel(resultsWithoutError(method)[0].Name)))
+					case len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle):
+						bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "response", true))
 					default:
-						bf.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("response"))
+						bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "response", false))
 					}
 				})
 				bg.Var().Id("statusCode").Int()

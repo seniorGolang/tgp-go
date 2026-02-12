@@ -14,7 +14,7 @@ import (
 	"tgp/internal/model"
 )
 
-//go:embed pkg/srvctx pkg/logger pkg/tracer pkg/viewer
+//go:embed pkg
 var pkgFiles embed.FS
 
 type baseRenderer struct {
@@ -70,7 +70,7 @@ func (r *baseRenderer) pkgCopyTo(pkg, dst string) (err error) {
 func (r *baseRenderer) hasJsonRPC() bool {
 
 	for _, contract := range r.project.Contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			return true
 		}
 	}

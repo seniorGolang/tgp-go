@@ -47,7 +47,7 @@ func (r *ClientRenderer) jsonrpcClientMethodFunc(ctx context.Context, contract *
 		)
 		resp := Id("_response")
 		resultsWithoutErr := r.resultsWithoutError(method)
-		if len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpEnableInlineSingle) {
+		if len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
 			resp = Id("_response").Dot(ToCamel(resultsWithoutErr[0].Name))
 		}
 		jsonPkg := r.getPackageJSON(contract)
@@ -107,7 +107,7 @@ func (r *ClientRenderer) jsonrpcClientRequestFunc(ctx context.Context, contract 
 		})
 		resp := Id("_response")
 		resultsWithoutErr := r.resultsWithoutError(method)
-		if len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpEnableInlineSingle) {
+		if len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
 			resp = Id("_response").Dot(ToCamel(resultsWithoutErr[0].Name))
 		}
 		jsonPkg := r.getPackageJSON(contract)

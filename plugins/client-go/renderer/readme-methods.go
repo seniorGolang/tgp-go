@@ -53,7 +53,7 @@ func (r *ClientRenderer) renderMethodDoc(md *markdown.Markdown, method *model.Me
 func (r *ClientRenderer) renderHTTPMethodDoc(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string, typeUsages map[string]*typeUsage) {
 
 	httpMethod := model.GetHTTPMethod(r.project, contract, method)
-	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, TagHttpPath, "/"+ToLowerCamel(method.Name))
+	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+ToLowerCamel(method.Name))
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 	methodAnchor := methodAnchorID(contract.Name, methodTitle)

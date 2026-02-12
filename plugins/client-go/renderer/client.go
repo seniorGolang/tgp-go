@@ -92,7 +92,7 @@ func (r *ClientRenderer) RenderClient() error {
 		if contract == nil {
 			continue
 		}
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) || model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			srcFile.Line().Func().Params(Id("cli").Op("*").Id("Client")).Id(contract.Name).Params().Params(Op("*").Id("Client" + contract.Name)).Block(
 				Return(Op("&").Id("Client" + contract.Name).Values(Dict{
 					Id("Client"): Id("cli"),

@@ -33,7 +33,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code 
 		st.Line().Id("partContentTypes").Op(":=").Make(Map(String()).String())
 	}
 	if len(streamArgs) == 1 {
-		st.Line().Id("request").Dot(toCamel(streamArgs[0].Name)).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
+		st.Line().Id("request").Dot(r.requestStructFieldName(method, streamArgs[0])).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
 		st.Line().Var().Id("found").Bool()
 	}
 	st.Line().Var().Id("p").Op("*").Qual(PackageMimeMultipart, "Part")
@@ -50,12 +50,12 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code 
 		for _, arg := range streamArgs {
 			partName := r.streamPartName(method, arg)
 			expectedContent := r.streamPartContent(method, arg)
-			fieldName := toCamel(arg.Name)
+			fieldName := r.requestStructFieldName(method, arg)
 			var caseBlock []Code
 			if expectedContent != "" {
 				caseBlock = append(caseBlock, If(Id("partContentType").Op("!=").Lit(expectedContent)).BlockFunc(func(mg *Group) {
 					for _, a := range streamArgs {
-						mg.Id("request").Dot(toCamel(a.Name)).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
+						mg.Id("request").Dot(r.requestStructFieldName(method, a)).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
 					}
 					mg.Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest"))
 					mg.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("part ").Op("+").Lit(partName).Op("+").Lit(": invalid content-type")))
@@ -82,7 +82,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code 
 		for _, arg := range streamArgs {
 			partName := r.streamPartName(method, arg)
 			expectedContent := r.streamPartContent(method, arg)
-			fieldName := toCamel(arg.Name)
+			fieldName := r.requestStructFieldName(method, arg)
 			st.Line().Id("body").Op(",").Id("ok").Op("=").Id("partBodies").Index(Lit(partName))
 			st.Line().If(Op("!").Id("ok")).Block(
 				Id("request").Dot(fieldName).Op("=").Qual(PackageBytes, "NewReader").Call(Nil()),
@@ -90,7 +90,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code 
 				if expectedContent != "" {
 					eg.If(Id("partContentTypes").Index(Lit(partName)).Op("!=").Lit(expectedContent)).BlockFunc(func(mg *Group) {
 						for _, a := range streamArgs {
-							mg.Id("request").Dot(toCamel(a.Name)).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
+							mg.Id("request").Dot(r.requestStructFieldName(method, a)).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
 						}
 						mg.Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest"))
 						mg.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("part ").Op("+").Lit(partName).Op("+").Lit(": invalid content-type")))
@@ -114,7 +114,7 @@ func (r *contractRenderer) httpServeMultipartResponseDefers(method *model.Method
 
 	st := Line()
 	for _, res := range streamResults {
-		fieldName := toCamel(res.Name)
+		fieldName := r.responseStructFieldName(method, res)
 		st.Line().Defer().Id("response").Dot(fieldName).Dot("Close").Call()
 	}
 	return st
@@ -142,7 +142,7 @@ func (r *contractRenderer) httpServeMultipartResponse(method *model.Method) Code
 		if contentType == "" {
 			contentType = "application/octet-stream"
 		}
-		fieldName := toCamel(res.Name)
+		fieldName := r.responseStructFieldName(method, res)
 		st.Line().Id("partHeader").Op("=").Make(Qual(PackageNetTextproto, "MIMEHeader"))
 		st.Line().Id("partHeader").Index(Lit("Content-Disposition")).Op("=").Index().String().Values(Lit("form-data; name=\"" + partName + "\""))
 		st.Line().Id("partHeader").Index(Lit("Content-Type")).Op("=").Index().String().Values(Lit(contentType))

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
+	"go/parser"
 	"go/token"
 	"go/types"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -94,7 +96,7 @@ func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *Package
 		return
 	}
 
-	requiredImports := extractImportsFromExportedAndAliases(files)
+	requiredImports := extractImportsFromExportedAndAliases(files, l.resolver)
 
 	importer := &FileSystemImporter{
 		loader:          l,
@@ -118,7 +120,7 @@ func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *Package
 		err = nil
 	}
 
-	imports := collectImports(files)
+	imports := collectImports(files, l.resolver)
 
 	info = &PackageInfo{
 		PkgPath:     pkgPath,
@@ -162,7 +164,7 @@ func (l *AutonomousPackageLoader) LoadPackageFromFiles(pkgPath string, pkgDir st
 		return
 	}
 
-	requiredImports := extractImportsFromExportedAndAliases(files)
+	requiredImports := extractImportsFromExportedAndAliases(files, l.resolver)
 
 	importer := &FileSystemImporter{
 		loader:          l,
@@ -189,7 +191,7 @@ func (l *AutonomousPackageLoader) LoadPackageFromFiles(pkgPath string, pkgDir st
 		err = nil
 	}
 
-	imports := collectImports(files)
+	imports := collectImports(files, l.resolver)
 
 	info = &PackageInfo{
 		PkgPath:     pkgPath,
@@ -236,7 +238,35 @@ func createTypeInfo() (typeInfo *types.Info) {
 	return
 }
 
-func collectImports(files []*ast.File) (imports map[string]string) {
+func getPackageNameFromPath(resolver *PackageResolver, pkgPath string) (pkgName string, err error) {
+
+	dir, err := resolver.Resolve(pkgPath)
+	if err != nil || dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	fset := token.NewFileSet()
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		fpath := filepath.Join(dir, e.Name())
+		var f *ast.File
+		if f, err = parser.ParseFile(fset, fpath, nil, 0); err != nil {
+			continue
+		}
+		if f.Name != nil {
+			pkgName = f.Name.Name
+			return
+		}
+	}
+	return
+}
+
+func collectImports(files []*ast.File, resolver *PackageResolver) (imports map[string]string) {
 
 	imports = make(map[string]string)
 	for _, file := range files {
@@ -246,12 +276,11 @@ func collectImports(files []*ast.File) (imports map[string]string) {
 			if imp.Name != nil {
 				alias = imp.Name.Name
 			} else {
-				parts := strings.Split(impPath, "/")
-				if len(parts) > 0 {
-					alias = parts[len(parts)-1]
-				}
+				alias, _ = getPackageNameFromPath(resolver, impPath)
 			}
-			imports[alias] = impPath
+			if alias != "" {
+				imports[alias] = impPath
+			}
 		}
 	}
 	return

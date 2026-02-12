@@ -38,11 +38,11 @@ func (r *ClientRenderer) RenderClient() error {
 		return 0
 	})
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			clientClassName := contract.Name + "Client"
 			file.ImportNamed("./"+r.tsFileName(contract), clientClassName)
 		}
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			httpClientClassName := contract.Name + "HTTPClient"
 			file.ImportNamed("./"+r.tsFileName(contract)+"-http", httpClientClassName)
 		}
@@ -163,7 +163,7 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 			return 0
 		})
 		for _, contract := range contracts {
-			if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) || model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 				grp.Add(r.renderContractClientMethod(contract))
 				grp.Line()
 			}
@@ -209,7 +209,7 @@ func (r *ClientRenderer) renderContractClientMethod(contract *model.Contract) *t
 	clientClassName := contract.Name + "Client"
 
 	// Для JSON-RPC контрактов
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 		stmt.Id(methodName)
 		stmt.Params(func(pg *tsg.Group) {
 			// Пустые параметры
@@ -221,7 +221,7 @@ func (r *ClientRenderer) renderContractClientMethod(contract *model.Contract) *t
 		})
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 		httpMethodName := methodName + "HTTP"
 		httpClientClassName := contract.Name + "HTTPClient"
 		stmt.Line()

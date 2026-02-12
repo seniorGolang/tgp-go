@@ -69,7 +69,7 @@ func (r *transportRenderer) initJsonRPCMethodMap() Code {
 		BlockFunc(func(bg *Group) {
 			bg.Id("srv").Dot("jsonRPCMethodMap").Op("=").Make(Map(String()).Id("methodJsonRPC"))
 			for _, contract := range r.project.Contracts {
-				if !model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+				if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 					continue
 				}
 				bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).BlockFunc(func(ib *Group) {
@@ -370,7 +370,7 @@ func (r *transportRenderer) methodIsJsonRPCForContract(contract *model.Contract,
 	if method == nil {
 		return false
 	}
-	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, TagMethodHTTP)
+	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
 }
 
 func (r *transportRenderer) jsonRPCUsedOverlayKeys() (headerNames []string, cookieNames []string) {
@@ -378,7 +378,7 @@ func (r *transportRenderer) jsonRPCUsedOverlayKeys() (headerNames []string, cook
 	headers := make(map[string]struct{})
 	cookies := make(map[string]struct{})
 	for _, contract := range r.project.Contracts {
-		if !model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			continue
 		}
 		for _, method := range contract.Methods {

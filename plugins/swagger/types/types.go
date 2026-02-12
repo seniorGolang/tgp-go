@@ -159,8 +159,13 @@ type Parameter struct {
 	Schema      Schema `json:"schema,omitempty" yaml:"schema,omitempty"`
 }
 
+type Encoding struct {
+	ContentType string `json:"contentType,omitempty" yaml:"contentType,omitempty"`
+}
+
 type Media struct {
-	Schema Schema `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Schema   Schema            `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Encoding map[string]Encoding `json:"encoding,omitempty" yaml:"encoding,omitempty"`
 }
 
 type Content map[string]Media

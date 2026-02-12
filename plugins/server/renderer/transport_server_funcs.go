@@ -29,12 +29,12 @@ func (r *transportRenderer) withLogFunc() Code {
 		Params(Op("*").Id("Server")).
 		BlockFunc(func(bg *Group) {
 			for _, contract := range r.project.Contracts {
-				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithLog").Call(),
 					)
 				}
-				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithLog").Call(),
 					)
@@ -54,12 +54,12 @@ func (r *transportRenderer) withTraceFunc() Code {
 			bg.Line()
 			bg.Qual(fmt.Sprintf("%s/tracer", r.pkgPath(r.outDir)), "Init").Call(Id(VarNameCtx), Id("appName"), Id("endpoint"), Id("attributes").Op("..."))
 			for _, contract := range r.project.Contracts {
-				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithTrace").Call(),
 					)
 				}
-				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithTrace").Call(),
 					)
@@ -80,12 +80,12 @@ func (r *transportRenderer) withMetricsFunc() Code {
 				Id("srv").Dot("metrics").Op("=").Id("NewMetrics").Call(),
 			)
 			for _, contract := range r.project.Contracts {
-				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
 					)
 				}
-				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
 					)
@@ -138,6 +138,10 @@ func (r *transportRenderer) serverNewFunc() Code {
 				Id("option").Call(Id("srv")),
 			)
 			bg.Line()
+			if r.hasJsonRPC() {
+				bg.Id("initJsonRPCMethodMap").Call(Id("srv"))
+			}
+			bg.Line()
 			bg.Id("srv").Dot("srvHTTP").Op("=").Qual(PackageFiber, "New").Call(Id("srv").Dot("config"))
 			bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Func().Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).Params(Error()).Block(
 				Id(VarNameFtx).Dot("Locals").Call(Lit("server"), Id("srv")),
@@ -161,9 +165,6 @@ func (r *transportRenderer) serverNewFunc() Code {
 			)
 			if r.hasJsonRPC() {
 				bg.Id("srv").Dot("srvHTTP").Dot("Post").Call(Lit("/"), Id("srv").Dot("serveBatch"))
-			}
-			if r.hasJsonRPC() {
-				bg.Id("initJsonRPCMethodMap").Call(Id("srv"))
 			}
 			bg.Return()
 		})
@@ -296,8 +297,8 @@ func (r *transportRenderer) doesNotRequireHTTPFunc() Code {
 			bg.Id("option").Call(Id("testSrv"))
 			bg.Id("noHTTPService").Op(":=").Id("testSrv").Dot("srvHTTP").Op("==").Nil()
 			for _, contract := range r.project.Contracts {
-				if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) ||
-					model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||
+					model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 					bg.Id("noHTTPService").Op("=").Id("noHTTPService").Op("&&").Id("testSrv").Dot("http" + contract.Name).Op("==").Nil()
 				}
 			}

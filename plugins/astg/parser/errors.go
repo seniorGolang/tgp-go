@@ -310,7 +310,7 @@ func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoa
 			}
 
 			if funcDecl.Body != nil {
-				errorTypes := findErrorTypesInMethodBody(funcDecl.Body, astFile, handlerPkgPath)
+				errorTypes := findErrorTypesInMethodBody(funcDecl.Body, astFile, handlerPkgPath, loader.resolver)
 				errorsMap := make(map[string]*model.ErrorInfo)
 				for _, errorRef := range errorTypes {
 					key := fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)

@@ -11,6 +11,7 @@ import (
 
 	"tgp/core/i18n"
 	"tgp/internal/common"
+	"tgp/internal/content"
 	"tgp/internal/model"
 )
 
@@ -80,6 +81,26 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 	}
 	if len(exchangeTypes) > 0 {
 		file.ImportType(exchangePath, exchangeTypes...)
+	}
+	kindsUsed := make(map[string]struct{})
+	for _, method := range contract.Methods {
+		if !r.isHTTP(method, contract) {
+			continue
+		}
+		kindsUsed[content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json"))] = struct{}{}
+		kindsUsed[content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))] = struct{}{}
+	}
+	for k := range kindsUsed {
+		switch k {
+		case content.KindXML:
+			file.ImportNamed("fast-xml-parser", "XMLBuilder", "XMLParser")
+		case content.KindMsgpack:
+			file.ImportAll("@msgpack/msgpack", "Msgpack")
+		case content.KindCBOR:
+			file.ImportAll("cbor-x", "Cbor")
+		case content.KindYAML:
+			file.Import("yaml", "YAML")
+		}
 	}
 	hasDtoTypes := false
 	for _, def := range common.SortedPairs(r.typeDefTs) {
@@ -159,6 +180,11 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 				file.Line()
 			}
 		}
+	}
+
+	if _, hasForm := kindsUsed[content.KindForm]; hasForm {
+		file.Add(r.renderFormParseHelper())
+		file.Line()
 	}
 
 	clientClass := r.renderHTTPClientClass(contract)

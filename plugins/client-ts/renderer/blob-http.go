@@ -54,7 +54,7 @@ func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method
 	if len(readerArgs) > 1 {
 		return true
 	}
-	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpMultipart) {
+	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpMultipart) {
 		return true
 	}
 	return false
@@ -66,7 +66,7 @@ func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, metho
 	if len(readCloserResults) > 1 {
 		return true
 	}
-	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, TagHttpMultipart) {
+	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpMultipart) {
 		return true
 	}
 	return false
@@ -74,13 +74,19 @@ func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, metho
 
 func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) string {
 
-	if val := model.GetAnnotationValue(r.project, contract, method, v, TagHttpPartName, ""); val != "" {
-		if v != nil && v.Name != "" {
-			if partName := r.varValueFromMethodMap(val, v.Name); partName != "" {
-				return partName
+	if v != nil && v.Annotations != nil {
+		if val, found := v.Annotations[model.TagHttpPartName]; found && val != "" {
+			return val
+		}
+	}
+	if method != nil && method.Annotations != nil {
+		if val, found := method.Annotations[model.TagHttpPartName]; found && val != "" {
+			if v != nil && v.Name != "" {
+				if partName := r.varValueFromMethodMap(val, v.Name); partName != "" {
+					return partName
+				}
 			}
 		}
-		return val
 	}
 	if v != nil && v.Name != "" {
 		return v.Name

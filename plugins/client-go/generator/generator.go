@@ -90,7 +90,7 @@ func (g *generator) generate(docOpts DocOptions) error {
 		if contract == nil {
 			continue
 		}
-		if model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerHTTP) {
+		if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerHTTP) {
 			contractsForClient = append(contractsForClient, contract)
 		}
 	}
@@ -111,7 +111,7 @@ func (g *generator) generate(docOpts DocOptions) error {
 		if contract == nil {
 			continue
 		}
-		if model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerHTTP) {
+		if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerHTTP) {
 			if err := g.renderer.RenderExchange(contract); err != nil {
 				return err
 			}

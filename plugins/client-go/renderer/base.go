@@ -3,11 +3,18 @@
 package renderer
 
 import (
+	"embed"
+	"io/fs"
+	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
 	"tgp/internal/model"
 )
+
+//go:embed pkg
+var schemaPkgFiles embed.FS
 
 type ClientRenderer struct {
 	project        *model.Project
@@ -35,10 +42,33 @@ func (r *ClientRenderer) pkgPath(dir string) string {
 	return r.project.ModulePath + pkgDir
 }
 
+func (r *ClientRenderer) copySchemaTo(dst string) (err error) {
+
+	embedPath := "pkg/schema"
+	var entries []fs.DirEntry
+	if entries, err = schemaPkgFiles.ReadDir(embedPath); err != nil {
+		return err
+	}
+	schemaDir := path.Join(dst, "schema")
+	for _, entry := range entries {
+		var fileContent []byte
+		if fileContent, err = schemaPkgFiles.ReadFile(path.Join(embedPath, entry.Name())); err != nil {
+			return err
+		}
+		if err = os.MkdirAll(schemaDir, 0700); err != nil {
+			return err
+		}
+		if err = os.WriteFile(path.Join(schemaDir, entry.Name()), fileContent, 0600); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *ClientRenderer) HasJsonRPC() bool {
 
 	for _, contract := range r.project.Contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			return true
 		}
 	}
@@ -48,7 +78,7 @@ func (r *ClientRenderer) HasJsonRPC() bool {
 func (r *ClientRenderer) HasHTTP() bool {
 
 	for _, contract := range r.project.Contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			return true
 		}
 	}

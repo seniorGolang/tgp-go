@@ -98,7 +98,7 @@ func (g *generator) generate(docOpts DocOptions) error {
 		return contracts[i].Name < contracts[j].Name
 	})
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerHTTP) {
+		if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerHTTP) {
 			contractTypeIDs := g.renderer.CollectTypeIDsForExchange(contract)
 			// Объединяем typeID из всех контрактов
 			for typeID := range common.SortedPairs(contractTypeIDs) {
@@ -119,16 +119,16 @@ func (g *generator) generate(docOpts DocOptions) error {
 	}
 
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerHTTP) {
+		if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerHTTP) {
 			if err := g.renderer.RenderExchangeTypes(contract); err != nil {
 				return err
 			}
-			if model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerJsonRPC) {
+			if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) {
 				if err := g.renderer.RenderJsonRPCClientClass(contract); err != nil {
 					return err
 				}
 			}
-			if model.IsAnnotationSet(g.project, contract, nil, nil, renderer.TagServerHTTP) {
+			if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerHTTP) {
 				if err := g.renderer.RenderHTTPClientClass(contract); err != nil {
 					return err
 				}

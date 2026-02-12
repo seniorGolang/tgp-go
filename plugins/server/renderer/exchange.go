@@ -29,6 +29,9 @@ func (r *contractRenderer) RenderExchange() error {
 	for _, method := range r.contract.Methods {
 		requestFields := r.fieldsArgument(method)
 		responseFields := r.fieldsResult(method)
+		if len(responseFields) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
+			responseFields[0].tags["json"] = ",inline"
+		}
 
 		reqName := requestStructName(r.contract.Name, method.Name)
 		respName := responseStructName(r.contract.Name, method.Name)
@@ -113,7 +116,7 @@ func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.
 		}
 
 		for key, value := range common.SortedPairs(methodTags.Sub(v.Name)) {
-			if key == "tag" {
+			if key == model.TagParamTags {
 				if list := strings.Split(value, "|"); len(list) > 0 {
 					for _, item := range list {
 						if tokens := strings.Split(item, ":"); len(tokens) >= 2 {
@@ -135,42 +138,39 @@ func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.
 
 func (r *contractRenderer) structField(typeGen *types.Generator, field exchangeField, template string) *Statement {
 
-	var isInlined bool
 	tags := map[string]string{"json": fmt.Sprintf(template, field.name)}
 	for tag, value := range common.SortedPairs(field.tags) {
 		if tag == "json" {
 			if strings.Contains(value, "inline") {
-				isInlined = true
+				tags["json"] = ",inline"
 			}
 			continue
 		}
 		tags[tag] = value
 	}
 
+	isEmbedded := tags["json"] == ",inline"
 	var s *Statement
-	if isInlined {
-		s = typeGen.FieldType(field.typeID, field.numberOfPointers, false)
-		s.Tag(map[string]string{"json": ",inline"})
-	} else {
-		s = Id(toCamel(field.name))
-		if field.isSlice || field.arrayLen > 0 || field.mapKey != nil {
-			v := &model.Variable{
-				TypeRef: model.TypeRef{
-					TypeID:           field.typeID,
-					NumberOfPointers: field.numberOfPointers,
-					IsSlice:          field.isSlice,
-					ArrayLen:         field.arrayLen,
-					IsEllipsis:       field.isEllipsis,
-					ElementPointers:  field.elementPointers,
-					MapKey:           field.mapKey,
-					MapValue:         field.mapValue,
-				},
-			}
-			s.Add(typeGen.FieldTypeFromVariable(v, false))
-		} else {
-			s.Add(typeGen.FieldType(field.typeID, field.numberOfPointers, false))
+	if field.isSlice || field.arrayLen > 0 || field.mapKey != nil {
+		v := &model.Variable{
+			TypeRef: model.TypeRef{
+				TypeID:           field.typeID,
+				NumberOfPointers: field.numberOfPointers,
+				IsSlice:          field.isSlice,
+				ArrayLen:         field.arrayLen,
+				IsEllipsis:       field.isEllipsis,
+				ElementPointers:  field.elementPointers,
+				MapKey:           field.mapKey,
+				MapValue:         field.mapValue,
+			},
 		}
-		s.Tag(tags)
+		s = typeGen.FieldTypeFromVariable(v, false)
+	} else {
+		s = typeGen.FieldType(field.typeID, field.numberOfPointers, false)
 	}
+	if !isEmbedded {
+		s = Id(toCamel(field.name)).Add(s)
+	}
+	s.Tag(tags)
 	return s
 }

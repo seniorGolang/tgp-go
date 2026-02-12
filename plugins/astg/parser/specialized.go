@@ -36,7 +36,7 @@ func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeNa
 		return
 	}
 
-	requiredImports := extractImportsFromErrorType(files, typeName)
+	requiredImports := extractImportsFromErrorType(files, typeName, l.resolver)
 	importer := &FileSystemImporter{
 		loader:          l,
 		cache:           make(map[string]*types.Package),
@@ -59,7 +59,7 @@ func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeNa
 		err = nil
 	}
 
-	imports := collectImports(files)
+	imports := collectImports(files, l.resolver)
 
 	info = &PackageInfo{
 		PkgPath:     pkgPath,
@@ -109,7 +109,7 @@ func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName st
 		return
 	}
 
-	requiredImports := extractImportsFromTypeDefinition(files, typeName)
+	requiredImports := extractImportsFromTypeDefinition(files, typeName, l.resolver)
 	importer := &FileSystemImporter{
 		loader:          l,
 		cache:           make(map[string]*types.Package),
@@ -132,7 +132,7 @@ func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName st
 		err = nil
 	}
 
-	imports := collectImports(files)
+	imports := collectImports(files, l.resolver)
 
 	info = &PackageInfo{
 		PkgPath:     pkgPath,
@@ -197,7 +197,7 @@ func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImp
 		return
 	}
 
-	importsToLoad := extractImportsFromExportedAndAliases(files)
+	importsToLoad := extractImportsFromExportedAndAliases(files, l.resolver)
 
 	importer := &FileSystemImporter{
 		loader:          l,
@@ -228,7 +228,7 @@ func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImp
 		err = nil
 	}
 
-	imports := collectImports(files)
+	imports := collectImports(files, l.resolver)
 
 	info = &PackageInfo{
 		PkgPath:     pkgPath,

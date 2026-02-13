@@ -37,7 +37,7 @@ func (r *transportRenderer) withMethodLoggerFunc() Code {
 	return Func().Id("withMethodLogger").
 		Params(
 			Id(VarNameCtx).Qual(PackageContext, "Context"),
-			Id("service").String(),
+			Id("contract").String(),
 			Id("method").String(),
 		).
 		Params(Qual(PackageContext, "Context")).
@@ -48,7 +48,7 @@ func (r *transportRenderer) withMethodLoggerFunc() Code {
 			)
 			bg.Return(
 				Qual(srvctxPkgPath, "WithCtx").Types(Op("*").Qual(PackageSlog, "Logger")).
-					Call(Id(VarNameCtx), Id("log").Dot("With").Call(Lit("service"), Id("service"), Lit("method"), Id("method"))),
+					Call(Id(VarNameCtx), Id("log").Dot("With").Call(Lit("contract"), Id("contract"), Lit("method"), Id("method"))),
 			)
 		})
 }

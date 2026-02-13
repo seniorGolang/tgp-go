@@ -11,7 +11,11 @@ type logValuer struct {
 }
 
 func (l logValuer) LogValue() slog.Value {
-	return slog.StringValue(String(l.v))
+	tree, err := toJSONTree(reflect.ValueOf(l.v), 0, make(map[uintptr]int), &Config, nil)
+	if err != nil {
+		return slog.AnyValue(nil)
+	}
+	return slog.AnyValue(tree)
 }
 
 func Any(key string, v any) slog.Attr {

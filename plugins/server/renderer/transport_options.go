@@ -60,7 +60,7 @@ func (r *transportRenderer) renderOptionsService(srcFile *GoFile) {
 
 func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 
-	for _, contract := range r.project.Contracts {
+	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
 			block := func(gr *Group) {
@@ -82,7 +82,7 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 				)
 		}
 	}
-	for _, contract := range r.project.Contracts {
+	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
 			srcFile.Line().Func().Id(contract.Name).

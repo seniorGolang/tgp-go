@@ -84,6 +84,7 @@ func (r *transportRenderer) initJsonRPCMethodMap() Code {
 							Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("requestBase").Id("baseJsonRPC")).
 							Params(Id("responseBase").Op("*").Id("baseJsonRPC")).
 							Block(
+								Id(VarNameCtx).Op("=").Id("withMethodLogger").Call(Id(VarNameCtx), Lit(toLowerCamel(contract.Name)), Lit(toLowerCamel(method.Name))),
 								Return(Id("srv").Dot("http"+contract.Name).Dot(toLowerCamel(method.Name)+"WithContext").Call(Id(VarNameCtx), Id("requestBase"))),
 							)
 						ib.Id("srv").Dot("jsonRPCMethodMap").Index(Lit(methodKey)).Op("=").Add(handler)
@@ -114,7 +115,6 @@ func (r *transportRenderer) singleBatchFunc() Code {
 			bg.If(Op("!").Id("ok")).Block(
 				Return(Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("methodNotFoundError"), Lit("invalid method '").Op("+").Id("methodNameOrigin").Op("+").Lit("'"), Nil())),
 			)
-			bg.Id(VarNameCtx).Op("=").Id("withMethodLogger").Call(Id(VarNameCtx), Lit("rpc"), Id("method"))
 			bg.Line()
 			bg.Return(Id("handler").Call(Id(VarNameCtx), Id("request")))
 		})

@@ -119,7 +119,7 @@ func slogLevel(level zerolog.Level) slog.Level {
 
 func addAttr(event *zerolog.Event, attr slog.Attr) *zerolog.Event {
 	key := attr.Key
-	value := attr.Value
+	value := attr.Value.Resolve()
 
 	switch value.Kind() {
 	case slog.KindString:
@@ -145,7 +145,7 @@ func addAttr(event *zerolog.Event, attr slog.Attr) *zerolog.Event {
 
 func addAttrToContext(ctx zerolog.Context, attr slog.Attr) zerolog.Context {
 	key := attr.Key
-	value := attr.Value
+	value := attr.Value.Resolve()
 
 	switch value.Kind() {
 	case slog.KindString:

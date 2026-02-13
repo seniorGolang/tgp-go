@@ -102,34 +102,29 @@ func (r *contractRenderer) loggerFuncBody(method *model.Method) func(bg *Group) 
 				Id("panic").Call(Id("r")),
 			)
 
-			bg.If(Op("!").Id("sLogger").Dot("Enabled").Call(Id(VarNameCtx), Qual(PackageSlog, "LevelInfo")).Op("&&").Id("err").Op("==").Nil()).Block(
-				Return(),
-			)
-			bg.If(Op("!").Id("sLogger").Dot("Enabled").Call(Id(VarNameCtx), Qual(PackageSlog, "LevelError")).Op("&&").Id("err").Op("!=").Nil()).Block(
-				Return(),
-			)
+			bg.If(
+				Op("!").Id("sLogger").Dot("Enabled").Call(Id(VarNameCtx), Qual(PackageSlog, "LevelInfo")).Op("&&").Id("err").Op("==").Nil().
+					Op("||").
+					Op("!").Id("sLogger").Dot("Enabled").Call(Id(VarNameCtx), Qual(PackageSlog, "LevelError")).Op("&&").Id("err").Op("!=").Nil(),
+			).Block(Return())
 
-			r.loggerDeferAttrsBlock(bg, method, skipRequest, skipResponse, skipFields)
+			r.loggerDeferAttrsBlock(bg, method, skipRequest, skipResponse, skipFields, capError)
 			bg.If(Id("err").Op("!=").Nil()).Block(
 				Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(PackageSlog, "Any").Call(Lit("error"), Err())),
 			)
-			bg.Id("args").Op(":=").Make(Index().Any(), Lit(0), Lit(capError))
-			bg.For(List(Id("_"), Id("attr")).Op(":=").Range().Id("_attrs_")).Block(
-				Id("args").Op("=").Append(Id("args"), Id("attr")),
-			)
 			bg.If(Id("err").Op("!=").Nil()).Block(
-				Id("sLogger").Dot("Error").Call(Lit(fmt.Sprintf("call %s", toLowerCamel(method.Name))), Id("args").Op("...")),
+				Id("sLogger").Dot("Error").Call(Lit(fmt.Sprintf("call %s", toLowerCamel(method.Name))), Id("_attrs_").Op("...")),
 				Return(),
 			)
-			bg.Id("sLogger").Dot("Info").Call(Lit(fmt.Sprintf("call %s", toLowerCamel(method.Name))), Id("args").Op("..."))
+			bg.Id("sLogger").Dot("Info").Call(Lit(fmt.Sprintf("call %s", toLowerCamel(method.Name))), Id("_attrs_").Op("..."))
 		}).Call()
 		bg.Return().Id("m").Dot(VarNameNext).Dot(method.Name).Call(r.paramNames(method.Args))
 	}
 }
 
-func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method, skipRequest bool, skipResponse bool, skipFields []string) {
+func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method, skipRequest bool, skipResponse bool, skipFields []string, cap int) {
 
-	bg.Var().Id("_attrs_").Index().Qual(PackageSlog, "Attr")
+	bg.Id("_attrs_").Op(":=").Make(Index().Any(), Lit(0), Lit(cap))
 	bg.Id("_attrs_").Op("=").Append(Id("_attrs_"),
 		Qual(PackageSlog, "String").Call(Lit("took"), Qual(PackageTime, "Since").Call(Id("_begin_")).Dot("String").Call()),
 	)

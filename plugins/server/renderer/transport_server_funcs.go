@@ -28,7 +28,7 @@ func (r *transportRenderer) withLogFunc() Code {
 		Params().
 		Params(Op("*").Id("Server")).
 		BlockFunc(func(bg *Group) {
-			for _, contract := range r.project.Contracts {
+			for _, contract := range r.contractsSorted() {
 				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithLog").Call(),
@@ -53,7 +53,7 @@ func (r *transportRenderer) withTraceFunc() Code {
 		BlockFunc(func(bg *Group) {
 			bg.Line()
 			bg.Qual(fmt.Sprintf("%s/tracer", r.pkgPath(r.outDir)), "Init").Call(Id(VarNameCtx), Id("appName"), Id("endpoint"), Id("attributes").Op("..."))
-			for _, contract := range r.project.Contracts {
+			for _, contract := range r.contractsSorted() {
 				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithTrace").Call(),
@@ -79,7 +79,7 @@ func (r *transportRenderer) withMetricsFunc() Code {
 			bg.If(Id("srv").Dot("metrics").Op("==").Nil()).Block(
 				Id("srv").Dot("metrics").Op("=").Id("NewMetrics").Call(),
 			)
-			for _, contract := range r.project.Contracts {
+			for _, contract := range r.contractsSorted() {
 				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
@@ -138,10 +138,6 @@ func (r *transportRenderer) serverNewFunc() Code {
 				Id("option").Call(Id("srv")),
 			)
 			bg.Line()
-			if r.hasJsonRPC() {
-				bg.Id("initJsonRPCMethodMap").Call(Id("srv"))
-			}
-			bg.Line()
 			bg.Id("srv").Dot("srvHTTP").Op("=").Qual(PackageFiber, "New").Call(Id("srv").Dot("config"))
 			bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Func().Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).Params(Error()).Block(
 				Id(VarNameFtx).Dot("Locals").Call(Lit("server"), Id("srv")),
@@ -163,7 +159,9 @@ func (r *transportRenderer) serverNewFunc() Code {
 			bg.For(List(Id("_"), Id("option")).Op(":=").Range().Id("serviceOptions")).Block(
 				Id("option").Call(Id("srv")),
 			)
+			bg.Line()
 			if r.hasJsonRPC() {
+				bg.Id("initJsonRPCMethodMap").Call(Id("srv"))
 				bg.Id("srv").Dot("srvHTTP").Dot("Post").Call(Lit("/"), Id("srv").Dot("serveBatch"))
 			}
 			bg.Return()
@@ -296,7 +294,7 @@ func (r *transportRenderer) doesNotRequireHTTPFunc() Code {
 			})
 			bg.Id("option").Call(Id("testSrv"))
 			bg.Id("noHTTPService").Op(":=").Id("testSrv").Dot("srvHTTP").Op("==").Nil()
-			for _, contract := range r.project.Contracts {
+			for _, contract := range r.contractsSorted() {
 				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||
 					model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 					bg.Id("noHTTPService").Op("=").Id("noHTTPService").Op("&&").Id("testSrv").Dot("http" + contract.Name).Op("==").Nil()

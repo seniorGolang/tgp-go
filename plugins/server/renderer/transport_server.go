@@ -61,7 +61,7 @@ func (r *transportRenderer) renderServerImports(srcFile *GoFile) {
 	srcFile.ImportName(PackageStrings, "strings")
 	srcFile.ImportName(PackageStrconv, "strconv")
 
-	for _, contract := range r.project.Contracts {
+	for _, contract := range r.contractsSorted() {
 		srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
 	}
 }
@@ -109,7 +109,7 @@ func (r *transportRenderer) renderServerFunctions(srcFile *GoFile) {
 		srcFile.Line().Add(r.requestDurationMiddleware())
 		srcFile.Line().Add(r.withMetricsFunc())
 	}
-	for _, contract := range r.project.Contracts {
+	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			srcFile.Line().Add(r.httpServiceAccessorFunc(contract))
 		}
@@ -131,7 +131,7 @@ func (r *transportRenderer) transportServerType() Code {
 			bg.Id("maxParallelBatch").Int()
 			bg.Id("jsonRPCMethodMap").Map(String()).Id("methodJsonRPC").Line()
 		}
-		for _, contract := range r.project.Contracts {
+		for _, contract := range r.contractsSorted() {
 			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||
 				model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 				bg.Line()

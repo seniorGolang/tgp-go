@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"tgp/internal/common"
 	"tgp/internal/model"
 )
 
@@ -44,6 +45,37 @@ func (r *baseRenderer) pkgPath(dir string) string {
 	return r.project.ModulePath + pkgDir
 }
 
+func (r *baseRenderer) contractsSorted() (out []*model.Contract) {
+
+	m := make(map[string]*model.Contract, len(r.project.Contracts))
+	for _, c := range r.project.Contracts {
+		m[c.Name] = c
+	}
+	names := common.SortedKeys(m)
+	out = make([]*model.Contract, 0, len(names))
+	for _, n := range names {
+		out = append(out, m[n])
+	}
+	return out
+}
+
+func methodsSorted(methods []*model.Method) (out []*model.Method) {
+
+	if len(methods) == 0 {
+		return nil
+	}
+	m := make(map[string]*model.Method, len(methods))
+	for _, method := range methods {
+		m[method.Name] = method
+	}
+	names := common.SortedKeys(m)
+	out = make([]*model.Method, 0, len(names))
+	for _, n := range names {
+		out = append(out, m[n])
+	}
+	return out
+}
+
 func (r *baseRenderer) pkgCopyTo(pkg, dst string) (err error) {
 
 	pkgPath := path.Join("pkg", pkg)
@@ -69,7 +101,7 @@ func (r *baseRenderer) pkgCopyTo(pkg, dst string) (err error) {
 
 func (r *baseRenderer) hasJsonRPC() bool {
 
-	for _, contract := range r.project.Contracts {
+	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 			return true
 		}
@@ -79,7 +111,7 @@ func (r *baseRenderer) hasJsonRPC() bool {
 
 func (r *baseRenderer) hasMetrics() bool {
 
-	for _, contract := range r.project.Contracts {
+	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 			return true
 		}
@@ -89,7 +121,7 @@ func (r *baseRenderer) hasMetrics() bool {
 
 func (r *baseRenderer) hasTrace() bool {
 
-	for _, contract := range r.project.Contracts {
+	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, TagTrace) {
 			return true
 		}

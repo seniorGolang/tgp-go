@@ -16,7 +16,7 @@ func (r *transportRenderer) RenderTransportMetrics() error {
 	metricsPath := path.Join(r.outDir, "metrics.go")
 
 	hasMetrics := false
-	for _, contract := range r.project.Contracts {
+	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 			hasMetrics = true
 			break

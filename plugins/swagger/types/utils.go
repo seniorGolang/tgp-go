@@ -28,6 +28,7 @@ var uuidPackages = []string{
 }
 
 func IsExcludedTypeID(typeID string, project *model.Project) (excluded bool) {
+
 	if typeID == "" {
 		return
 	}
@@ -96,6 +97,7 @@ func IsExcludedTypeID(typeID string, project *model.Project) (excluded bool) {
 }
 
 func IsBuiltinTypeID(typeID string) (isBuiltin bool) {
+
 	switch typeID {
 	case "string", "int", "int8", "int16", "int32", "int64",
 		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
@@ -107,6 +109,7 @@ func IsBuiltinTypeID(typeID string) (isBuiltin bool) {
 }
 
 func IsExplicitlyExcludedType(typ *model.Type) (excluded bool) {
+
 	if typ == nil {
 		return
 	}
@@ -160,6 +163,7 @@ func IsExplicitlyExcludedType(typ *model.Type) (excluded bool) {
 }
 
 func GetSerializationFormatForTypeID(typeID string, project *model.Project) (openAPIType string, format string) {
+
 	if IsBuiltinTypeID(typeID) {
 		switch typeID {
 		case "string":
@@ -208,6 +212,7 @@ func GetSerializationFormatForTypeID(typeID string, project *model.Project) (ope
 }
 
 func GetSerializationFormat(typ *model.Type, project *model.Project) (openAPIType string, format string) {
+
 	if typ.ImportPkgPath == pkgTime && typ.TypeName == typeTime {
 		return "string", "date-time"
 	}
@@ -228,6 +233,7 @@ func GetSerializationFormat(typ *model.Type, project *model.Project) (openAPITyp
 }
 
 func containsString(slice []string, str string) (found bool) {
+
 	for _, s := range slice {
 		if s == str {
 			return true
@@ -237,6 +243,7 @@ func containsString(slice []string, str string) (found bool) {
 }
 
 func ToCamel(s string) (result string) {
+
 	if s == "" {
 		return s
 	}
@@ -263,6 +270,7 @@ func ToCamel(s string) (result string) {
 }
 
 func ToLowerCamel(s string) (result string) {
+
 	if s == "" {
 		return s
 	}
@@ -289,6 +297,7 @@ func ToLowerCamel(s string) (result string) {
 }
 
 func isAllUpper(s string) (allUpper bool) {
+
 	for _, v := range s {
 		if v >= 'a' && v <= 'z' {
 			return

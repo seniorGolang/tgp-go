@@ -10,14 +10,15 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *contractRenderer) RenderTrace() error {
+func (r *contractRenderer) RenderTrace() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(r.contract.PkgPath, filepath.Base(r.contract.PkgPath))
 
@@ -66,6 +67,6 @@ func (r *contractRenderer) RenderTrace() error {
 	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-trace.go"))
 }
 
-func (r *contractRenderer) methodFullName(method *model.Method) string {
+func (r *contractRenderer) methodFullName(method *model.Method) (s string) {
 	return fmt.Sprintf("%s.%s", toLowerCamel(r.contract.Name), toLowerCamel(method.Name))
 }

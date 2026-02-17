@@ -15,6 +15,7 @@ import (
 )
 
 func TestArchitecture_Build(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("build architecture-beta sample code", func(t *testing.T) {

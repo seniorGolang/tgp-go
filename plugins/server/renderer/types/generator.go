@@ -19,7 +19,7 @@ type Generator struct {
 	typeCache map[string]*Statement
 }
 
-func NewGenerator(project *model.Project, srcFile SrcFile) *Generator {
+func NewGenerator(project *model.Project, srcFile SrcFile) (g *Generator) {
 	return &Generator{
 		project:   project,
 		srcFile:   srcFile,
@@ -27,11 +27,8 @@ func NewGenerator(project *model.Project, srcFile SrcFile) *Generator {
 	}
 }
 
-func (g *Generator) FieldTypeFromVariable(variable *model.Variable, allowEllipsis bool) *Statement {
-	return g.FieldTypeFromTypeRef(&variable.TypeRef, allowEllipsis)
-}
-
 func (g *Generator) FieldTypeFromTypeRef(typeRef *model.TypeRef, allowEllipsis bool) *Statement {
+
 	c := &Statement{}
 
 	if typeRef.IsEllipsis && allowEllipsis {
@@ -89,16 +86,46 @@ func (g *Generator) FieldType(typeID string, numberOfPointers int, allowEllipsis
 		return cached
 	}
 
-	// Логируем промах кэша
 	if cacheLogger != nil {
 		cacheLogger.OnCacheMiss()
 	}
 
 	result := g.fieldTypeImpl(typeID, numberOfPointers, allowEllipsis)
 
-	// Сохраняем в кэш
 	g.typeCache[cacheKey] = result
 	return result
+}
+
+// FieldTypeNoCache returns type statement without caching. Use when the result will be mutated (e.g. Tag()), to avoid corrupting shared cache.
+func (g *Generator) FieldTypeNoCache(typeID string, numberOfPointers int, allowEllipsis bool) *Statement {
+
+	return g.fieldTypeImpl(typeID, numberOfPointers, allowEllipsis)
+}
+
+// TypeIsEmbeddable reports whether typeID is a named type that can be used as an embedded struct field (struct, interface, or alias thereof). Primitives and builtins are not embeddable.
+func (g *Generator) TypeIsEmbeddable(typeID string) (ok bool) {
+
+	seen := make(map[string]struct{})
+	for typeID != "" {
+		if _, repeated := seen[typeID]; repeated {
+			return false
+		}
+		seen[typeID] = struct{}{}
+
+		typ, found := g.project.Types[typeID]
+		if !found {
+			return false
+		}
+		switch typ.Kind {
+		case model.TypeKindStruct, model.TypeKindInterface:
+			return true
+		case model.TypeKindAlias:
+			typeID = typ.AliasOf
+		default:
+			return false
+		}
+	}
+	return false
 }
 
 func (g *Generator) fieldTypeImpl(typeID string, numberOfPointers int, allowEllipsis bool) *Statement {
@@ -131,9 +158,9 @@ func (g *Generator) fieldTypeImpl(typeID string, numberOfPointers int, allowElli
 	case model.TypeKindChan:
 		result = g.fieldTypeChan(typ, c)
 	case model.TypeKindStruct:
-		result = g.fieldTypeStruct(typ, c)
+		result = g.fieldTypeNamed(typ, c)
 	case model.TypeKindInterface:
-		result = g.fieldTypeInterface(typ, c)
+		result = g.fieldTypeNamed(typ, c)
 	case model.TypeKindFunction:
 		result = g.fieldTypeFunction(typ, c)
 	case model.TypeKindAlias:
@@ -146,6 +173,7 @@ func (g *Generator) fieldTypeImpl(typeID string, numberOfPointers int, allowElli
 }
 
 func (g *Generator) fieldTypeFromID(typeID string, c *Statement) *Statement {
+
 	if strings.Contains(typeID, ":") {
 		parts := strings.SplitN(typeID, ":", 2)
 		if len(parts) == 2 && parts[1] != "" {
@@ -159,6 +187,7 @@ func (g *Generator) fieldTypeFromID(typeID string, c *Statement) *Statement {
 }
 
 func (g *Generator) fieldTypeArray(typ *model.Type, c *Statement) *Statement {
+
 	// Если это именованный тип, который определен как массив
 	if typ.TypeName != "" && (typ.ImportPkgPath != "" || typ.PkgName != "") {
 		return g.fieldTypeNamed(typ, c)
@@ -180,6 +209,7 @@ func (g *Generator) fieldTypeArray(typ *model.Type, c *Statement) *Statement {
 }
 
 func (g *Generator) fieldTypeMap(typ *model.Type, c *Statement) *Statement {
+
 	if typ.TypeName != "" && (typ.ImportPkgPath != "" || typ.PkgName != "") {
 		return g.fieldTypeNamed(typ, c)
 	}
@@ -207,29 +237,23 @@ func (g *Generator) fieldTypeChan(typ *model.Type, c *Statement) *Statement {
 	return c
 }
 
-func (g *Generator) fieldTypeStruct(typ *model.Type, c *Statement) *Statement {
-	return g.fieldTypeNamed(typ, c)
-}
-
-func (g *Generator) fieldTypeInterface(typ *model.Type, c *Statement) *Statement {
-	return g.fieldTypeNamed(typ, c)
-}
-
 func (g *Generator) fieldTypeFunction(typ *model.Type, c *Statement) *Statement {
+
 	args := make([]Code, 0, len(typ.FunctionArgs))
 	for _, arg := range typ.FunctionArgs {
-		argType := g.FieldTypeFromVariable(arg, false)
+		argType := g.FieldTypeFromTypeRef(&arg.TypeRef, false)
 		args = append(args, Id(toLowerCamel(arg.Name)).Add(argType))
 	}
 	results := make([]Code, 0, len(typ.FunctionResults))
 	for _, res := range typ.FunctionResults {
-		resType := g.FieldTypeFromVariable(res, false)
+		resType := g.FieldTypeFromTypeRef(&res.TypeRef, false)
 		results = append(results, resType)
 	}
 	return c.Func().Params(args...).Params(results...)
 }
 
 func (g *Generator) fieldTypeAlias(typ *model.Type, numberOfPointers int, allowEllipsis bool, c *Statement) *Statement {
+
 	if typ.AliasOf != "" {
 		return g.FieldType(typ.AliasOf, numberOfPointers, allowEllipsis)
 	}
@@ -237,12 +261,11 @@ func (g *Generator) fieldTypeAlias(typ *model.Type, numberOfPointers int, allowE
 }
 
 func (g *Generator) fieldTypePrimitive(typ *model.Type, typeID string, c *Statement) *Statement {
-	// Если у типа есть ImportPkgPath и TypeName, это именованный тип из другого пакета
+
 	if typ.ImportPkgPath != "" && typ.TypeName != "" {
 		return g.fieldTypeNamed(typ, c)
 	}
 
-	// Встроенный базовый тип
 	if typ.Kind != "" {
 		return c.Id(string(typ.Kind))
 	}
@@ -250,6 +273,7 @@ func (g *Generator) fieldTypePrimitive(typ *model.Type, typeID string, c *Statem
 }
 
 func (g *Generator) fieldTypeNamed(typ *model.Type, c *Statement) *Statement {
+
 	if typ.ImportPkgPath != "" {
 		packageName := typ.PkgName
 		if packageName == "" {
@@ -266,17 +290,18 @@ func (g *Generator) fieldTypeNamed(typ *model.Type, c *Statement) *Statement {
 }
 
 func (g *Generator) FuncDefinitionParams(vars []*model.Variable) *Statement {
+
 	c := &Statement{}
 	c.ListFunc(func(gr *Group) {
 		for _, v := range vars {
-			typeCode := g.FieldTypeFromVariable(v, true)
+			typeCode := g.FieldTypeFromTypeRef(&v.TypeRef, true)
 			gr.Id(toLowerCamel(v.Name)).Add(typeCode)
 		}
 	})
 	return c
 }
 
-func toLowerCamel(s string) string {
+func toLowerCamel(s string) (out string) {
 
 	if s == "" {
 		return s

@@ -9,12 +9,16 @@ import (
 	"unicode/utf8"
 )
 
-func getu4(s []byte) rune {
+func getu4(s []byte) (out rune) {
+
 	if len(s) < 6 || s[0] != '\\' || s[1] != 'u' {
 		return -1
 	}
 	r, err := strconv.ParseUint(string(s[2:6]), 16, 64)
 	if err != nil {
+		return -1
+	}
+	if r > utf8.MaxRune {
 		return -1
 	}
 	return rune(r)

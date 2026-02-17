@@ -7,7 +7,7 @@ type config struct {
 	title string
 }
 
-func newConfig() *config {
+func newConfig() (c *config) {
 	return &config{
 		title: noTitle,
 	}
@@ -19,7 +19,7 @@ const (
 
 type Option func(*config)
 
-func WithTitle(title string) Option {
+func WithTitle(title string) (o Option) {
 	return func(c *config) {
 		c.title = title
 	}

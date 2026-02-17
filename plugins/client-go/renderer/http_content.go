@@ -12,8 +12,6 @@ import (
 func (r *ClientRenderer) httpRequestBodyEncode(bg *Group, contract *model.Contract, method *model.Method, requestStructName string, requestVar string, jsonPkg string, reqKind string) {
 
 	schemaPkg := fmt.Sprintf("%s/schema", r.pkgPath(r.outDir))
-	bodyBytes := Id("bodyBytes")
-	bodyReader := Qual(PackageBytes, "NewReader").Call(bodyBytes)
 	switch reqKind {
 	case content.KindForm:
 		bg.Id("formData").Op(":=").Make(Map(String()).Index().String())
@@ -21,44 +19,32 @@ func (r *ClientRenderer) httpRequestBodyEncode(bg *Group, contract *model.Contra
 		bg.Id("formEncoder").Dot("SetAliasTag").Call(Lit("form"))
 		bg.If(Err().Op("=").Id("formEncoder").Dot("Encode").Call(Id(requestVar), Id("formData")).Op(";").Err().Op("!=").Nil()).Block(Return())
 		bg.Id("bodyStr").Op(":=").Qual(PackageURL, "Values").Call(Id("formData")).Dot("Encode").Call()
-		bg.List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), Qual(PackageBytes, "NewBufferString").Call(Id("bodyStr")))
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.Id("httpReq").Dot("ContentLength").Op("=").Int64().Call(Id("len").Call(Id("bodyStr")))
+		bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), Qual(PackageBytes, "NewBufferString").Call(Id("bodyStr"))).Op(";").Err().Op("!=").Nil()).Block(Return())
 		return
 	case content.KindXML:
-		bg.List(bodyBytes, Err()).Op(":=").Qual(PackageXML, "Marshal").Call(Id(requestVar))
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), bodyReader)
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.Id("httpReq").Dot("ContentLength").Op("=").Int64().Call(Id("len").Call(bodyBytes))
+		bg.Var().Id("bodyBytes").Index().Byte()
+		bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual(PackageXML, "Marshal").Call(Id(requestVar)).Op(";").Err().Op("!=").Nil()).Block(Return())
+		bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), Qual(PackageBytes, "NewReader").Call(Id("bodyBytes"))).Op(";").Err().Op("!=").Nil()).Block(Return())
 		return
 	case content.KindMsgpack:
-		bg.List(bodyBytes, Err()).Op(":=").Qual(PackageMsgpack, "Marshal").Call(Id(requestVar))
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), bodyReader)
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.Id("httpReq").Dot("ContentLength").Op("=").Int64().Call(Id("len").Call(bodyBytes))
+		bg.Var().Id("bodyBytes").Index().Byte()
+		bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual(PackageMsgpack, "Marshal").Call(Id(requestVar)).Op(";").Err().Op("!=").Nil()).Block(Return())
+		bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), Qual(PackageBytes, "NewReader").Call(Id("bodyBytes"))).Op(";").Err().Op("!=").Nil()).Block(Return())
 		return
 	case content.KindCBOR:
-		bg.List(bodyBytes, Err()).Op(":=").Qual(PackageCBOR, "Marshal").Call(Id(requestVar))
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), bodyReader)
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.Id("httpReq").Dot("ContentLength").Op("=").Int64().Call(Id("len").Call(bodyBytes))
+		bg.Var().Id("bodyBytes").Index().Byte()
+		bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual(PackageCBOR, "Marshal").Call(Id(requestVar)).Op(";").Err().Op("!=").Nil()).Block(Return())
+		bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), Qual(PackageBytes, "NewReader").Call(Id("bodyBytes"))).Op(";").Err().Op("!=").Nil()).Block(Return())
 		return
 	case content.KindYAML:
-		bg.List(bodyBytes, Err()).Op(":=").Qual(PackageYAML, "Marshal").Call(Id(requestVar))
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), bodyReader)
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.Id("httpReq").Dot("ContentLength").Op("=").Int64().Call(Id("len").Call(bodyBytes))
+		bg.Var().Id("bodyBytes").Index().Byte()
+		bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual(PackageYAML, "Marshal").Call(Id(requestVar)).Op(";").Err().Op("!=").Nil()).Block(Return())
+		bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), Qual(PackageBytes, "NewReader").Call(Id("bodyBytes"))).Op(";").Err().Op("!=").Nil()).Block(Return())
 		return
 	default:
-		bg.List(bodyBytes, Err()).Op(":=").Qual(jsonPkg, "Marshal").Call(Id(requestVar))
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), bodyReader)
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.Id("httpReq").Dot("ContentLength").Op("=").Int64().Call(Id("len").Call(bodyBytes))
+		bg.Var().Id("bodyBytes").Index().Byte()
+		bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(Id(requestVar)).Op(";").Err().Op("!=").Nil()).Block(Return())
+		bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(model.GetHTTPMethod(r.project, contract, method)), Id("baseURL").Dot("String").Call(), Qual(PackageBytes, "NewReader").Call(Id("bodyBytes"))).Op(";").Err().Op("!=").Nil()).Block(Return())
 	}
 }
 
@@ -68,10 +54,10 @@ func (r *ClientRenderer) httpResponseDecode(bg *Group, contract *model.Contract,
 	bodyReader := Id("httpResp").Dot("Body")
 	switch resKind {
 	case content.KindForm:
-		bg.Id("bodyBytes").Op(",").Err().Op(":=").Qual(PackageIO, "ReadAll").Call(bodyReader)
-		bg.If(Err().Op("!=").Nil()).Block(Return())
-		bg.Id("formValues").Op(",").Err().Op(":=").Qual(PackageURL, "ParseQuery").Call(Id("string").Call(Id("bodyBytes")))
-		bg.If(Err().Op("!=").Nil()).Block(Return())
+		bg.Var().Id("bodyBytes").Index().Byte()
+		bg.Var().Id("formValues").Qual(PackageURL, "Values")
+		bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual(PackageIO, "ReadAll").Call(bodyReader).Op(";").Err().Op("!=").Nil()).Block(Return())
+		bg.If(List(Id("formValues"), Err()).Op("=").Qual(PackageURL, "ParseQuery").Call(Id("string").Call(Id("bodyBytes"))).Op(";").Err().Op("!=").Nil()).Block(Return())
 		bg.Id("formDecoder").Op(":=").Qual(schemaPkg, "NewDecoder").Call()
 		bg.Id("formDecoder").Dot("SetAliasTag").Call(Lit("form"))
 		bg.Id("formDecoder").Dot("IgnoreUnknownKeys").Call(True())

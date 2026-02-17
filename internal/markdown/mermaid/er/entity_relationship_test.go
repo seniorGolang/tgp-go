@@ -13,6 +13,7 @@ import (
 )
 
 func TestDiagram_Build(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should write the entity relationship diagram body to the output destination", func(t *testing.T) {

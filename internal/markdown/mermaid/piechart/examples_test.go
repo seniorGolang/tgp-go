@@ -17,6 +17,7 @@ import (
 // the expected values are written are represented as '\n',
 // causing failures when testing on Windows.
 func ExamplePieChart() {
+
 	chart := piechart.NewPieChart(
 		os.Stdout,
 		piechart.WithTitle("mermaid pie chart builder"),

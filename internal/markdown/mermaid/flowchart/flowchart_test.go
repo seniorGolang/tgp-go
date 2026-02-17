@@ -13,6 +13,7 @@ import (
 )
 
 func TestFlowchart_Build(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("Build a flowchart with title", func(t *testing.T) {

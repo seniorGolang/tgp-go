@@ -12,14 +12,13 @@ const (
 	maxBranchNameLength = 255
 )
 
-func NormalizeBranchName(branch string) string {
+func NormalizeBranchName(branch string) (s string) {
 
-	// Если ветка пустая, возвращаем "default"
 	if branch == "" {
 		return "default"
 	}
 
-	// Недопустимые: / \ : * ? " < > | и пробел
+	// Недопустимые в имени файла: / \ : * ? " < > | и пробел
 	invalidChars := regexp.MustCompile(`[/\\:*?"<>|\s]+`)
 	normalized := invalidChars.ReplaceAllString(branch, "-")
 
@@ -28,15 +27,12 @@ func NormalizeBranchName(branch string) string {
 
 	normalized = strings.Trim(normalized, "-.")
 
-	// Если после обработки пустая строка, возвращаем "default"
 	if normalized == "" {
 		return "default"
 	}
 
-	// Обрезаем до максимальной длины
 	if len(normalized) > maxBranchNameLength {
 		normalized = normalized[:maxBranchNameLength]
-		// Убираем возможный дефис в конце после обрезки
 		normalized = strings.TrimSuffix(normalized, "-")
 	}
 

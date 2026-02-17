@@ -17,6 +17,7 @@ import (
 	"tgp/core/i18n"
 	"tgp/internal"
 	"tgp/internal/model"
+	"tgp/internal/helper"
 	"tgp/plugins/astg/parser/utils"
 )
 
@@ -54,7 +55,7 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 		}
 
 		if info.IsDir() {
-			if info.Name() == "vendor" {
+			if helper.IsDirNameExcluded(info.Name()) {
 				return filepath.SkipDir
 			}
 			if shouldExcludeDir(filePath, project.ExcludeDirs) {
@@ -63,7 +64,7 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 			return nil
 		}
 
-		if !strings.HasSuffix(info.Name(), ".go") {
+		if !helper.IsRelevantGoFile(info.Name()) {
 			return nil
 		}
 
@@ -128,15 +129,7 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 			continue
 		}
 
-		//nolint:staticcheck // ast.Package deprecated, but ast.MergePackageFiles still requires it
-		astPkg := &ast.Package{
-			Name:  parsedFiles[0].Name.Name,
-			Files: make(map[string]*ast.File),
-		}
-		for i, file := range parsedFiles {
-			astPkg.Files[fmt.Sprintf("file%d.go", i)] = file
-		}
-		mergedFile := ast.MergePackageFiles(astPkg, ast.FilterUnassociatedComments|ast.FilterImportDuplicates)
+		mergedFile := mergeAstFiles(parsedFiles)
 
 		structs := findStructsInFile(mergedFile)
 		structMethods := buildStructMethodsMap(structs, parsedFiles)
@@ -165,8 +158,7 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 					if !pkgLoaded {
 						pkgDir := filepath.Dir(goFiles[0])
 						var err error
-						implPkgInfo, err = loader.LoadPackageFromFiles(pkgPath, pkgDir, fset, parsedFiles)
-						if err != nil {
+						if implPkgInfo, err = loader.LoadPackageFromFiles(pkgPath, pkgDir, fset, parsedFiles); err != nil {
 							var err2 error
 							implPkgInfo, err2 = loader.LoadPackageLazy(pkgPath)
 							if err2 != nil {
@@ -310,6 +302,43 @@ func buildStructMethodsMap(structs []structInfo, parsedFiles []*ast.File) (struc
 	return
 }
 
+func mergeAstFiles(files []*ast.File) (merged *ast.File) {
+
+	seenImport := make(map[string]bool)
+	var importSpecs []ast.Spec
+	var decls []ast.Decl
+
+	for _, f := range files {
+		for _, d := range f.Decls {
+			genDecl, ok := d.(*ast.GenDecl)
+			if ok && genDecl.Tok == token.IMPORT {
+				for _, spec := range genDecl.Specs {
+					importSpec := spec.(*ast.ImportSpec)
+					path := importSpec.Path.Value
+					if seenImport[path] {
+						continue
+					}
+					seenImport[path] = true
+					importSpecs = append(importSpecs, spec)
+				}
+				continue
+			}
+			decls = append(decls, d)
+		}
+	}
+
+	if len(importSpecs) > 0 {
+		importDecl := &ast.GenDecl{Tok: token.IMPORT, Specs: importSpecs}
+		decls = append([]ast.Decl{importDecl}, decls...)
+	}
+
+	merged = &ast.File{
+		Name:  files[0].Name,
+		Decls: decls,
+	}
+	return
+}
+
 func findStructsInFile(file *ast.File) (structs []structInfo) {
 
 	structs = make([]structInfo, 0)
@@ -339,8 +368,8 @@ func findStructsInFile(file *ast.File) (structs []structInfo) {
 
 func implementsContract(structType structInfo, contract *model.Contract, file *ast.File, filePath string, pkgPath string, project *model.Project, loader *AutonomousPackageLoader, implPkgInfo *PackageInfo, methodSetCache map[string]*types.MethodSet, pointerMethodSetCache map[string]*types.MethodSet, methodSetCacheMu *sync.RWMutex) (implements bool) {
 
-	var contractPkgInfo *PackageInfo
 	var ok bool
+	var contractPkgInfo *PackageInfo
 	if contractPkgInfo, ok = loader.GetPackage(contract.PkgPath); !ok {
 		var err error
 		if contractPkgInfo, err = loader.LoadPackageLazy(contract.PkgPath); err != nil {
@@ -516,6 +545,7 @@ func findErrorTypesInMethodBody(body *ast.BlockStmt, file *ast.File, pkgPath str
 }
 
 func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, errorTypesMap map[string]bool, errorTypes *[]*model.ErrorTypeReference, resolver *PackageResolver) {
+
 	if expr == nil {
 		return
 	}
@@ -553,6 +583,7 @@ func extractErrorTypeFromExpr(expr ast.Expr, file *ast.File, pkgPath string, err
 }
 
 func extractErrorTypeFromTypeExpr(typeExpr ast.Expr, file *ast.File, pkgPath string, errorTypesMap map[string]bool, errorTypes *[]*model.ErrorTypeReference, resolver *PackageResolver) {
+
 	if typeExpr == nil {
 		return
 	}

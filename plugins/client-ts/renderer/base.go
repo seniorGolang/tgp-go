@@ -4,6 +4,7 @@ package renderer
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -11,15 +12,16 @@ import (
 )
 
 type ClientRenderer struct {
-	project        *model.Project
-	outDir         string
-	contract       *model.Contract
-	knownTypes     map[string]int
-	typeDefTs      map[string]typeDefTs
-	typeAnchorsSet map[string]bool // множество якорей типов из секции «Общие типы» (заполняется при генерации readme)
+	project                  *model.Project
+	outDir                   string
+	contract                 *model.Contract
+	knownTypes               map[string]int
+	typeDefTs                map[string]typeDefTs
+	typeAnchorsSet           map[string]bool
+	needParseFormValueHelper bool
 }
 
-func NewClientRenderer(project *model.Project, outDir string) *ClientRenderer {
+func NewClientRenderer(project *model.Project, outDir string) (r *ClientRenderer) {
 	return &ClientRenderer{
 		project:    project,
 		outDir:     outDir,
@@ -28,7 +30,7 @@ func NewClientRenderer(project *model.Project, outDir string) *ClientRenderer {
 	}
 }
 
-func (r *ClientRenderer) HasJsonRPC() bool {
+func (r *ClientRenderer) HasJsonRPC() (ok bool) {
 
 	for _, contract := range r.project.Contracts {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
@@ -38,7 +40,7 @@ func (r *ClientRenderer) HasJsonRPC() bool {
 	return false
 }
 
-func (r *ClientRenderer) HasHTTP() bool {
+func (r *ClientRenderer) HasHTTP() (ok bool) {
 
 	for _, contract := range r.project.Contracts {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
@@ -48,7 +50,28 @@ func (r *ClientRenderer) HasHTTP() bool {
 	return false
 }
 
-func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) bool {
+func (r *ClientRenderer) ContractKeys() (keys []string) {
+
+	keys = make([]string, 0, len(r.project.Contracts))
+	for _, c := range r.project.Contracts {
+		keys = append(keys, c.Name)
+	}
+	sort.Strings(keys)
+	return
+}
+
+func (r *ClientRenderer) FindContract(name string) (out *model.Contract) {
+
+	for _, c := range r.project.Contracts {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}
+
+func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) (ok bool) {
+
 	// Если ImportPkgPath начинается с ModulePath проекта, это тип из текущего проекта
 	if r.project.ModulePath != "" && strings.HasPrefix(importPkgPath, r.project.ModulePath) {
 		return true
@@ -56,47 +79,72 @@ func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) bool {
 	return false
 }
 
-func (r *ClientRenderer) tsFileName(contract *model.Contract) string {
+func (r *ClientRenderer) tsFileName(contract *model.Contract) (s string) {
+
 	name := contract.Name
 	if len(name) == 0 {
 		return ""
 	}
-	// Для случаев типа "HTTPService" -> "http_service", "JsonRPCService" -> "json_rpc_service", "JWKS" -> "jwks"
+
 	result := make([]rune, 0, len(name)*2)
-	for i, r := range name {
+	for i, c := range name {
 		if i > 0 {
-			prevR := rune(name[i-1])
-			if unicode.IsUpper(r) && unicode.IsLower(prevR) {
-				result = append(result, '_')
+			prev := rune(name[i-1])
+			if unicode.IsUpper(c) && unicode.IsLower(prev) {
+				result = append(result, '-')
 			}
-			// если следующая буква маленькая
-			if unicode.IsUpper(r) && unicode.IsUpper(prevR) {
+			if unicode.IsUpper(c) && unicode.IsUpper(prev) {
 				if i+1 < len(name) && unicode.IsLower(rune(name[i+1])) {
-					result = append(result, '_')
+					result = append(result, '-')
 				}
 			}
 		}
-		result = append(result, unicode.ToLower(r))
+		result = append(result, unicode.ToLower(c))
 	}
 	return string(result)
 }
 
-func (r *ClientRenderer) lcName(s string) string {
+func (r *ClientRenderer) fileNameToMethodName(fileName string) (methodName string) {
+
+	if fileName == "" {
+		return ""
+	}
+	parts := strings.FieldsFunc(fileName, func(c rune) bool { return c == '-' || c == '_' })
+	var b strings.Builder
+	for i, part := range parts {
+		if part == "" {
+			continue
+		}
+		if i == 0 {
+			b.WriteString(part)
+			continue
+		}
+		if len(part) > 0 {
+			b.WriteString(strings.ToUpper(string(part[0])))
+			b.WriteString(part[1:])
+		}
+	}
+	return b.String()
+}
+
+func (r *ClientRenderer) lcName(s string) (out string) {
+
 	if len(s) == 0 {
 		return ""
 	}
 	return toLowerCamel(s)
 }
 
-func (r *ClientRenderer) requestTypeName(contract *model.Contract, method *model.Method) string {
+func (r *ClientRenderer) requestTypeName(contract *model.Contract, method *model.Method) (s string) {
 	return fmt.Sprintf("Request%s%s", contract.Name, method.Name)
 }
 
-func (r *ClientRenderer) responseTypeName(contract *model.Contract, method *model.Method) string {
+func (r *ClientRenderer) responseTypeName(contract *model.Contract, method *model.Method) (s string) {
 	return fmt.Sprintf("Response%s%s", contract.Name, method.Name)
 }
 
-func toLowerCamel(s string) string {
+func toLowerCamel(s string) (out string) {
+
 	if s == "" {
 		return s
 	}
@@ -116,7 +164,6 @@ func toLowerCamel(s string) string {
 			s = strings.ToLower(string(first)) + s[1:]
 		}
 	}
-	// Убираем подчеркивания и преобразуем в camelCase
 	parts := strings.Split(s, "_")
 	result := parts[0]
 	for i := 1; i < len(parts); i++ {
@@ -124,19 +171,6 @@ func toLowerCamel(s string) string {
 			result += strings.ToUpper(string(parts[i][0])) + parts[i][1:]
 		}
 	}
-	return result
+	out = result
+	return
 }
-
-// Все методы Render* реализованы в соответствующих файлах:
-// - RenderClientOptions - options.go
-// - RenderVersion - version.go
-// - RenderClient - client.go
-// - RenderClientError - error.go
-// - RenderClientBatch - batch.go
-// - CollectTypeIDsForExchange - collector.go
-// - RenderClientTypes - types.go
-// - RenderExchangeTypes - exchange.go
-// - RenderJsonRPCClientClass - jsonrpc-client.go
-// - RenderHTTPClientClass - http-client.go
-// - RenderReadmeTS - readme.go
-// - RenderTsConfig - tsconfig.go

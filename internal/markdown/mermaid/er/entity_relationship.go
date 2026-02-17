@@ -15,19 +15,15 @@ import (
 )
 
 type Diagram struct {
-	// body is entity relationship diagram body.
-	body []string
-	// config is the configuration for the entity relationship diagram.
-	config *config
-	// dest is output destination for entity relationship diagram body.
-	dest io.Writer
-	// err manages errors that occur in all parts of the entity relationship building.
-	err error
-	// entities is the list of entities in the diagram.
+	err      error
+	body     []string
+	dest     io.Writer
+	config   *config
 	entities sync.Map
 }
 
-func NewDiagram(w io.Writer, opts ...Option) *Diagram {
+func NewDiagram(w io.Writer, opts ...Option) (d *Diagram) {
+
 	c := newConfig()
 
 	for _, opt := range opts {
@@ -42,8 +38,9 @@ func NewDiagram(w io.Writer, opts ...Option) *Diagram {
 	}
 }
 
-func (d *Diagram) String() string {
-	s := strings.Join(d.body, internal.LineFeed())
+func (d *Diagram) String() (s string) {
+
+	s = strings.Join(d.body, internal.LineFeed())
 	s += internal.LineFeed()
 
 	entities := make([]Entity, 0)
@@ -66,12 +63,13 @@ func (d *Diagram) String() string {
 	return s
 }
 
-func (d *Diagram) Build() error {
-	if _, err := fmt.Fprint(d.dest, d.String()); err != nil {
+func (d *Diagram) Build() (err error) {
+
+	if _, writeErr := fmt.Fprint(d.dest, d.String()); writeErr != nil {
 		if d.err != nil {
-			return fmt.Errorf("failed to write: %w: %s", err, d.err.Error()) //nolint:wrapcheck
+			return fmt.Errorf("failed to write: %w: %s", writeErr, d.err.Error()) //nolint:wrapcheck
 		}
-		return fmt.Errorf("failed to write: %w", err)
+		return fmt.Errorf("failed to write: %w", writeErr)
 	}
-	return nil
+	return d.err
 }

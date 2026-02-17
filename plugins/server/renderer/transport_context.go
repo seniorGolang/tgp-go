@@ -8,18 +8,20 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/generated"
 )
 
-func (r *transportRenderer) RenderTransportContext() error {
+func (r *transportRenderer) RenderTransportContext() (err error) {
 
-	if err := r.pkgCopyTo("srvctx", r.outDir); err != nil {
-		return err
+	if err = r.pkgRenderTo("srvctx", r.outDir, newPkgTemplateData()); err != nil {
+		return
 	}
 	contextPath := path.Join(r.outDir, "context.go")
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(srvctxPkgPath, "srvctx")

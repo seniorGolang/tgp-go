@@ -8,15 +8,16 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *transportRenderer) RenderTransportOptions() error {
+func (r *transportRenderer) RenderTransportOptions() (err error) {
 
 	optionsPath := path.Join(r.outDir, "options.go")
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(PackageUUID, "uuid")

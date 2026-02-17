@@ -25,8 +25,9 @@ var pluginDoc string
 
 type ClientTsPlugin struct{}
 
-func (p *ClientTsPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
+func (p *ClientTsPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
+	response = request
 	var project *model.Project
 	if project, err = helper.GetProject(request); err != nil {
 		return
@@ -86,11 +87,6 @@ func (p *ClientTsPlugin) Execute(rootDir string, request data.Storage, path ...s
 	attrs = stats.CompleteGenerationAttrs(clientStats, output, docOpts)
 	slog.Info(i18n.Msg("TypeScript client generation completed"), attrs...)
 
-	// Создаем response
-	if response, err = helper.CreateResponse(output); err != nil {
-		return nil, err
-	}
-
 	return
 }
 
@@ -145,7 +141,7 @@ func (p *ClientTsPlugin) Info() (info plugin.Info, err error) {
 			},
 		},
 		AllowedPaths: map[string]string{
-			"@go/": "w", // Доступ к директории с go.mod (монтируется хостом в корень "/")
+			"@root": "w", // Доступ к директории с go.mod (монтируется хостом в корень "/")
 		},
 	}
 	return

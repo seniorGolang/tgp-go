@@ -12,6 +12,16 @@ import (
 	"tgp/core/i18n"
 )
 
+func exportWrapperRecover(result *uint64) {
+
+	if r := recover(); r != nil {
+		errorBytes, _ := json.Marshal(map[string]string{
+			"error": fmt.Sprintf("panic: %v", r),
+		})
+		*result = createErrorResultFromBytes(errorBytes)
+	}
+}
+
 // exportWrapper создает стандартную обертку для экспорта функции.
 // Автоматически обрабатывает ptr/size запроса, вызывает handler и упаковывает результат в uint64.
 // Handler должен принимать десериализованный запрос и возвращать результат и ошибку.
@@ -19,7 +29,7 @@ func exportWrapper[TRequest any, TResult any](handler func(request TRequest) (re
 
 	return func(ptr uint32, size uint32) (result uint64) {
 
-		// Читаем и десериализуем запрос
+		defer exportWrapperRecover(&result)
 		requestBytes := PtrToByte(ptr, size)
 		Free(ptr)
 
@@ -33,7 +43,6 @@ func exportWrapper[TRequest any, TResult any](handler func(request TRequest) (re
 			}
 		}
 
-		// Вызываем handler
 		response, err := handler(request)
 		if err != nil {
 			errorBytes, _ := json.Marshal(map[string]string{
@@ -42,7 +51,6 @@ func exportWrapper[TRequest any, TResult any](handler func(request TRequest) (re
 			return createErrorResultFromBytes(errorBytes)
 		}
 
-		// Сериализуем ответ
 		responseBytes, marshalErr := json.Marshal(response)
 		if marshalErr != nil {
 			errorBytes, _ := json.Marshal(map[string]string{
@@ -51,7 +59,6 @@ func exportWrapper[TRequest any, TResult any](handler func(request TRequest) (re
 			return createErrorResultFromBytes(errorBytes)
 		}
 
-		// Выделяем память для результата
 		resultPtr, resultSize := byteToPtr(responseBytes)
 		if resultPtr == 0 {
 			errorBytes, _ := json.Marshal(map[string]string{
@@ -60,7 +67,6 @@ func exportWrapper[TRequest any, TResult any](handler func(request TRequest) (re
 			return createErrorResultFromBytes(errorBytes)
 		}
 
-		// Возвращаем результат без флага ошибки
 		return createSuccessResult(resultPtr, resultSize)
 	}
 }
@@ -71,10 +77,9 @@ func exportWrapperSimple[TResult any](handler func() (result TResult, err error)
 
 	return func(ptr uint32, size uint32) (result uint64) {
 
-		// Освобождаем память запроса (даже если он пустой)
+		defer exportWrapperRecover(&result)
 		Free(ptr)
 
-		// Вызываем handler
 		response, err := handler()
 		if err != nil {
 			errorBytes, _ := json.Marshal(map[string]string{
@@ -83,7 +88,6 @@ func exportWrapperSimple[TResult any](handler func() (result TResult, err error)
 			return createErrorResultFromBytes(errorBytes)
 		}
 
-		// Сериализуем ответ
 		responseBytes, marshalErr := json.Marshal(response)
 		if marshalErr != nil {
 			errorBytes, _ := json.Marshal(map[string]string{
@@ -92,7 +96,6 @@ func exportWrapperSimple[TResult any](handler func() (result TResult, err error)
 			return createErrorResultFromBytes(errorBytes)
 		}
 
-		// Выделяем память для результата
 		resultPtr, resultSize := byteToPtr(responseBytes)
 		if resultPtr == 0 {
 			errorBytes, _ := json.Marshal(map[string]string{
@@ -101,7 +104,6 @@ func exportWrapperSimple[TResult any](handler func() (result TResult, err error)
 			return createErrorResultFromBytes(errorBytes)
 		}
 
-		// Возвращаем результат без флага ошибки
 		return createSuccessResult(resultPtr, resultSize)
 	}
 }

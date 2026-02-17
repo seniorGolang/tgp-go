@@ -25,35 +25,20 @@ func SetPluginInstance(p plugin.Plugin) {
 // executeHandler обрабатывает запрос на выполнение плагина.
 func executeHandler(req executeRequest) (resp executeResponse, err error) {
 
-	// Десериализуем Request в core.MapStorage
-	var requestStorage *data.MapStorage
+	var requestStorage = make(data.MapStorage)
 	if len(req.Request) > 0 {
-		var ms data.MapStorage
-		if err := json.Unmarshal(req.Request, &ms); err != nil {
+		if err = json.Unmarshal(req.Request, &requestStorage); err != nil {
 			return executeResponse{}, err
 		}
-		requestStorage = &ms
-	} else {
-		requestStorage = &data.MapStorage{}
 	}
 
-	// Вызываем метод Execute плагина
 	if pluginInstance == nil {
 		return executeResponse{}, fmt.Errorf(i18n.Msg("plugin instance not set"))
 	}
 
-	response, err := pluginInstance.Execute(req.RootDir, requestStorage, req.Path...)
-	if err != nil {
+	if resp.Response, err = pluginInstance.Execute(requestStorage); err != nil {
 		resp.Error = err.Error()
-		return resp, nil
 	}
-
-	if response != nil {
-		if ms, ok := response.(*data.MapStorage); ok {
-			resp.Response = *ms
-		}
-	}
-
 	return
 }
 

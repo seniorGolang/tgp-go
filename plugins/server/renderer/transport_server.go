@@ -9,24 +9,25 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *transportRenderer) RenderTransportServer() error {
+func (r *transportRenderer) RenderTransportServer() (err error) {
 
 	serverPath := path.Join(r.outDir, "server.go")
 
-	if err := r.pkgCopyTo("logger", r.outDir); err != nil {
-		return fmt.Errorf("copy logger package: %w", err)
+	if err = r.pkgRenderTo("logger", r.outDir, newPkgTemplateData()); err != nil {
+		return fmt.Errorf("render logger package: %w", err)
 	}
 	if r.hasTrace() {
-		if err := r.pkgCopyTo("tracer", r.outDir); err != nil {
-			return fmt.Errorf("copy tracer package: %w", err)
+		if err = r.pkgRenderTo("tracer", r.outDir, newPkgTemplateData()); err != nil {
+			return fmt.Errorf("render tracer package: %w", err)
 		}
 	}
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	r.renderServerImports(&srcFile)
 	r.renderServerTypes(&srcFile)
@@ -38,7 +39,6 @@ func (r *transportRenderer) RenderTransportServer() error {
 
 func (r *transportRenderer) renderServerImports(srcFile *GoFile) {
 
-	// Стандартные библиотеки (будут отсортированы goimports)
 	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
 	jsonPkg := r.getPackageJSON()

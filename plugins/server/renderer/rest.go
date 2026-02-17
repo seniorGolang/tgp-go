@@ -11,16 +11,16 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
-	"tgp/internal/common"
 	"tgp/internal/content"
+	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *contractRenderer) RenderREST() error {
+func (r *contractRenderer) RenderREST() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	jsonPkg := r.getPackageJSON()
 	srcFile.ImportName(PackageFiber, "fiber")
@@ -37,6 +37,15 @@ func (r *contractRenderer) RenderREST() error {
 			srcFile.ImportName(PackageMimeMultipart, "multipart")
 			srcFile.ImportName(PackageBytes, "bytes")
 			srcFile.ImportName(PackageNetTextproto, "textproto")
+			break
+		}
+	}
+	for _, method := range r.contract.Methods {
+		if !r.methodIsHTTP(method) {
+			continue
+		}
+		if r.methodRequestBodyStreamArg(method) != nil && !r.methodRequestMultipart(method) {
+			srcFile.ImportName(PackageMime, "mime")
 			break
 		}
 	}
@@ -72,14 +81,18 @@ func (r *contractRenderer) RenderREST() error {
 		srcFile.Add(r.httpServeMethodFunc(&srcFile, typeGen, method, jsonPkg))
 	}
 
-	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-rest.go"))
+	err = srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-rest.go"))
+	return
 }
 
-func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *model.Method) Code {
+func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *model.Method) (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
 		Id(toLowerCamel(method.Name)).
-		Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("request").Id(requestStructName(r.contract.Name, method.Name))).
+		Params(
+			Id(VarNameCtx).Qual(PackageContext, "Context"),
+			Id("request").Id(requestStructName(r.contract.Name, method.Name)),
+		).
 		Params(Id("response").Id(responseStructName(r.contract.Name, method.Name)), Err().Error()).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
@@ -108,7 +121,7 @@ func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *mode
 		})
 }
 
-func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) Code {
+func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) (c Code) {
 
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
@@ -137,34 +150,35 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 				bg.Add(r.httpServeMultipartRequest(method))
 			} else if bodyStreamArg == nil && len(r.arguments(method)) != 0 {
 				reqKind := content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagRequestContentType, "application/json"))
-				bg.Add(r.httpServeRequestBodyDecode(jsonPkg, method, reqKind))
+				r.httpServeRequestBodyDecode(bg, jsonPkg, method, reqKind)
 			}
 			if !requestMultipart && bodyStreamArg != nil {
+				bg.Add(r.httpServePipeRequestContentTypeCheck(method))
 				bg.Id("request").Dot(r.requestStructFieldName(method, bodyStreamArg)).Op("=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
 			}
-			bg.Add(r.urlArgs(srcFile, typeGen, method, func(arg, header string) *Statement {
-				return Line().If(Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-					ig.Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest"))
-					ig.Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("path arguments could not be decoded: ").Op("+").Err().Dot("Error").Call())
-				})
+			bg.Add(r.urlArgs(srcFile, typeGen, method, func(arg, header string) []Code {
+				return []Code{
+					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
+					Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("path arguments could not be decoded: ").Op("+").Err().Dot("Error").Call()),
+				}
 			}))
-			bg.Add(r.urlParams(srcFile, typeGen, method, func(arg, header string) *Statement {
-				return Line().If(Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-					ig.Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest"))
-					ig.Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("url arguments could not be decoded: ").Op("+").Err().Dot("Error").Call())
-				})
+			bg.Add(r.urlParams(srcFile, typeGen, method, func(arg, header string) []Code {
+				return []Code{
+					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
+					Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("url arguments could not be decoded: ").Op("+").Err().Dot("Error").Call()),
+				}
 			}))
-			bg.Add(r.httpArgHeaders(srcFile, typeGen, method, func(arg, header string) *Statement {
-				return Line().If(Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-					ig.Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest"))
-					ig.Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call())
-				})
+			bg.Add(r.httpArgHeaders(srcFile, typeGen, method, func(arg, header string) []Code {
+				return []Code{
+					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
+					Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call()),
+				}
 			}))
-			bg.Add(r.httpCookies(srcFile, typeGen, method, func(arg, header string) *Statement {
-				return Line().If(Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-					ig.Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest"))
-					ig.Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call())
-				})
+			bg.Add(r.httpCookies(srcFile, typeGen, method, func(arg, header string) []Code {
+				return []Code{
+					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
+					Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call()),
+				}
 			}))
 			if responseMethod := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpResponse, ""); responseMethod != "" {
 				args := argsWithoutContext(method)
@@ -183,18 +197,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 						bf.Line()
 					}
 					var ex Statement
-					if len(r.retCookieMap(method)) > 0 {
-						for retName := range common.SortedPairs(r.retCookieMap(method)) {
-							if ret := r.resultByName(method, retName); ret != nil {
-								ex.If(List(Id("rCookie"), Id("ok")).Op(":=").
-									Qual(PackageReflect, "ValueOf").Call(Id("response").Dot(r.responseStructFieldName(method, ret))).Dot("Interface").Call().
-									Op(".").Call(Id("cookieType"))).Op(";").Id("ok").Block(
-									Id("cookie").Op(":=").Id("rCookie").Dot("Cookie").Call(),
-									Id(VarNameFtx).Dot("Cookie").Call(Op("&").Id("cookie")),
-								)
-							}
-						}
-					}
+					ex.Add(r.httpRetCookies(method))
 					ex.Add(r.httpRetHeaders(method))
 					bf.Var().Id("iResponse").Any().Op("=").Id("response")
 					bf.If(List(Id("redirect"), Id("ok")).Op(":=").Id("iResponse").Op(".").Call(Id("withRedirect")).Op(";").Id("ok")).Block(
@@ -216,7 +219,19 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 					case len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle):
 						bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "response", true))
 					default:
-						bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "response", false))
+						if len(r.resultNamesExcludeFromBody(method)) > 0 {
+							bodyFields := r.resultsForBody(method)
+							bodyDict := DictFunc(func(d Dict) {
+								for _, res := range bodyFields {
+									d[Id(toCamel(res.Name))] = Id("response").Dot(r.responseStructFieldName(method, res))
+								}
+							})
+							bf.Id("responseBody").Op(":=").Id(responseBodyStructName(r.contract.Name, method.Name)).Values(bodyDict)
+							inlineBody := len(bodyFields) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle)
+							bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "responseBody", inlineBody))
+						} else {
+							bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "response", false))
+						}
 					}
 				})
 				bg.Var().Id("statusCode").Int()
@@ -237,4 +252,23 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 				bg.Return().Id("sendResponse").Call(Id(VarNameFtx), Err())
 			}
 		})
+}
+
+func (r *contractRenderer) httpServePipeRequestContentTypeCheck(method *model.Method) (c Code) {
+
+	expectedCT := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagRequestContentType, "application/octet-stream")
+	expectedMT := strings.TrimSpace(strings.Split(expectedCT, ";")[0])
+	return Line().If(
+		List(Id("gotMT"), Id("_"), Id("parseErr")).
+			Op(":=").
+			Qual(PackageMime, "ParseMediaType").
+			Call(Id(VarNameFtx).Dot("Get").Call(Lit("Content-Type"))).
+			Op(";").
+			Id("parseErr").Op("!=").Nil().
+			Op("||").
+			Id("gotMT").Op("!=").Lit(expectedMT),
+	).Block(
+		Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusUnsupportedMediaType")),
+		Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("unsupported request Content-Type"))),
+	)
 }

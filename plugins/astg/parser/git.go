@@ -194,7 +194,6 @@ func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 		var tagObjContent []byte
 		if tagObjContent, err = os.ReadFile(tagObjPath); err == nil {
 			// Парсим объект тега (формат: object <hash>\ntype tag\n...)
-			// Ищем строку "object " и извлекаем хеш коммита
 			content := string(tagObjContent)
 			lines := strings.Split(content, "\n")
 			for _, line := range lines {
@@ -428,7 +427,6 @@ func getGitRemoteURL(gitDir string) (url string, err error) {
 			continue
 		}
 
-		// В секции origin ищем url
 		// Может быть в формате "url = ..." или "	url = ..." (с табуляцией)
 		if inOriginSection {
 			lineTrimmed := strings.TrimSpace(line)

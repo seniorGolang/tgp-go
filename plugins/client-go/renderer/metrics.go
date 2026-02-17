@@ -7,13 +7,15 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/generated"
 )
 
-func (r *ClientRenderer) RenderClientMetrics() error {
+func (r *ClientRenderer) RenderClientMetrics() (err error) {
 
 	outDir := r.outDir
 	srcFile := NewSrcFile(filepath.Base(outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackagePrometheus, "prometheus")
 	srcFile.ImportName(PackagePrometheusAuto, "promauto")

@@ -50,7 +50,7 @@ var tsReservedToSafe = map[string]string{
 	"void":       "voidValue",
 }
 
-func tsSafeName(name string) string {
+func tsSafeName(name string) (s string) {
 
 	if name == "" {
 		return name
@@ -61,7 +61,7 @@ func tsSafeName(name string) string {
 	return name
 }
 
-func tsLocalVar(name string) string {
+func tsLocalVar(name string) (s string) {
 
 	return "_" + name + "_"
 }

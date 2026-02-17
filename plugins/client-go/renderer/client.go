@@ -9,19 +9,20 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) RenderClient() error {
+func (r *ClientRenderer) RenderClient() (err error) {
 
 	outDir := r.outDir
 
-	if err := r.RenderJsonRPCPackage(outDir); err != nil {
+	if err = r.RenderJsonRPCPackage(outDir); err != nil {
 		return fmt.Errorf("не удалось сгенерировать пакет jsonrpc: %w", err)
 	}
 
 	srcFile := NewSrcFile(filepath.Base(outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(PackageHttp, "http")
 	srcFile.ImportName(PackageOS, "os")
@@ -105,7 +106,8 @@ func (r *ClientRenderer) RenderClient() error {
 			Return(Id("cli").Dot("metricsReg")),
 		)
 	}
-	return srcFile.Save(path.Join(outDir, "client.go"))
+	err = srcFile.Save(path.Join(outDir, "client.go"))
+	return
 }
 
 func (r *ClientRenderer) clientStructFunc(outDir string) Code {
@@ -136,6 +138,7 @@ func (r *ClientRenderer) clientStructFunc(outDir string) Code {
 }
 
 func (r *ClientRenderer) FindContract(name string) *model.Contract {
+
 	for _, contract := range r.project.Contracts {
 		if contract.Name == name {
 			return contract

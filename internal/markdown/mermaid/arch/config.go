@@ -5,7 +5,7 @@ package arch
 
 type config struct{}
 
-func newConfig() *config {
+func newConfig() (c *config) {
 	return &config{}
 }
 

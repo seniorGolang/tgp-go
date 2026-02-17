@@ -9,14 +9,14 @@ import (
 	"slices"
 )
 
-func SortedKeys[M ~map[K]V, K cmp.Ordered, V any](m M) []K {
+func SortedKeys[M ~map[K]V, K cmp.Ordered, V any](m M) (out []K) {
 
-	keys := slices.Collect(maps.Keys(m))
-	slices.Sort(keys)
-	return keys
+	out = slices.Collect(maps.Keys(m))
+	slices.Sort(out)
+	return
 }
 
-func SortedPairs[M ~map[K]V, K cmp.Ordered, V any](m M) iter.Seq2[K, V] {
+func SortedPairs[M ~map[K]V, K cmp.Ordered, V any](m M) (seq iter.Seq2[K, V]) {
 
 	return func(yield func(K, V) bool) {
 		keys := SortedKeys(m)

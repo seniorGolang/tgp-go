@@ -2,8 +2,12 @@
 // conditions defined in file 'LICENSE', which is part of this project source code.
 package model
 
+import (
+	"strings"
+)
+
 const (
-	TagHTTPMethod            = "http-method"
+	TagHTTPMethod             = "http-method"
 	DefaultHTTPMethod         = "POST"
 	TagHttpPrefix             = "http-prefix"
 	TagHttpPath               = "http-path"
@@ -23,14 +27,12 @@ const (
 	TagRequired               = "required"
 )
 
-// GetHTTPMethod возвращает HTTP-метод для метода контракта. Если аннотация http-method не задана, возвращает DefaultHTTPMethod.
+// Если аннотация http-method не задана, возвращает DefaultHTTPMethod.
 func GetHTTPMethod(project *Project, contract *Contract, method *Method) (methodName string) {
-
-	return GetAnnotationValue(project, contract, method, nil, TagHTTPMethod, DefaultHTTPMethod)
+	return strings.TrimSpace(GetAnnotationValue(project, contract, method, nil, TagHTTPMethod, DefaultHTTPMethod))
 }
 
-// GetAnnotationValue возвращает значение аннотации: поиск снизу вверх
-// (variable → method → contract → project). Приоритет у ближайшего к месту использования.
+// Поиск снизу вверх (variable → method → contract → project). Приоритет у ближайшего к месту использования.
 func GetAnnotationValue(project *Project, contract *Contract, method *Method, variable *Variable, tagName string, defaultValue ...string) (value string) {
 
 	if variable != nil && variable.Annotations != nil {
@@ -82,7 +84,7 @@ func GetAnnotationValueInt(project *Project, contract *Contract, method *Method,
 	if len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
-	return 0
+	return
 }
 
 func GetAnnotationValueBool(project *Project, contract *Contract, method *Method, variable *Variable, tagName string, defaultValue ...bool) (value bool) {
@@ -106,7 +108,7 @@ func GetAnnotationValueBool(project *Project, contract *Contract, method *Method
 	if len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
-	return false
+	return
 }
 
 func IsAnnotationSet(project *Project, contract *Contract, method *Method, variable *Variable, tagName string) (found bool) {
@@ -133,5 +135,5 @@ func IsAnnotationSet(project *Project, contract *Contract, method *Method, varia
 		return project.Annotations.IsSet(tagName)
 	}
 
-	return false
+	return
 }

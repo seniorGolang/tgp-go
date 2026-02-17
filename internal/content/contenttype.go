@@ -33,7 +33,7 @@ var kindToCanonicalMIME = map[string]string{
 	KindYAML:    "application/x-yaml",
 }
 
-func Kind(mime string) string {
+func Kind(mime string) (s string) {
 
 	mime = strings.TrimSpace(strings.Split(mime, ";")[0])
 	if k, ok := mimeToKind[mime]; ok {
@@ -42,7 +42,7 @@ func Kind(mime string) string {
 	return KindJSON
 }
 
-func CanonicalMIME(kind string) string {
+func CanonicalMIME(kind string) (s string) {
 
 	if m, ok := kindToCanonicalMIME[kind]; ok {
 		return m

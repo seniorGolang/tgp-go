@@ -30,7 +30,8 @@ const keyPackage key = "package"
 var numberSequence = regexp.MustCompile(`([a-zA-Z])(\d+)([a-zA-Z]?)`)
 var numberReplacement = []byte(`$1 $2 $3`)
 
-func toCamelInitCase(s string, initCase bool) string {
+func toCamelInitCase(s string, initCase bool) (out string) {
+
 	s = addWordBoundariesToNumbers(s)
 	s = strings.Trim(s, " ")
 	n := ""
@@ -58,11 +59,12 @@ func toCamelInitCase(s string, initCase bool) string {
 	return n
 }
 
-func ToCamel(s string) string {
+func ToCamel(s string) (out string) {
 	return toCamelInitCase(s, true)
 }
 
-func isAllUpper(s string) bool {
+func isAllUpper(s string) (ok bool) {
+
 	for _, v := range s {
 		if v >= 'a' && v <= 'z' {
 			return false
@@ -71,7 +73,8 @@ func isAllUpper(s string) bool {
 	return true
 }
 
-func ToLowerCamel(s string) string {
+func ToLowerCamel(s string) (out string) {
+
 	if isAllUpper(s) {
 		return s
 	}
@@ -84,17 +87,15 @@ func ToLowerCamel(s string) string {
 	return toCamelInitCase(s, false)
 }
 
-func addWordBoundariesToNumbers(s string) string {
+func addWordBoundariesToNumbers(s string) (out string) {
+
 	b := []byte(s)
 	b = numberSequence.ReplaceAll(b, numberReplacement)
 	return string(b)
 }
 
-func (r *ClientRenderer) fieldTypeFromVariable(ctx context.Context, variable *model.Variable, allowEllipsis bool) *Statement {
-	return r.fieldTypeFromTypeRef(ctx, &variable.TypeRef, allowEllipsis)
-}
+func (r *ClientRenderer) fieldTypeFromTypeRef(ctx context.Context, typeRef *model.TypeRef, allowEllipsis bool) (st *Statement) {
 
-func (r *ClientRenderer) fieldTypeFromTypeRef(ctx context.Context, typeRef *model.TypeRef, allowEllipsis bool) *Statement {
 	c := &Statement{}
 
 	for i := 0; i < typeRef.NumberOfPointers; i++ {
@@ -166,7 +167,8 @@ func (r *ClientRenderer) fieldTypeFromTypeRef(ctx context.Context, typeRef *mode
 	return c.Add(r.fieldType(ctx, typeRef.TypeID, 0, false))
 }
 
-func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfPointers int, allowEllipsis bool) *Statement {
+func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfPointers int, allowEllipsis bool) (st *Statement) {
+
 	c := &Statement{}
 
 	for i := 0; i < numberOfPointers; i++ {
@@ -337,12 +339,12 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 	case model.TypeKindFunction:
 		args := make([]Code, 0, len(typ.FunctionArgs))
 		for _, arg := range typ.FunctionArgs {
-			argType := r.fieldTypeFromVariable(ctx, arg, false)
+			argType := r.fieldTypeFromTypeRef(ctx, &arg.TypeRef, false)
 			args = append(args, argType)
 		}
 		results := make([]Code, 0, len(typ.FunctionResults))
 		for _, res := range typ.FunctionResults {
-			resType := r.fieldTypeFromVariable(ctx, res, false)
+			resType := r.fieldTypeFromTypeRef(ctx, &res.TypeRef, false)
 			results = append(results, resType)
 		}
 		return c.Func().Params(args...).Params(results...)
@@ -396,18 +398,62 @@ func (r *ClientRenderer) fieldType(ctx context.Context, typeID string, numberOfP
 	}
 }
 
-func (r *ClientRenderer) funcDefinitionParams(ctx context.Context, vars []*model.Variable) *Statement {
+func (r *ClientRenderer) funcDefinitionParams(ctx context.Context, vars []*model.Variable) (st *Statement) {
+
 	c := &Statement{}
 	c.ListFunc(func(gr *Group) {
 		for _, v := range vars {
-			typeCode := r.fieldTypeFromVariable(ctx, v, true)
+			typeCode := r.fieldTypeFromTypeRef(ctx, &v.TypeRef, true)
 			gr.Id(ToLowerCamel(v.Name)).Add(typeCode)
 		}
 	})
 	return c
 }
 
-func (r *ClientRenderer) isContextFirst(vars []*model.Variable) bool {
+// Первый параметр всегда ctx context.Context, далее — аргументы метода без контекста (argsForClient).
+// Тело методов использует идентификатор _ctx_ ("ctx"), поэтому он должен присутствовать в сигнатуре.
+func (r *ClientRenderer) clientMethodParams(ctx context.Context, contract *model.Contract, method *model.Method) (st *Statement) {
+
+	c := &Statement{}
+	c.ListFunc(func(gr *Group) {
+		gr.Id(_ctx_).Qual(PackageContext, "Context")
+		for _, v := range r.argsForClient(contract, method) {
+			typeCode := r.fieldTypeFromTypeRef(ctx, &v.TypeRef, true)
+			gr.Id(ToLowerCamel(v.Name)).Add(typeCode)
+		}
+	})
+	return c
+}
+
+// clientMethodParamsJsonRPC — параметры метода JSON-RPC: ctx и только аргументы тела (argsForExchangeRequest). Implicit-маппинг не передаётся клиентом.
+func (r *ClientRenderer) clientMethodParamsJsonRPC(ctx context.Context, contract *model.Contract, method *model.Method) (st *Statement) {
+
+	c := &Statement{}
+	c.ListFunc(func(gr *Group) {
+		gr.Id(_ctx_).Qual(PackageContext, "Context")
+		for _, v := range r.argsForExchangeRequest(contract, method) {
+			typeCode := r.fieldTypeFromTypeRef(ctx, &v.TypeRef, true)
+			gr.Id(ToLowerCamel(v.Name)).Add(typeCode)
+		}
+	})
+	return c
+}
+
+// clientRequestMethodParamsJsonRPC — параметры Req*-метода JSON-RPC: callback и только аргументы тела (argsForExchangeRequest).
+func (r *ClientRenderer) clientRequestMethodParamsJsonRPC(ctx context.Context, contract *model.Contract, method *model.Method) (st *Statement) {
+
+	c := &Statement{}
+	c.ListFunc(func(gr *Group) {
+		gr.Id("callback").Id("ret" + contract.Name + method.Name)
+		for _, v := range r.argsForExchangeRequest(contract, method) {
+			typeCode := r.fieldTypeFromTypeRef(ctx, &v.TypeRef, true)
+			gr.Id(ToLowerCamel(v.Name)).Add(typeCode)
+		}
+	})
+	return c
+}
+
+func (r *ClientRenderer) isContextFirst(vars []*model.Variable) (ok bool) {
 
 	if len(vars) == 0 {
 		return false
@@ -419,7 +465,7 @@ func (r *ClientRenderer) isContextFirst(vars []*model.Variable) bool {
 	return typ.Kind == model.TypeKindInterface && typ.ImportPkgPath == "context" && typ.TypeName == "Context"
 }
 
-func (r *ClientRenderer) isErrorLast(vars []*model.Variable) bool {
+func (r *ClientRenderer) isErrorLast(vars []*model.Variable) (ok bool) {
 
 	if len(vars) == 0 {
 		return false
@@ -427,7 +473,7 @@ func (r *ClientRenderer) isErrorLast(vars []*model.Variable) bool {
 	return vars[len(vars)-1].TypeID == "error"
 }
 
-func (r *ClientRenderer) argsWithoutContext(method *model.Method) []*model.Variable {
+func (r *ClientRenderer) argsWithoutContext(method *model.Method) (out []*model.Variable) {
 
 	if r.isContextFirst(method.Args) {
 		return method.Args[1:]
@@ -435,7 +481,7 @@ func (r *ClientRenderer) argsWithoutContext(method *model.Method) []*model.Varia
 	return method.Args
 }
 
-func (r *ClientRenderer) resultsWithoutError(method *model.Method) []*model.Variable {
+func (r *ClientRenderer) resultsWithoutError(method *model.Method) (out []*model.Variable) {
 
 	if r.isErrorLast(method.Results) {
 		return method.Results[:len(method.Results)-1]
@@ -443,17 +489,49 @@ func (r *ClientRenderer) resultsWithoutError(method *model.Method) []*model.Vari
 	return method.Results
 }
 
-func (r *ClientRenderer) requestStructName(contract *model.Contract, method *model.Method) string {
+func (r *ClientRenderer) requestStructName(contract *model.Contract, method *model.Method) (s string) {
 
 	return "request" + contract.Name + method.Name
 }
 
-func (r *ClientRenderer) responseStructName(contract *model.Contract, method *model.Method) string {
+func (r *ClientRenderer) responseStructName(contract *model.Contract, method *model.Method) (s string) {
 
 	return "response" + contract.Name + method.Name
 }
 
-func (r *ClientRenderer) ContractKeys() []string {
+func (r *ClientRenderer) requestBodyStructName(contract *model.Contract, method *model.Method) (s string) {
+
+	return "request" + contract.Name + method.Name
+}
+
+func (r *ClientRenderer) responseBodyStructName(contract *model.Contract, method *model.Method) (s string) {
+
+	return "response" + contract.Name + method.Name
+}
+
+func (r *ClientRenderer) resultNamesExcludeFromBody(contract *model.Contract, method *model.Method) (out map[string]struct{}) {
+
+	return model.HTTPResultNamesExcludeFromBody(r.project, contract, method)
+}
+
+func (r *ClientRenderer) resultsForBody(contract *model.Contract, method *model.Method) (out []*model.Variable) {
+
+	exclude := r.resultNamesExcludeFromBody(contract, method)
+	var list []*model.Variable
+	for _, res := range r.resultsWithoutError(method) {
+		if res.TypeID == TypeIDIOReadCloser {
+			continue
+		}
+		if _, ok := exclude[res.Name]; ok {
+			continue
+		}
+		list = append(list, res)
+	}
+	return list
+}
+
+func (r *ClientRenderer) ContractKeys() (out []string) {
+
 	keys := make([]string, 0, len(r.project.Contracts))
 	for _, contract := range r.project.Contracts {
 		keys = append(keys, contract.Name)
@@ -462,7 +540,7 @@ func (r *ClientRenderer) ContractKeys() []string {
 	return keys
 }
 
-func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) bool {
+func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) (ok bool) {
 
 	if method == nil {
 		return false
@@ -470,7 +548,7 @@ func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model
 	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
 }
 
-func (r *ClientRenderer) methodIsHTTP(contract *model.Contract, method *model.Method) bool {
+func (r *ClientRenderer) methodIsHTTP(contract *model.Contract, method *model.Method) (ok bool) {
 
 	if contract == nil || method == nil {
 		return false
@@ -484,7 +562,7 @@ func (r *ClientRenderer) methodIsHTTP(contract *model.Contract, method *model.Me
 	return !contractHasJsonRPC || methodHasExplicitHTTP
 }
 
-func (r *ClientRenderer) methodRequestBodyStreamArg(method *model.Method) *model.Variable {
+func (r *ClientRenderer) methodRequestBodyStreamArg(method *model.Method) (v *model.Variable) {
 
 	for _, arg := range r.argsWithoutContext(method) {
 		if arg.TypeID == TypeIDIOReader {
@@ -494,7 +572,7 @@ func (r *ClientRenderer) methodRequestBodyStreamArg(method *model.Method) *model
 	return nil
 }
 
-func (r *ClientRenderer) methodResponseBodyStreamResult(method *model.Method) *model.Variable {
+func (r *ClientRenderer) methodResponseBodyStreamResult(method *model.Method) (v *model.Variable) {
 
 	for _, res := range r.resultsWithoutError(method) {
 		if res.TypeID == TypeIDIOReadCloser {
@@ -524,7 +602,7 @@ func (r *ClientRenderer) methodResponseBodyStreamResults(method *model.Method) (
 	return results
 }
 
-func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method *model.Method) bool {
+func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method *model.Method) (ok bool) {
 
 	readerArgs := r.methodRequestBodyStreamArgs(method)
 	if len(readerArgs) > 1 {
@@ -536,7 +614,7 @@ func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method
 	return false
 }
 
-func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, method *model.Method) bool {
+func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, method *model.Method) (ok bool) {
 
 	readCloserResults := r.methodResponseBodyStreamResults(method)
 	if len(readCloserResults) > 1 {
@@ -548,7 +626,7 @@ func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, metho
 	return false
 }
 
-func (r *ClientRenderer) contractHasResponseMultipart(contract *model.Contract) bool {
+func (r *ClientRenderer) contractHasResponseMultipart(contract *model.Contract) (ok bool) {
 
 	for _, method := range contract.Methods {
 		if r.methodResponseMultipart(contract, method) {
@@ -558,7 +636,7 @@ func (r *ClientRenderer) contractHasResponseMultipart(contract *model.Contract) 
 	return false
 }
 
-func (r *ClientRenderer) contractHasHTTPMethods(contract *model.Contract) bool {
+func (r *ClientRenderer) contractHasHTTPMethods(contract *model.Contract) (ok bool) {
 
 	for _, method := range contract.Methods {
 		if r.methodIsHTTP(contract, method) {
@@ -568,7 +646,7 @@ func (r *ClientRenderer) contractHasHTTPMethods(contract *model.Contract) bool {
 	return false
 }
 
-func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) string {
+func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) (s string) {
 
 	if v != nil && v.Annotations != nil {
 		if val, found := v.Annotations[model.TagHttpPartName]; found && val != "" {
@@ -585,7 +663,7 @@ func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.
 	return v.Name
 }
 
-func (r *ClientRenderer) streamPartContent(contract *model.Contract, method *model.Method, v *model.Variable) string {
+func (r *ClientRenderer) streamPartContent(contract *model.Contract, method *model.Method, v *model.Variable) (s string) {
 
 	if v != nil && v.Annotations != nil {
 		if val, found := v.Annotations[model.TagHttpPartContent]; found && val != "" {
@@ -600,7 +678,7 @@ func (r *ClientRenderer) streamPartContent(contract *model.Contract, method *mod
 	return ""
 }
 
-func (r *ClientRenderer) varValueFromMethodMap(annotationValue string, varName string) string {
+func (r *ClientRenderer) varValueFromMethodMap(annotationValue string, varName string) (s string) {
 
 	for _, pair := range strings.Split(annotationValue, ",") {
 		if pairTokens := strings.Split(strings.TrimSpace(pair), "|"); len(pairTokens) == 2 {
@@ -614,12 +692,13 @@ func (r *ClientRenderer) varValueFromMethodMap(annotationValue string, varName s
 	return ""
 }
 
-func (r *ClientRenderer) getPackageJSON(contract *model.Contract) string {
+func (r *ClientRenderer) getPackageJSON(contract *model.Contract) (s string) {
 
 	return model.GetAnnotationValue(r.project, contract, nil, nil, tagPackageJSON, PackageStdJSON)
 }
 
-func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) bool {
+func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) (ok bool) {
+
 	// Если ImportPkgPath начинается с ModulePath проекта, это тип из текущего проекта
 	if r.project.ModulePath != "" && strings.HasPrefix(importPkgPath, r.project.ModulePath) {
 		return true
@@ -627,7 +706,8 @@ func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) bool {
 	return false
 }
 
-func (r *ClientRenderer) parseTagsFromDocs(docs string) map[string]string {
+func (r *ClientRenderer) parseTagsFromDocs(docs string) (out map[string]string) {
+
 	tags := make(map[string]string)
 	if docs == "" {
 		return tags
@@ -637,14 +717,11 @@ func (r *ClientRenderer) parseTagsFromDocs(docs string) map[string]string {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "@") {
-			// Убираем @ в начале
 			line = strings.TrimPrefix(line, "@")
-			// Ищем первое двоеточие или пробел
 			idx := strings.IndexAny(line, ": ")
 			if idx > 0 {
 				key := strings.TrimSpace(line[:idx])
 				value := strings.TrimSpace(line[idx+1:])
-				// Убираем @ в начале значения, если есть
 				value = strings.TrimPrefix(value, "@")
 				tags[key] = value
 			} else {
@@ -656,14 +733,16 @@ func (r *ClientRenderer) parseTagsFromDocs(docs string) map[string]string {
 	return tags
 }
 
-func (r *ClientRenderer) variableToGoTypeString(variable *model.Variable, pkgPath string) string {
+func (r *ClientRenderer) variableToGoTypeString(variable *model.Variable, pkgPath string) (s string) {
+
 	if variable == nil {
 		return "any"
 	}
 	return r.typeRefToGoTypeString(&variable.TypeRef, pkgPath)
 }
 
-func (r *ClientRenderer) typeRefToGoTypeString(typeRef *model.TypeRef, pkgPath string) string {
+func (r *ClientRenderer) typeRefToGoTypeString(typeRef *model.TypeRef, pkgPath string) (s string) {
+
 	if typeRef == nil {
 		return "any"
 	}
@@ -682,7 +761,8 @@ func (r *ClientRenderer) typeRefToGoTypeString(typeRef *model.TypeRef, pkgPath s
 	return r.goTypeString(typeRef.TypeID, pkgPath)
 }
 
-func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variable, docs, pkgPath string) string {
+func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variable, docs, pkgPath string) (s string) {
+
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		elemType := r.goTypeString(variable.TypeID, pkgPath)
 		if variable.IsSlice {
@@ -731,17 +811,28 @@ type exchangeField struct {
 	tags             map[string]string
 }
 
-func (r *ClientRenderer) fieldsArgument(method *model.Method) []exchangeField {
-	vars := r.argsWithoutContext(method)
-	return r.varsToFields(vars, method.Annotations)
+func (r *ClientRenderer) fieldsArgumentForClient(contract *model.Contract, method *model.Method) (out []exchangeField) {
+	return r.varsToFields(r.argsForExchangeRequest(contract, method), method.Annotations)
 }
 
-func (r *ClientRenderer) fieldsResult(method *model.Method) []exchangeField {
+func (r *ClientRenderer) fieldsResult(method *model.Method) (out []exchangeField) {
+
 	vars := r.resultsWithoutError(method)
 	return r.varsToFields(vars, method.Annotations)
 }
 
-func (r *ClientRenderer) varsToFields(vars []*model.Variable, methodTags map[string]string) []exchangeField {
+func (r *ClientRenderer) fieldsRequestForBody(contract *model.Contract, method *model.Method) (out []exchangeField) {
+
+	return r.varsToFields(r.argsForRequestBody(contract, method), method.Annotations)
+}
+
+func (r *ClientRenderer) fieldsResultBody(contract *model.Contract, method *model.Method) (out []exchangeField) {
+
+	return r.varsToFields(r.resultsForBody(contract, method), method.Annotations)
+}
+
+func (r *ClientRenderer) varsToFields(vars []*model.Variable, methodTags map[string]string) (out []exchangeField) {
+
 	fields := make([]exchangeField, 0, len(vars))
 	for _, v := range vars {
 		field := exchangeField{

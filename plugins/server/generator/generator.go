@@ -14,24 +14,24 @@ import (
 	"tgp/plugins/server/renderer"
 )
 
-func GenerateServer(project *model.Project, contractID string, outDir string) error {
+func GenerateServer(project *model.Project, contractID string, outDir string) (err error) {
 
-	if err := validate.ValidateProject(project); err != nil {
+	if err = validate.Project(project); err != nil {
 		return fmt.Errorf("invalid project: %w", err)
 	}
-	if err := validate.ValidateContractID(contractID); err != nil {
+	if err = validate.ContractID(contractID); err != nil {
 		return fmt.Errorf("invalid contractID: %w", err)
 	}
-	if err := validate.ValidateOutDir(outDir); err != nil {
+	if err = validate.OutDir(outDir); err != nil {
 		return fmt.Errorf("invalid outDir: %w", err)
 	}
 
-	contract, err := validate.FindContract(project, contractID)
-	if err != nil {
+	var contract *model.Contract
+	if contract, err = validate.FindContract(project, contractID); err != nil {
 		return fmt.Errorf("find contract: %w", err)
 	}
 
-	if err := validate.ValidateContract(contract, project); err != nil {
+	if err = validate.Contract(contract, project); err != nil {
 		return fmt.Errorf("validate contract: %w", err)
 	}
 
@@ -41,19 +41,18 @@ func GenerateServer(project *model.Project, contractID string, outDir string) er
 	slog.Debug(i18n.Msg("generating server"), slog.String("contract", contractID), slog.String("outDir", outDir))
 
 	gen := &generator{
-		project:  project,
-		contract: contract,
-		outDir:   outDir,
-		renderer: renderer.NewContractRenderer(project, contract, outDir),
+		project:          project,
+		contract:         contract,
+		outDir:           outDir,
+		contractRenderer: renderer.NewContractRenderer(project, contract, outDir),
 	}
 
-	if err := gen.generate(); err != nil {
+	if err = gen.generate(); err != nil {
 		slog.Error(i18n.Msg("failed to generate server"), slog.String("contract", contractID), slog.String("error", err.Error()))
-		return err
+		return
 	}
 
 	logStats(contractID)
-
 	serverType := getServerType(project, contract)
 	if serverType != "" {
 		slog.Debug(i18n.Msg("server generated successfully"),
@@ -63,10 +62,10 @@ func GenerateServer(project *model.Project, contractID string, outDir string) er
 		slog.Debug(i18n.Msg("server generated successfully"),
 			slog.String("contract", contractID))
 	}
-	return nil
+	return
 }
 
-func getServerType(project *model.Project, contract *model.Contract) string {
+func getServerType(project *model.Project, contract *model.Contract) (serverType string) {
 
 	for annotation := range common.SortedPairs(contract.Annotations) {
 		if strings.HasSuffix(annotation, "-server") {
@@ -80,15 +79,15 @@ func getServerType(project *model.Project, contract *model.Contract) string {
 			}
 		}
 	}
-	return ""
+	return
 }
 
-func GenerateTransportFiles(project *model.Project, outDir string, contracts ...string) error {
+func GenerateTransportFiles(project *model.Project, outDir string, contracts ...string) (err error) {
 
-	if err := validate.ValidateProject(project); err != nil {
+	if err = validate.Project(project); err != nil {
 		return fmt.Errorf("invalid project: %w", err)
 	}
-	if err := validate.ValidateOutDir(outDir); err != nil {
+	if err = validate.OutDir(outDir); err != nil {
 		return fmt.Errorf("invalid outDir: %w", err)
 	}
 
@@ -97,134 +96,126 @@ func GenerateTransportFiles(project *model.Project, outDir string, contracts ...
 	renderer.SetOnFileSaved(onFileSaved)
 
 	gen := &generator{
-		project:  project,
-		outDir:   outDir,
-		renderer: renderer.NewTransportRenderer(project, outDir),
+		project:           project,
+		outDir:            outDir,
+		transportRenderer: renderer.NewTransportRenderer(project, outDir),
 	}
 
 	if len(contracts) > 0 {
-		filteredProject, err := filterContracts(project, contracts)
-		if err != nil {
+		var filteredProject *model.Project
+		if filteredProject, err = filterContracts(project, contracts); err != nil {
 			return fmt.Errorf("filter contracts: %w", err)
 		}
 		gen.project = filteredProject
-		gen.renderer = renderer.NewTransportRenderer(filteredProject, outDir)
+		gen.transportRenderer = renderer.NewTransportRenderer(filteredProject, outDir)
 	}
 
-	if err := gen.generateTransport(); err != nil {
+	if err = gen.generateTransport(); err != nil {
 		slog.Error(i18n.Msg("failed to generate transport files"), slog.String("outDir", outDir), slog.String("error", err.Error()))
-		return err
+		return
 	}
-
-	return nil
+	return
 }
 
 type generator struct {
-	project  *model.Project
-	contract *model.Contract
-	outDir   string
-	renderer renderer.Renderer
+	project           *model.Project
+	contract          *model.Contract
+	outDir            string
+	contractRenderer  renderer.ContractRenderer
+	transportRenderer renderer.TransportRenderer
 }
 
-func (g *generator) generate() error {
+func (g *generator) generate() (err error) {
 
-	if err := g.renderer.RenderHTTP(); err != nil {
+	if err = g.contractRenderer.RenderHTTP(); err != nil {
 		return fmt.Errorf("render HTTP: %w", err)
 	}
 
-	if err := g.renderer.RenderServer(); err != nil {
+	if err = g.contractRenderer.RenderServer(); err != nil {
 		return fmt.Errorf("render server: %w", err)
 	}
 
-	if err := g.renderer.RenderExchange(); err != nil {
+	if err = g.contractRenderer.RenderExchange(); err != nil {
 		return fmt.Errorf("render exchange: %w", err)
 	}
 
-	if err := g.renderer.RenderMiddleware(); err != nil {
+	if err = g.contractRenderer.RenderMiddleware(); err != nil {
 		return fmt.Errorf("render middleware: %w", err)
 	}
 
 	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "trace") {
-		if err := g.renderer.RenderTrace(); err != nil {
+		if err = g.contractRenderer.RenderTrace(); err != nil {
 			return fmt.Errorf("render trace: %w", err)
 		}
 	}
 	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "metrics") {
-		if err := g.renderer.RenderMetrics(); err != nil {
+		if err = g.contractRenderer.RenderMetrics(); err != nil {
 			return fmt.Errorf("render metrics: %w", err)
 		}
 	}
 	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "log") {
-		if err := g.renderer.RenderLogger(); err != nil {
+		if err = g.contractRenderer.RenderLogger(); err != nil {
 			return fmt.Errorf("render logger: %w", err)
 		}
 	}
 	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "jsonRPC-server") {
-		if err := g.renderer.RenderJsonRPC(); err != nil {
+		if err = g.contractRenderer.RenderJsonRPC(); err != nil {
 			return fmt.Errorf("render JSON-RPC: %w", err)
 		}
 	}
 	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "http-server") {
-		if err := g.renderer.RenderREST(); err != nil {
+		if err = g.contractRenderer.RenderREST(); err != nil {
 			return fmt.Errorf("render REST: %w", err)
 		}
 	}
 
-	return nil
+	return
 }
 
-func (g *generator) generateTransport() error {
+func (g *generator) generateTransport() (err error) {
 
-	if err := g.renderer.RenderTransportHTTP(); err != nil {
-		return fmt.Errorf("render transport HTTP: %w", err)
-	}
-
-	if err := g.renderer.RenderTransportContext(); err != nil {
+	if err = g.transportRenderer.RenderTransportContext(); err != nil {
 		return fmt.Errorf("render transport context: %w", err)
 	}
 
-	if err := g.renderer.RenderTransportLogger(); err != nil {
-		return fmt.Errorf("render transport logger: %w", err)
-	}
-
-	if err := g.renderer.RenderTransportFiber(); err != nil {
+	if err = g.transportRenderer.RenderTransportFiber(); err != nil {
 		return fmt.Errorf("render transport fiber: %w", err)
 	}
 
-	if err := g.renderer.RenderTransportHeader(); err != nil {
+	if err = g.transportRenderer.RenderTransportHeader(); err != nil {
 		return fmt.Errorf("render transport header: %w", err)
 	}
 
-	if err := g.renderer.RenderTransportErrors(); err != nil {
+	if err = g.transportRenderer.RenderTransportErrors(); err != nil {
 		return fmt.Errorf("render transport errors: %w", err)
 	}
 
-	if err := g.renderer.RenderTransportServer(); err != nil {
+	if err = g.transportRenderer.RenderTransportServer(); err != nil {
 		return fmt.Errorf("render transport server: %w", err)
 	}
 
-	if err := g.renderer.RenderTransportOptions(); err != nil {
+	if err = g.transportRenderer.RenderTransportOptions(); err != nil {
 		return fmt.Errorf("render transport options: %w", err)
 	}
 
-	if err := g.renderer.RenderTransportMetrics(); err != nil {
+	if err = g.transportRenderer.RenderTransportMetrics(); err != nil {
 		return fmt.Errorf("render transport metrics: %w", err)
 	}
 
-	if err := g.renderer.RenderTransportVersion(); err != nil {
+	if err = g.transportRenderer.RenderTransportVersion(); err != nil {
 		return fmt.Errorf("render transport version: %w", err)
 	}
 
 	if g.hasJsonRPC() {
-		if err := g.renderer.RenderTransportJsonRPC(); err != nil {
+		if err = g.transportRenderer.RenderTransportJsonRPC(); err != nil {
 			return fmt.Errorf("render transport JSON-RPC: %w", err)
 		}
 	}
 
-	return nil
+	return
 }
 
-func filterContracts(project *model.Project, contractNames []string) (*model.Project, error) {
+func filterContracts(project *model.Project, contractNames []string) (filteredProject *model.Project, err error) {
 
 	contractMap := make(map[string]bool, len(contractNames))
 	for _, name := range contractNames {
@@ -238,17 +229,18 @@ func filterContracts(project *model.Project, contractNames []string) (*model.Pro
 		}
 	}
 
-	filteredProject := *project
-	filteredProject.Contracts = filteredContracts
-	return &filteredProject, nil
+	projCopy := *project
+	projCopy.Contracts = filteredContracts
+	filteredProject = &projCopy
+	return
 }
 
-func (g *generator) hasJsonRPC() bool {
+func (g *generator) hasJsonRPC() (found bool) {
 
 	for _, contract := range g.project.Contracts {
 		if model.IsAnnotationSet(g.project, contract, nil, nil, "jsonRPC-server") {
 			return true
 		}
 	}
-	return false
+	return
 }

@@ -15,17 +15,14 @@ import (
 )
 
 type Architecture struct {
-	// body is architecture diagram body.
-	body []string
-	// config is the configuration for the architecture diagram.
+	err    error
+	body   []string
+	dest   io.Writer
 	config *config
-	// dest is output destination for architecture diagram body.
-	dest io.Writer
-	// err manages errors that occur in all parts of the architecture building.
-	err error
 }
 
-func NewArchitecture(w io.Writer, opts ...Option) *Architecture {
+func NewArchitecture(w io.Writer, opts ...Option) (a *Architecture) {
+
 	c := newConfig()
 
 	for _, opt := range opts {
@@ -39,25 +36,27 @@ func NewArchitecture(w io.Writer, opts ...Option) *Architecture {
 	}
 }
 
-func (a *Architecture) String() string {
+func (a *Architecture) String() (s string) {
 	return strings.Join(a.body, internal.LineFeed())
 }
 
-func (a *Architecture) Build() error {
-	if _, err := a.dest.Write([]byte(a.String())); err != nil {
+func (a *Architecture) Build() (err error) {
+
+	if _, writeErr := a.dest.Write([]byte(a.String())); writeErr != nil {
 		if a.err != nil {
-			return fmt.Errorf("failed to write: %w: %s", err, a.err.Error()) //nolint:wrapcheck
+			return fmt.Errorf("failed to write: %w: %s", writeErr, a.err.Error()) //nolint:wrapcheck
 		}
-		return fmt.Errorf("failed to write: %w", err)
+		return fmt.Errorf("failed to write: %w", writeErr)
 	}
-	return nil
+	return a.err
 }
 
-func (a *Architecture) Error() error {
+func (a *Architecture) Error() (err error) {
 	return a.err
 }
 
 func (a *Architecture) LF() *Architecture {
+
 	a.body = append(a.body, "")
 	return a
 }

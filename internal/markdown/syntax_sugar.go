@@ -5,34 +5,34 @@ package markdown
 
 import "fmt"
 
-func Link(text, url string) string {
+func Link(text, url string) (s string) {
 	return fmt.Sprintf("[%s](%s)", text, url)
 }
 
-func Image(text, url string) string {
+func Image(text, url string) (s string) {
 	return fmt.Sprintf("![%s](%s)", text, url)
 }
 
-func Strikethrough(text string) string {
+func Strikethrough(text string) (s string) {
 	return fmt.Sprintf("~~%s~~", text)
 }
 
-func Bold(text string) string {
+func Bold(text string) (s string) {
 	return fmt.Sprintf("**%s**", text)
 }
 
-func Italic(text string) string {
+func Italic(text string) (s string) {
 	return fmt.Sprintf("*%s*", text)
 }
 
-func BoldItalic(text string) string {
+func BoldItalic(text string) (s string) {
 	return fmt.Sprintf("***%s***", text)
 }
 
-func Code(text string) string {
+func Code(text string) (s string) {
 	return fmt.Sprintf("`%s`", text)
 }
 
-func Highlight(text string) string {
+func Highlight(text string) (s string) {
 	return fmt.Sprintf("==%s==", text)
 }

@@ -20,20 +20,17 @@ func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeNa
 
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
-		err = fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
-		return
+		return nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
 	}
 
 	buildCtx := buildContext()
 	var files []*ast.File
 	if files, err = l.parsePackageFiles(pkgDir, &buildCtx); err != nil {
-		err = fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
-		return
+		return nil, fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
 	}
 
 	if len(files) == 0 {
-		err = fmt.Errorf("no Go files found in package %s", pkgPath)
-		return
+		return nil, fmt.Errorf("no Go files found in package %s", pkgPath)
 	}
 
 	requiredImports := extractImportsFromErrorType(files, typeName, l.resolver)
@@ -53,8 +50,7 @@ func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeNa
 	var pkg *types.Package
 	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
 		if pkg == nil {
-			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
-			return
+			return nil, fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 		}
 		err = nil
 	}
@@ -93,20 +89,17 @@ func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName st
 
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
-		err = fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
-		return
+		return nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
 	}
 
 	buildCtx := buildContext()
 	var files []*ast.File
 	if files, err = l.parsePackageFiles(pkgDir, &buildCtx); err != nil {
-		err = fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
-		return
+		return nil, fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
 	}
 
 	if len(files) == 0 {
-		err = fmt.Errorf("no Go files found in package %s", pkgPath)
-		return
+		return nil, fmt.Errorf("no Go files found in package %s", pkgPath)
 	}
 
 	requiredImports := extractImportsFromTypeDefinition(files, typeName, l.resolver)
@@ -126,8 +119,7 @@ func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName st
 	var pkg *types.Package
 	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
 		if pkg == nil {
-			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
-			return
+			return nil, fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 		}
 		err = nil
 	}
@@ -175,8 +167,7 @@ func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImp
 		l.mu.Lock()
 		delete(l.cache, pkgPath)
 		l.mu.Unlock()
-		err = fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
-		return
+		return nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
 	}
 
 	buildCtx := buildContext()
@@ -185,16 +176,14 @@ func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImp
 		l.mu.Lock()
 		delete(l.cache, pkgPath)
 		l.mu.Unlock()
-		err = fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
-		return
+		return nil, fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
 	}
 
 	if len(files) == 0 {
 		l.mu.Lock()
 		delete(l.cache, pkgPath)
 		l.mu.Unlock()
-		err = fmt.Errorf("no Go files found in package %s", pkgPath)
-		return
+		return nil, fmt.Errorf("no Go files found in package %s", pkgPath)
 	}
 
 	importsToLoad := extractImportsFromExportedAndAliases(files, l.resolver)
@@ -221,8 +210,7 @@ func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImp
 			l.mu.Lock()
 			delete(l.cache, pkgPath)
 			l.mu.Unlock()
-			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
-			return
+			return nil, fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 		}
 		// Некритичные ошибки (pkg != nil) игнорируются - не логируются
 		err = nil

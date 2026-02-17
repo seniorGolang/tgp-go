@@ -19,8 +19,8 @@ import (
 	"tgp/internal/helper"
 	"tgp/internal/model"
 	"tgp/plugins/astg/cache"
+	"tgp/plugins/astg/descref"
 	"tgp/plugins/astg/generator"
-	"tgp/plugins/astg/marker"
 	"tgp/plugins/astg/parser"
 )
 
@@ -29,16 +29,14 @@ var pluginDoc string
 
 type AstgPlugin struct{}
 
-func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
+func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
-	// Настраиваем дефолтный slog с контекстом плагина
 	slog.SetDefault(slog.Default().With(
 		slog.String("plugin", "astg"),
 	))
 
 	response = request
 
-	// Если project уже есть в request, не пересоздаем его
 	if request != nil && request.Has("project") {
 		slog.Debug(i18n.Msg("project already exists in request, skipping analysis"))
 		return
@@ -71,73 +69,49 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 
 	var fromCache bool
 	var projectID string
-	var currentMarker string
 	var project *model.Project
 
 	if noCache {
-		// Если no-cache установлен, игнорируем кэш и всегда выполняем парсинг
 		fromCache = false
-		// Вычисляем projectID и marker заранее для последующего сохранения в кэш
-		if projectID, err = cache.GetProjectID(rootDir); err != nil {
+		if projectID, err = cache.GetProjectID(internal.ProjectRoot); err != nil {
 			slog.Debug(i18n.Msg("failed to compute project ID"), slog.String("error", err.Error()))
 		}
-		if currentMarker, err = marker.ComputeMarker(rootDir); err != nil {
-			slog.Debug(i18n.Msg("failed to compute marker"), slog.String("error", err.Error()))
-		}
 	} else {
-		project, fromCache, projectID, currentMarker = cache.GetProject(internal.ProjectRoot)
+		project, fromCache, projectID = cache.GetProject(internal.ProjectRoot)
 	}
 
-	// Если проект не из кэша, выполняем парсинг и сохраняем в кэш
 	if !fromCache {
-		// Выполняем парсинг проекта (всегда собираем все контракты, игнорируя ifaces)
-		if project, err = parser.CollectWithExcludeDirs(internal.Version, contractsDir, nil); err != nil {
+		if project, err = parser.CollectWithExcludeDirs(internal.Version, contractsDir, nil); err != nil || project == nil {
 			err = fmt.Errorf("%s: %w", i18n.Msg("failed to collect project"), err)
 			return
 		}
 
-		// Если projectID и marker уже вычислены в GetProject, используем их
-		// Если нет, вычисляем заново
 		if projectID == "" {
-			if projectID, err = cache.GetProjectID(rootDir); err == nil {
+			if projectID, err = cache.GetProjectID(internal.ProjectRoot); err == nil {
 				project.ProjectID = projectID
 			}
 		} else {
 			project.ProjectID = projectID
 		}
 
-		if currentMarker == "" {
-			if currentMarker, err = marker.ComputeMarker(rootDir); err == nil {
-				project.Marker = currentMarker
-			}
-		} else {
-			project.Marker = currentMarker
-		}
-
-		// Сохраняем проект в кэш (используем уже вычисленные projectID и marker)
-		// В кэш сохраняются полные данные без фильтрации
+		descref.ResolveFileRefsInProject(project, internal.ProjectRoot)
 		if projectID != "" {
-			cache.SaveProject(projectID, currentMarker, project)
+			cache.SaveProject(projectID, project, internal.ProjectRoot, contractsDir, nil)
 		}
 	}
 
-	// Применяем фильтрацию по contracts после загрузки проекта (из кэша или после парсинга)
-	// Фильтрация применяется к копии проекта, чтобы не изменять данные в кэше
 	if len(contractsFilter) > 0 {
 		var filteredContracts []*model.Contract
 		if filteredContracts, err = helper.FilterContractsByInterfaces(project, contractsFilter); err != nil {
 			err = fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts"), err)
 			return
 		}
-		// Создаем копию проекта с отфильтрованными контрактами
 		filteredProject := *project
 		filteredProject.Contracts = filteredContracts
 		project = &filteredProject
 	}
 
-	// Выводим сводку по каждому контракту отдельно
 	for _, contract := range project.Contracts {
-		// Подсчитываем уникальные ошибки во всех реализациях
 		errorTypesMap := make(map[string]bool)
 		for _, impl := range contract.Implementations {
 			for _, method := range impl.MethodsMap {
@@ -173,13 +147,13 @@ func (p *AstgPlugin) Execute(rootDir string, request data.Storage, path ...strin
 func saveProjectJSON(project *model.Project) (err error) {
 
 	dir := filepath.Join(internal.ProjectRoot, ".tg")
-	if err = os.MkdirAll(dir, 0755); err != nil {
-		return err
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return
 	}
 
 	var jsonData []byte
 	if jsonData, err = json.MarshalIndent(project, "", "  "); err != nil {
-		return err
+		return
 	}
 
 	path := filepath.Join(dir, "project.json")
@@ -189,18 +163,20 @@ func saveProjectJSON(project *model.Project) (err error) {
 func (p *AstgPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{
-		Name:        "astg",
-		Doc:         pluginDoc,
-		Description: i18n.Msg("Project AST parser plugin"),
-		Author:      "AlexK <seniorGolang@gmail.com>",
-		License:     "MIT",
-		Category:    "parser",
+		Name:             "astg",
+		Doc:              pluginDoc,
+		Description:      i18n.Msg("Project AST parser plugin"),
+		Author:           "AlexK <seniorGolang@gmail.com>",
+		License:          "MIT",
+		Category:         "parser",
+		AllowedShellCMDs: []string{"go"},
 		AllowedEnvVars: []string{
 			"GOPATH",     // Для поиска пакетов в GOPATH/src и модулей в GOPATH/pkg/mod
 			"GOROOT",     // Для поиска стандартной библиотеки
 			"GOMODCACHE", // Для поиска модулей в кэше модулей
 			"GOOS",       // Для build.Context при парсинге файлов с build tags
 			"GOARCH",     // Для build.Context при парсинге файлов с build tags
+			"GOCACHE",    // Для чтения export data скомпилированных пакетов
 		},
 		InitPkgs: []string{"astg"},
 		AllowedPaths: map[string]string{
@@ -208,7 +184,8 @@ func (p *AstgPlugin) Info() (info plugin.Info, err error) {
 			"$GOPATH":        "r", // Для чтения пакетов из GOPATH/src (для go/types и go/build)
 			"$GOROOT":        "r", // Для чтения стандартной библиотеки Go (для go/types и go/build)
 			"$GOMODCACHE":    "r", // Для чтения модулей из кэша (для go/types и go/build)
-			"@tg/cache/astg": "w", // Доступ на запись к кэшу проектов
+			"$GOCACHE":       "r", // Для чтения export data скомпилированных пакетов
+			"@tg/astg/cache": "w", // Доступ на запись к кэшу проектов
 		},
 	}
 	return

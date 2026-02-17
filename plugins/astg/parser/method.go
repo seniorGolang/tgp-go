@@ -18,11 +18,13 @@ import (
 
 func convertMethod(methodName string, funcType *ast.FuncType, docs []string, contractID string, pkgPath string, imports map[string]string, typeInfo *types.Info, project *model.Project, loader *AutonomousPackageLoader) (method *model.Method) {
 
+	methodDocs, methodDirectives := splitDocsAndDirectives(docs)
 	methodAnnotations := tags.ParseTags(docs)
 	method = &model.Method{
 		Name:        methodName,
 		ContractID:  contractID,
-		Docs:        removeAnnotationsFromDocs(docs),
+		Docs:        methodDocs,
+		Directives:  methodDirectives,
 		Annotations: methodAnnotations,
 		Args:        make([]*model.Variable, 0),
 		Results:     make([]*model.Variable, 0),
@@ -153,8 +155,9 @@ func convertMethod(methodName string, funcType *ast.FuncType, docs []string, con
 				continue
 			}
 
-			paramDocs := extractComments(param.Doc, param.Comment)
-			paramAnnotations := tags.ParseTags(paramDocs)
+			paramLines := extractComments(param.Doc, param.Comment)
+			paramDocs, paramDirectives := splitDocsAndDirectives(paramLines)
+			paramAnnotations := tags.ParseTags(paramLines)
 
 			if len(param.Names) > 0 {
 				for _, name := range param.Names {
@@ -170,7 +173,8 @@ func convertMethod(methodName string, funcType *ast.FuncType, docs []string, con
 							MapValue:         convertedTypeInfo.MapValue,
 						},
 						Name:        name.Name,
-						Docs:        removeAnnotationsFromDocs(paramDocs),
+						Docs:        paramDocs,
+						Directives:  paramDirectives,
 						Annotations: paramAnnotations,
 					})
 				}
@@ -188,7 +192,8 @@ func convertMethod(methodName string, funcType *ast.FuncType, docs []string, con
 						MapValue:         convertedTypeInfo.MapValue,
 					},
 					Name:        argName,
-					Docs:        removeAnnotationsFromDocs(paramDocs),
+					Docs:        paramDocs,
+					Directives:  paramDirectives,
 					Annotations: paramAnnotations,
 				})
 			}
@@ -320,8 +325,9 @@ func convertMethod(methodName string, funcType *ast.FuncType, docs []string, con
 				continue
 			}
 
-			resultDocs := extractComments(result.Doc, result.Comment)
-			resultAnnotations := tags.ParseTags(resultDocs)
+			resultLines := extractComments(result.Doc, result.Comment)
+			resultDocs, resultDirectives := splitDocsAndDirectives(resultLines)
+			resultAnnotations := tags.ParseTags(resultLines)
 
 			if len(result.Names) > 0 {
 				for _, name := range result.Names {
@@ -337,7 +343,8 @@ func convertMethod(methodName string, funcType *ast.FuncType, docs []string, con
 							MapValue:         resultTypeInfo.MapValue,
 						},
 						Name:        name.Name,
-						Docs:        removeAnnotationsFromDocs(resultDocs),
+						Docs:        resultDocs,
+						Directives:  resultDirectives,
 						Annotations: resultAnnotations,
 					})
 				}
@@ -355,7 +362,8 @@ func convertMethod(methodName string, funcType *ast.FuncType, docs []string, con
 						MapValue:         resultTypeInfo.MapValue,
 					},
 					Name:        resultName,
-					Docs:        removeAnnotationsFromDocs(resultDocs),
+					Docs:        resultDocs,
+					Directives:  resultDirectives,
 					Annotations: resultAnnotations,
 				})
 			}
@@ -722,6 +730,7 @@ func convertTypeFromAST(astType ast.Expr, pkgPath string, imports map[string]str
 					coreType := convertTypeFromGoTypes(typ, importPkgPath, importPkgInfo.Imports, project, loader, processingSet)
 					if coreType != nil {
 						detectInterfaces(typ, coreType, project, loader)
+						detectParseFromString(typ, coreType, project, loader)
 						project.Types[typeID] = coreType
 						if alias, ok := typ.(*types.Alias); ok {
 							underlying := types.Unalias(alias)
@@ -955,8 +964,7 @@ func ensureTypeInProject(typeID string, typ types.Type, pkgPath string, imports 
 	if typ == nil {
 		pkgPath = parts[0]
 		var pkgInfo *PackageInfo
-		pkgInfo, err = loader.LoadPackageForType(pkgPath, typeName)
-		if err != nil {
+		if pkgInfo, err = loader.LoadPackageForType(pkgPath, typeName); err != nil {
 			return nil, err
 		}
 		obj := pkgInfo.Types.Scope().Lookup(typeName)
@@ -1014,6 +1022,7 @@ func ensureTypeInProject(typeID string, typ types.Type, pkgPath string, imports 
 		return nil, nil
 	}
 	detectInterfaces(typ, coreType, project, loader)
+	detectParseFromString(typ, coreType, project, loader)
 	project.Types[typeID] = coreType
 	return coreType, nil
 }

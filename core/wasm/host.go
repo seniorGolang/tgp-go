@@ -121,9 +121,7 @@ func CallHostDial(fn func(networkPtr uint32, networkLen uint32, addressPtr uint3
 		return 0, err
 	}
 
-	// Читаем connID из памяти
-	connID, err = readUint32FromPtrNoFree(connIDPtr)
-	if err != nil {
+	if connID, err = readUint32FromPtrNoFree(connIDPtr); err != nil {
 		return 0, fmt.Errorf(i18n.Msg("failed to read connID")+": %w", err)
 	}
 
@@ -169,9 +167,7 @@ func CallHostDialWithContext(ctx context.Context, fn func(deadline uint64, netwo
 		return 0, err
 	}
 
-	// Читаем connID из памяти
-	connID, err = readUint32FromPtrNoFree(connIDPtr)
-	if err != nil {
+	if connID, err = readUint32FromPtrNoFree(connIDPtr); err != nil {
 		return 0, fmt.Errorf(i18n.Msg("failed to read connID")+": %w", err)
 	}
 

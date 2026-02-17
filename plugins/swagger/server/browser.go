@@ -100,7 +100,7 @@ func OpenBrowser(browserURL string) (err error) {
 				continue
 			}
 
-			return nil
+			return
 		}
 
 		slog.Error(i18n.Msg("failed to open browser"),

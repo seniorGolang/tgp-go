@@ -9,17 +9,27 @@ import (
 	"tgp/internal/model"
 )
 
-func requestStructName(contractName string, methodName string) string {
+func requestStructName(contractName string, methodName string) (s string) {
 
 	return "request" + contractName + methodName
 }
 
-func responseStructName(contractName string, methodName string) string {
+func responseStructName(contractName string, methodName string) (s string) {
 
 	return "response" + contractName + methodName
 }
 
-func argsWithoutContext(method *model.Method) []*model.Variable {
+func responseBodyStructName(contractName string, methodName string) (s string) {
+
+	return "responseBody" + contractName + methodName
+}
+
+func responseResultStructName(contractName string, methodName string) (s string) {
+
+	return "responseResult" + contractName + methodName
+}
+
+func argsWithoutContext(method *model.Method) (out []*model.Variable) {
 
 	if len(method.Args) == 0 {
 		return method.Args
@@ -30,7 +40,7 @@ func argsWithoutContext(method *model.Method) []*model.Variable {
 	return method.Args
 }
 
-func resultsWithoutError(method *model.Method) []*model.Variable {
+func resultsWithoutError(method *model.Method) (out []*model.Variable) {
 
 	if len(method.Results) == 0 {
 		return method.Results
@@ -41,7 +51,33 @@ func resultsWithoutError(method *model.Method) []*model.Variable {
 	return method.Results
 }
 
-func typeNameFromTypeID(project *model.Project, typeID string) string {
+func typeIsEmbeddable(project *model.Project, typeID string) (ok bool) {
+
+	seen := make(map[string]struct{})
+	for typeID != "" {
+		if _, repeated := seen[typeID]; repeated {
+			return false
+		}
+		seen[typeID] = struct{}{}
+
+		typ, found := project.Types[typeID]
+		if !found {
+			return false
+		}
+		switch typ.Kind {
+		case model.TypeKindStruct, model.TypeKindInterface:
+			return true
+		case model.TypeKindAlias:
+			typeID = typ.AliasOf
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
+func typeNameFromTypeID(project *model.Project, typeID string) (s string) {
 
 	if typ, ok := project.Types[typeID]; ok && typ.TypeName != "" {
 		return typ.TypeName
@@ -52,25 +88,7 @@ func typeNameFromTypeID(project *model.Project, typeID string) string {
 	return typeID
 }
 
-func removeSkippedFields(vars []*model.Variable, skipFields []string) []*model.Variable {
-
-	result := make([]*model.Variable, 0, len(vars))
-	for _, v := range vars {
-		found := false
-		for _, skip := range skipFields {
-			if v.Name == skip {
-				found = true
-				break
-			}
-		}
-		if !found {
-			result = append(result, v)
-		}
-	}
-	return result
-}
-
-func toCamel(s string) string {
+func toCamel(s string) (out string) {
 
 	if s == "" {
 		return s
@@ -103,7 +121,7 @@ func toCamel(s string) string {
 	return result.String()
 }
 
-func toLowerCamel(s string) string {
+func toLowerCamel(s string) (out string) {
 
 	if s == "" {
 		return s

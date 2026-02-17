@@ -12,6 +12,7 @@ import (
 )
 
 func (r *ClientRenderer) renderBatchSection(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
+
 	batchAnchor := generateAnchor("Batch запросы (JSON-RPC)")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", batchAnchor))
 	md.LF()
@@ -27,6 +28,7 @@ func (r *ClientRenderer) renderBatchSection(md *markdown.Markdown, contracts []*
 }
 
 func (r *ClientRenderer) renderErrorsSection(md *markdown.Markdown) {
+
 	errorsAnchor := generateAnchor("Обработка ошибок")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", errorsAnchor))
 	md.LF()
@@ -125,6 +127,7 @@ func (e *restError) Error() string { return e.Message }`)
 }
 
 func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
+
 	var exampleMethods []struct {
 		contract *model.Contract
 		method   *model.Method

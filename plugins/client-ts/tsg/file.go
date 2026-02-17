@@ -18,13 +18,13 @@ type File struct {
 
 type importInfo struct {
 	path      string
-	alias     string
+	aliases   []string
 	named     []string
-	namedType []string // type-only импорты
+	namedType []string
 	defaulted string
 }
 
-func NewFile() *File {
+func NewFile() (f *File) {
 	return &File{
 		imports:     make(map[string]importInfo),
 		statements:  make([]*Statement, 0),
@@ -38,6 +38,7 @@ func (f *File) Comment(comment string) *File {
 }
 
 func (f *File) Import(path string, defaultName string) *File {
+
 	info := f.imports[path]
 	info.path = path
 	info.defaulted = defaultName
@@ -46,6 +47,7 @@ func (f *File) Import(path string, defaultName string) *File {
 }
 
 func (f *File) ImportNamed(path string, names ...string) *File {
+
 	info := f.imports[path]
 	info.path = path
 	info.named = append(info.named, names...)
@@ -54,6 +56,7 @@ func (f *File) ImportNamed(path string, names ...string) *File {
 }
 
 func (f *File) ImportType(path string, names ...string) *File {
+
 	info := f.imports[path]
 	info.path = path
 	info.namedType = append(info.namedType, names...)
@@ -62,14 +65,21 @@ func (f *File) ImportType(path string, names ...string) *File {
 }
 
 func (f *File) ImportAll(path string, alias string) *File {
+
 	info := f.imports[path]
 	info.path = path
-	info.alias = alias
+	for _, a := range info.aliases {
+		if a == alias {
+			return f
+		}
+	}
+	info.aliases = append(info.aliases, alias)
 	f.imports[path] = info
 	return f
 }
 
 func (f *File) GenerateImports() *File {
+
 	if len(f.imports) == 0 {
 		return f
 	}
@@ -85,11 +95,11 @@ func (f *File) GenerateImports() *File {
 		info := f.imports[path]
 
 		var parts []string
+		var namedImports []string
 		if info.defaulted != "" {
 			parts = append(parts, info.defaulted)
 		}
 
-		var namedImports []string
 		if len(info.named) > 0 {
 			namedImports = append(namedImports, info.named...)
 		}
@@ -109,10 +119,9 @@ func (f *File) GenerateImports() *File {
 			importStatements = append(importStatements, stmt)
 		}
 
-		// Если есть alias (namespace import), создаем отдельный импорт
-		if info.alias != "" {
+		for _, alias := range info.aliases {
 			stmt := NewStatement()
-			stmt.ImportAll(info.alias, path)
+			stmt.ImportAll(alias, path)
 			stmt.Line()
 			importStatements = append(importStatements, stmt)
 		}
@@ -123,6 +132,7 @@ func (f *File) GenerateImports() *File {
 }
 
 func (f *File) Add(stmt *Statement) *File {
+
 	if stmt != nil {
 		f.statements = append(f.statements, stmt)
 	}
@@ -130,18 +140,22 @@ func (f *File) Add(stmt *Statement) *File {
 }
 
 func (f *File) Line() *File {
+
 	f.statements = append(f.statements, NewStatement().Line())
 	return f
 }
 
-func (f *File) Save(filename string) error {
-	if err := os.MkdirAll(filepath.Dir(filename), 0777); err != nil {
-		return err
+func (f *File) Save(filename string) (err error) {
+
+	if err = os.MkdirAll(filepath.Dir(filename), 0777); err != nil {
+		return
 	}
-	return os.WriteFile(filename, []byte(f.String()), 0600)
+	err = os.WriteFile(filename, []byte(f.String()), 0600)
+	return
 }
 
-func (f *File) String() string {
+func (f *File) String() (s string) {
+
 	var buf strings.Builder
 
 	// Комментарий - пишем как есть, без модификаций

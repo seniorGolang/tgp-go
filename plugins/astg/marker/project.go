@@ -6,14 +6,14 @@ import (
 	"bufio"
 	"fmt"
 	"math/big"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 	"golang.org/x/mod/modfile"
+
+	"tgp/internal/cdb"
 )
 
 const (
@@ -33,7 +33,7 @@ func ProjectID(rootDir string) (id string, err error) {
 
 	var normalizedRemote string
 	if remoteURL != "" {
-		normalizedRemote = normalizeGitRemoteURL(remoteURL)
+		normalizedRemote = cdb.NormalizeRemoteURLToHostPath(remoteURL)
 	}
 
 	var modulePath string
@@ -91,7 +91,6 @@ func getGitRemoteURLFromConfig(gitDir string) (remoteURL string, err error) {
 			continue
 		}
 
-		// В секции origin ищем url
 		if inOriginSection {
 			lineTrimmed := strings.TrimSpace(line)
 			if strings.HasPrefix(lineTrimmed, "url = ") {
@@ -108,74 +107,6 @@ func getGitRemoteURLFromConfig(gitDir string) (remoteURL string, err error) {
 
 	// Если remote URL не найден, возвращаем пустую строку без ошибки
 	return "", nil
-}
-
-func normalizeGitRemoteURL(remoteURL string) (normalized string) {
-
-	// Убираем пробелы
-	remoteURL = strings.TrimSpace(remoteURL)
-
-	// Обработка различных форматов URL
-	// git@github.com:user/repo.git -> https://github.com/user/repo.git
-	if strings.HasPrefix(remoteURL, "git@") {
-		remoteURL = strings.Replace(remoteURL, "git@", "https://", 1)
-		remoteURL = strings.Replace(remoteURL, ":", "/", 1)
-	}
-
-	// ssh://git@github.com/user/repo.git -> https://github.com/user/repo.git
-	if strings.HasPrefix(remoteURL, "ssh://") {
-		remoteURL = strings.Replace(remoteURL, "ssh://", "https://", 1)
-		remoteURL = strings.Replace(remoteURL, "git@", "", 1)
-		remoteURL = strings.Replace(remoteURL, ":", "/", 1)
-	}
-
-	// Парсим URL
-	parsedURL, err := url.Parse(remoteURL)
-	if err != nil {
-		// Если не удалось распарсить, пытаемся обработать вручную
-		return normalizeGitRemoteURLManual(remoteURL)
-	}
-
-	host := parsedURL.Host
-	path := parsedURL.Path
-
-	// Убираем порт, если стандартный
-	host = strings.Replace(host, ":443", "", 1)
-	host = strings.Replace(host, ":22", "", 1)
-
-	// Убираем .git суффикс
-	path = strings.TrimSuffix(path, ".git")
-	path = strings.TrimPrefix(path, "/")
-
-	// Объединяем host и path
-	normalized = host + "/" + path
-	normalized = strings.TrimSuffix(normalized, "/")
-
-	return normalized
-}
-
-func normalizeGitRemoteURLManual(remoteURL string) (normalized string) {
-
-	// Убираем протоколы
-	remoteURL = strings.TrimPrefix(remoteURL, "https://")
-	remoteURL = strings.TrimPrefix(remoteURL, "http://")
-	remoteURL = strings.TrimPrefix(remoteURL, "git@")
-	remoteURL = strings.TrimPrefix(remoteURL, "ssh://")
-
-	remoteURL = strings.Replace(remoteURL, ":", "/", 1)
-
-	// Убираем .git
-	remoteURL = strings.TrimSuffix(remoteURL, ".git")
-
-	// Убираем порты
-	re := regexp.MustCompile(`:443(/|$)`)
-	remoteURL = re.ReplaceAllString(remoteURL, "$1")
-	re = regexp.MustCompile(`:22(/|$)`)
-	remoteURL = re.ReplaceAllString(remoteURL, "$1")
-
-	remoteURL = strings.Trim(remoteURL, "/")
-
-	return remoteURL
 }
 
 func getModulePath(rootDir string) (modulePath string, err error) {

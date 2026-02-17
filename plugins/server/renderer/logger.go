@@ -10,21 +10,22 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *contractRenderer) RenderLogger() error {
+func (r *contractRenderer) RenderLogger() (err error) {
 
-	if err := r.pkgCopyTo("srvctx", r.outDir); err != nil {
-		return fmt.Errorf("copy srvctx package: %w", err)
+	if err = r.pkgRenderTo("srvctx", r.outDir, newPkgTemplateData()); err != nil {
+		return fmt.Errorf("render srvctx package: %w", err)
 	}
-	if err := r.pkgCopyTo("viewer", r.outDir); err != nil {
-		return fmt.Errorf("copy viewer package: %w", err)
+	if err = r.pkgRenderTo("viewer", r.outDir, newPkgTemplateData()); err != nil {
+		return fmt.Errorf("render viewer package: %w", err)
 	}
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageSlog, "slog")
 	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
@@ -48,10 +49,11 @@ func (r *contractRenderer) RenderLogger() error {
 			BlockFunc(r.loggerFuncBody(method))
 	}
 
-	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-logger.go"))
+	err = srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-logger.go"))
+	return
 }
 
-func (r *contractRenderer) loggerMiddleware() Code {
+func (r *contractRenderer) loggerMiddleware() (c Code) {
 
 	return Func().Id("loggerMiddleware" + r.contract.Name).
 		Params().
@@ -122,17 +124,19 @@ func (r *contractRenderer) loggerFuncBody(method *model.Method) func(bg *Group) 
 	}
 }
 
-func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method, skipRequest bool, skipResponse bool, skipFields []string, cap int) {
+func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method, skipRequest bool, skipResponse bool, skipFields []string, capacity int) {
 
-	bg.Id("_attrs_").Op(":=").Make(Index().Any(), Lit(0), Lit(cap))
+	bg.Id("_attrs_").Op(":=").Make(Index().Any(), Lit(0), Lit(capacity))
 	bg.Id("_attrs_").Op("=").Append(Id("_attrs_"),
 		Qual(PackageSlog, "String").Call(Lit("took"), Qual(PackageTime, "Since").Call(Id("_begin_")).Dot("String").Call()),
 	)
 	if !skipRequest {
-		params := removeSkippedFields(argsWithoutContext(method), skipFields)
-		originParams := removeSkippedFields(argsWithoutContext(method), skipFields)
-		reqStruct := Id(requestStructName(r.contract.Name, method.Name)).Values(r.dictByRequestParams(method, params, originParams))
-		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("request"), reqStruct))
+		reqValue := Id(requestStructName(r.contract.Name, method.Name)).Values(DictFunc(func(d Dict) {
+			for _, arg := range argsWithoutContext(method) {
+				d[Id(r.requestStructFieldName(method, arg))] = Id(arg.Name)
+			}
+		}))
+		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("request"), reqValue))
 	}
 	if !skipResponse {
 		returns := r.ResultFieldsWithoutError(method)
@@ -140,23 +144,6 @@ func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method
 		respStruct := Id(responseStructName(r.contract.Name, method.Name)).Values(r.dictByResponseReturns(method, returns, originReturns))
 		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("response"), respStruct))
 	}
-}
-
-func (r *contractRenderer) dictByRequestParams(method *model.Method, params []*model.Variable, originParams []*model.Variable) Dict {
-
-	if len(params) != len(originParams) {
-		panic("len of params and originParams not the same")
-	}
-	return DictFunc(func(d Dict) {
-		for i, field := range params {
-			normalVar := originParams[i]
-			normalVarCode := Id(toLowerCamel(normalVar.Name))
-			if field.NumberOfPointers == 0 && normalVar.NumberOfPointers > 0 {
-				normalVarCode = Op("*").Add(normalVarCode)
-			}
-			d[Id(r.requestStructFieldName(method, field))] = normalVarCode
-		}
-	})
 }
 
 func (r *contractRenderer) dictByResponseReturns(method *model.Method, returns []*model.Variable, originReturns []*model.Variable) Dict {

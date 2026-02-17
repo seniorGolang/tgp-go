@@ -11,7 +11,6 @@ type InterfaceSpec struct {
 	FileBase   string // snake_case для имени файла (some.go, site_nova.go)
 }
 
-// ContractIfaceData — данные для рендера одного файла контракта (один интерфейс).
 type ContractIfaceData struct {
 	Module        string
 	HTTPPrefix    string
@@ -75,7 +74,7 @@ func parseAndNormalizeInterfaces(raw string) (out []InterfaceSpec) {
 		seen[key] = struct{}{}
 		out = append(out, InterfaceSpec{PublicName: public, FileBase: base})
 	}
-	return out
+	return
 }
 
 // toPublicName приводит строку к публичному имени типа в Go (PascalCase).
@@ -86,15 +85,15 @@ func toPublicName(s string) (out string) {
 		return ""
 	}
 	if strings.Contains(s, "_") {
-		var out []string
+		var parts []string
 		for _, part := range strings.Split(s, "_") {
 			part = strings.TrimSpace(part)
 			if part == "" {
 				continue
 			}
-			out = append(out, toExport(part))
+			parts = append(parts, toExport(part))
 		}
-		return strings.Join(out, "")
+		return strings.Join(parts, "")
 	}
 	if isAllUpper(s) {
 		return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
@@ -102,7 +101,7 @@ func toPublicName(s string) (out string) {
 	return toExport(s)
 }
 
-func isAllUpper(s string) bool {
+func isAllUpper(s string) (ok bool) {
 
 	for _, r := range s {
 		if unicode.IsLetter(r) && !unicode.IsUpper(r) {

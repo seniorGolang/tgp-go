@@ -13,18 +13,18 @@ type Statement struct {
 	export bool // Флаг, что statement должен быть экспортируемым
 }
 
-func NewStatement() *Statement {
+func NewStatement() (s *Statement) {
 	return &Statement{
 		indent: 0,
 	}
 }
 
-func (s *Statement) String() string {
-	result := s.code.String()
+func (s *Statement) String() (result string) {
+
+	result = s.code.String()
 	if s.export && result != "" && !strings.HasPrefix(strings.TrimSpace(result), "export ") {
 		lines := strings.Split(result, "\n")
 		if len(lines) > 0 {
-			// Ищем первую строку, которая не является комментарием
 			exportLineIdx := -1
 			for i, line := range lines {
 				trimmed := strings.TrimSpace(line)
@@ -43,28 +43,32 @@ func (s *Statement) String() string {
 			}
 		}
 	}
-	return result
+	return
 }
 
-func (s *Statement) Add(other *Statement) *Statement {
+func (s *Statement) Add(other *Statement) (out *Statement) {
+
 	if other != nil {
 		s.code.WriteString(other.String())
 	}
 	return s
 }
 
-func (s *Statement) Line() *Statement {
+func (s *Statement) Line() (out *Statement) {
+
 	s.code.WriteString("\n")
 	return s
 }
 
-func (s *Statement) Id(name string) *Statement {
+func (s *Statement) Id(name string) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString(name)
 	return s
 }
 
-func (s *Statement) Lit(value any) *Statement {
+func (s *Statement) Lit(value any) (out *Statement) {
+
 	s.writeIndent()
 	var str string
 	switch v := value.(type) {
@@ -85,7 +89,8 @@ func (s *Statement) Lit(value any) *Statement {
 	return s
 }
 
-func (s *Statement) Comment(text string) *Statement {
+func (s *Statement) Comment(text string) (out *Statement) {
+
 	lines := strings.Split(text, "\n")
 	for _, line := range lines {
 		s.writeIndent()
@@ -97,17 +102,26 @@ func (s *Statement) Comment(text string) *Statement {
 	return s
 }
 
-func (s *Statement) Dot(property string) *Statement {
+func (s *Statement) Dot(property string) (out *Statement) {
+
 	s.code.WriteString("." + property)
 	return s
 }
 
-func (s *Statement) Op(operator string) *Statement {
+func (s *Statement) OptionalChain(property string) (out *Statement) {
+
+	s.code.WriteString("?." + property)
+	return s
+}
+
+func (s *Statement) Op(operator string) (out *Statement) {
+
 	s.code.WriteString(" " + operator + " ")
 	return s
 }
 
-func (s *Statement) Call(args ...*Statement) *Statement {
+func (s *Statement) Call(args ...*Statement) (out *Statement) {
+
 	s.code.WriteString("(")
 	for i, arg := range args {
 		if i > 0 {
@@ -121,7 +135,8 @@ func (s *Statement) Call(args ...*Statement) *Statement {
 	return s
 }
 
-func (s *Statement) CallFunc(fn func(*Group)) *Statement {
+func (s *Statement) CallFunc(fn func(*Group)) (out *Statement) {
+
 	s.code.WriteString("(")
 	if fn != nil {
 		g := &Group{statement: s}
@@ -131,40 +146,46 @@ func (s *Statement) CallFunc(fn func(*Group)) *Statement {
 	return s
 }
 
-func (s *Statement) Type(name string) *Statement {
+func (s *Statement) Type(name string) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("type " + name)
 	return s
 }
 
-func (s *Statement) Interface(name string, fn func(*Group)) *Statement {
+func (s *Statement) Interface(name string, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("interface " + name)
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) Namespace(name string, fn func(*Group)) *Statement {
+func (s *Statement) Namespace(name string, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("namespace " + name)
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) Class(name string, fn func(*Group)) *Statement {
+func (s *Statement) Class(name string, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("class " + name)
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) Func(name string) *Statement {
+func (s *Statement) Func(name string) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("function " + name)
 	return s
 }
 
-func (s *Statement) ArrowFunc(params ...string) *Statement {
+func (s *Statement) ArrowFunc(params ...string) (out *Statement) {
+
 	s.writeIndent()
 	paramStr := "()"
 	if len(params) > 0 {
@@ -174,13 +195,15 @@ func (s *Statement) ArrowFunc(params ...string) *Statement {
 	return s
 }
 
-func (s *Statement) Async() *Statement {
+func (s *Statement) Async() (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("async ")
 	return s
 }
 
-func (s *Statement) Await(expr *Statement) *Statement {
+func (s *Statement) Await(expr *Statement) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("await ")
 	if expr != nil {
@@ -189,7 +212,8 @@ func (s *Statement) Await(expr *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Return(value ...*Statement) *Statement {
+func (s *Statement) Return(value ...*Statement) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("return")
 	if len(value) > 0 {
@@ -209,7 +233,8 @@ func (s *Statement) Return(value ...*Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Assign(left, right *Statement) *Statement {
+func (s *Statement) Assign(left, right *Statement) (out *Statement) {
+
 	s.writeIndent()
 	if left != nil {
 		s.code.WriteString(left.String())
@@ -221,7 +246,8 @@ func (s *Statement) Assign(left, right *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Block(fn func(*Group)) *Statement {
+func (s *Statement) Block(fn func(*Group)) (out *Statement) {
+
 	s.code.WriteString(" {")
 	s.code.WriteString("\n")
 	s.indent++
@@ -235,16 +261,12 @@ func (s *Statement) Block(fn func(*Group)) *Statement {
 	return s
 }
 
-func (s *Statement) BlockFunc(fn func(*Group)) *Statement {
-	return s.Block(fn)
-}
+func (s *Statement) Params(fn func(*Group)) (out *Statement) {
 
-func (s *Statement) Params(fn func(*Group)) *Statement {
 	s.code.WriteString("(")
 	if fn != nil {
 		g := &Group{statement: s, inParams: true}
 		fn(g)
-		// Убираем последнюю запятую и пробел если есть
 		str := s.code.String()
 		if strings.HasSuffix(str, ", )") {
 			s.code.Reset()
@@ -260,43 +282,51 @@ func (s *Statement) Params(fn func(*Group)) *Statement {
 	return s
 }
 
-func (s *Statement) Generic(params ...string) *Statement {
+func (s *Statement) Generic(params ...string) (out *Statement) {
+
 	s.code.WriteString("<" + strings.Join(params, ", ") + ">")
 	return s
 }
 
-func (s *Statement) Extends(base string) *Statement {
+func (s *Statement) Extends(base string) (out *Statement) {
+
 	s.code.WriteString(" extends " + base)
 	return s
 }
 
-func (s *Statement) Implements(interfaces ...string) *Statement {
+func (s *Statement) Implements(interfaces ...string) (out *Statement) {
+
 	s.code.WriteString(" implements " + strings.Join(interfaces, ", "))
 	return s
 }
 
-func (s *Statement) Colon() *Statement {
+func (s *Statement) Colon() (out *Statement) {
+
 	s.code.WriteString(":")
 	return s
 }
 
-func (s *Statement) Semicolon() *Statement {
+func (s *Statement) Semicolon() (out *Statement) {
+
 	s.code.WriteString(";")
 	return s
 }
 
-func (s *Statement) Optional() *Statement {
+func (s *Statement) Optional() (out *Statement) {
+
 	s.code.WriteString("?")
 	return s
 }
 
-func (s *Statement) Readonly() *Statement {
+func (s *Statement) Readonly() (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("readonly ")
 	return s
 }
 
-func (s *Statement) Promise(typeParam *Statement) *Statement {
+func (s *Statement) Promise(typeParam *Statement) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("Promise<")
 	if typeParam != nil {
@@ -306,18 +336,20 @@ func (s *Statement) Promise(typeParam *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) If(condition *Statement, fn func(*Group)) *Statement {
+func (s *Statement) If(condition *Statement, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("if (")
 	if condition != nil {
 		s.code.WriteString(condition.String())
 	}
 	s.code.WriteString(")")
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) For(init, condition, post *Statement, fn func(*Group)) *Statement {
+func (s *Statement) For(init, condition, post *Statement, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("for (")
 	parts := []string{}
@@ -332,35 +364,40 @@ func (s *Statement) For(init, condition, post *Statement, fn func(*Group)) *Stat
 	}
 	s.code.WriteString(strings.Join(parts, "; "))
 	s.code.WriteString(")")
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) ForOf(variable, iterable string, fn func(*Group)) *Statement {
+func (s *Statement) ForOf(variable, iterable string, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("for (const " + variable + " of " + iterable + ")")
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) Export() *Statement {
+func (s *Statement) Export() (out *Statement) {
+
 	s.export = true
 	return s
 }
 
-func (s *Statement) Const(name string) *Statement {
+func (s *Statement) Const(name string) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("const " + name)
 	return s
 }
 
-func (s *Statement) Var(name string) *Statement {
+func (s *Statement) Var(name string) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("let " + name)
 	return s
 }
 
 func (s *Statement) writeIndent() {
+
 	if s.code.Len() > 0 {
 		str := s.code.String()
 		if len(str) > 0 {
@@ -373,12 +410,12 @@ func (s *Statement) writeIndent() {
 	s.code.WriteString(strings.Repeat("    ", s.indent))
 }
 
-func (s *Statement) Values(fn func(*Group)) *Statement {
+func (s *Statement) Values(fn func(*Group)) (out *Statement) {
+
 	s.code.WriteString(" {")
 	if fn != nil {
 		g := &Group{statement: s, inObject: true}
 		fn(g)
-		// Убираем последнюю запятую если есть
 		str := s.code.String()
 		if strings.HasSuffix(str, ",\n }") {
 			s.code.Reset()
@@ -390,7 +427,8 @@ func (s *Statement) Values(fn func(*Group)) *Statement {
 	return s
 }
 
-func (s *Statement) Throw(expr *Statement) *Statement {
+func (s *Statement) Throw(expr *Statement) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("throw ")
 	if expr != nil {
@@ -400,43 +438,45 @@ func (s *Statement) Throw(expr *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) New(typeName string) *Statement {
+func (s *Statement) New(typeName string) (out *Statement) {
+
 	s.code.WriteString("new " + typeName)
 	return s
 }
 
-func (s *Statement) This() *Statement {
+func (s *Statement) This() (out *Statement) {
+
 	s.code.WriteString("this")
 	return s
 }
 
-func (s *Statement) Private() *Statement {
+func (s *Statement) Private() (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("private ")
 	return s
 }
 
-func (s *Statement) Public() *Statement {
+func (s *Statement) Public() (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("public ")
 	return s
 }
 
-func (s *Statement) Method(name string, fn func(*Group)) *Statement {
+func (s *Statement) Method(name string, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString(name)
 	s.code.WriteString("(")
 	s.code.WriteString(")")
 	s.code.WriteString(": ")
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) AsyncMethod(name string, returnType *Statement, fn func(*Group)) *Statement {
-	return s.AsyncMethodWithParams(name, nil, returnType, fn)
-}
+func (s *Statement) AsyncMethodWithParams(name string, params *Statement, returnType *Statement, fn func(*Group)) (out *Statement) {
 
-func (s *Statement) AsyncMethodWithParams(name string, params *Statement, returnType *Statement, fn func(*Group)) *Statement {
 	s.writeIndent()
 	s.code.WriteString("async " + name)
 	if params != nil {
@@ -462,7 +502,8 @@ func (s *Statement) AsyncMethodWithParams(name string, params *Statement, return
 	return s
 }
 
-func (s *Statement) AsyncMethodWithGeneric(name string, genericParams *Statement, params *Statement, returnType *Statement, fn func(*Group)) *Statement {
+func (s *Statement) AsyncMethodWithGeneric(name string, genericParams *Statement, params *Statement, returnType *Statement, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("async " + name)
 	if genericParams != nil {
@@ -491,7 +532,8 @@ func (s *Statement) AsyncMethodWithGeneric(name string, genericParams *Statement
 	return s
 }
 
-func (s *Statement) Constructor(fn func(*Group)) *Statement {
+func (s *Statement) Constructor(fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("constructor(")
 	s.code.WriteString(")")
@@ -508,13 +550,15 @@ func (s *Statement) Constructor(fn func(*Group)) *Statement {
 	return s
 }
 
-func (s *Statement) TypeAlias(name string) *Statement {
+func (s *Statement) TypeAlias(name string) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("type " + name + " =")
 	return s
 }
 
-func (s *Statement) Record(key, value *Statement) *Statement {
+func (s *Statement) Record(key, value *Statement) (out *Statement) {
+
 	s.code.WriteString("Record<")
 	if key != nil {
 		s.code.WriteString(key.String())
@@ -527,7 +571,8 @@ func (s *Statement) Record(key, value *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Array(elem *Statement) *Statement {
+func (s *Statement) Array(elem *Statement) (out *Statement) {
+
 	if elem != nil {
 		s.code.WriteString(elem.String())
 	}
@@ -535,7 +580,8 @@ func (s *Statement) Array(elem *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Index(elem *Statement) *Statement {
+func (s *Statement) Index(elem *Statement) (out *Statement) {
+
 	s.code.WriteString("[")
 	if elem != nil {
 		s.code.WriteString(elem.String())
@@ -544,7 +590,8 @@ func (s *Statement) Index(elem *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Arrow(params, returnType *Statement) *Statement {
+func (s *Statement) Arrow(params, returnType *Statement) (out *Statement) {
+
 	s.code.WriteString("(")
 	if params != nil {
 		s.code.WriteString(params.String())
@@ -556,7 +603,8 @@ func (s *Statement) Arrow(params, returnType *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Union(types ...*Statement) *Statement {
+func (s *Statement) Union(types ...*Statement) (out *Statement) {
+
 	for i, t := range types {
 		if i > 0 {
 			s.code.WriteString(" | ")
@@ -568,7 +616,8 @@ func (s *Statement) Union(types ...*Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Nullable(baseType *Statement) *Statement {
+func (s *Statement) Nullable(baseType *Statement) (out *Statement) {
+
 	if baseType != nil {
 		s.code.WriteString(baseType.String())
 	}
@@ -576,7 +625,8 @@ func (s *Statement) Nullable(baseType *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) ReadonlyArray(elemType *Statement) *Statement {
+func (s *Statement) ReadonlyArray(elemType *Statement) (out *Statement) {
+
 	s.code.WriteString("readonly ")
 	if elemType != nil {
 		s.code.WriteString(elemType.String())
@@ -585,7 +635,8 @@ func (s *Statement) ReadonlyArray(elemType *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) ObjectLiteral(fn func(*Group)) *Statement {
+func (s *Statement) ObjectLiteral(fn func(*Group)) (out *Statement) {
+
 	s.code.WriteString("{")
 	if fn != nil {
 		s.code.WriteString("\n")
@@ -599,7 +650,8 @@ func (s *Statement) ObjectLiteral(fn func(*Group)) *Statement {
 	return s
 }
 
-func (s *Statement) ObjectField(name string, value *Statement) *Statement {
+func (s *Statement) ObjectField(name string, value *Statement) (out *Statement) {
+
 	s.writeIndent()
 	// Если имя содержит дефис или другие специальные символы, заключаем в кавычки
 	if strings.Contains(name, "-") || strings.Contains(name, " ") || strings.ContainsAny(name, "!@#$%^&*()+={}[]|\\:;\"'<>?,./") {
@@ -614,7 +666,8 @@ func (s *Statement) ObjectField(name string, value *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) OptionalField(name string, value *Statement) *Statement {
+func (s *Statement) OptionalField(name string, value *Statement) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString(name)
 	s.code.WriteString("?: ")
@@ -624,7 +677,8 @@ func (s *Statement) OptionalField(name string, value *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Spread(expr *Statement) *Statement {
+func (s *Statement) Spread(expr *Statement) (out *Statement) {
+
 	s.code.WriteString("...")
 	if expr != nil {
 		s.code.WriteString(expr.String())
@@ -632,7 +686,8 @@ func (s *Statement) Spread(expr *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) Try(tryFn func(*Group), catchFn func(*Group)) *Statement {
+func (s *Statement) Try(tryFn func(*Group), catchFn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("try {")
 	s.code.WriteString("\n")
@@ -656,7 +711,8 @@ func (s *Statement) Try(tryFn func(*Group), catchFn func(*Group)) *Statement {
 	return s
 }
 
-func (s *Statement) Typeof(expr *Statement, typeStr string) *Statement {
+func (s *Statement) Typeof(expr *Statement, typeStr string) (out *Statement) {
+
 	s.code.WriteString("typeof ")
 	if expr != nil {
 		s.code.WriteString(expr.String())
@@ -666,7 +722,8 @@ func (s *Statement) Typeof(expr *Statement, typeStr string) *Statement {
 	return s
 }
 
-func (s *Statement) In(prop string, obj *Statement) *Statement {
+func (s *Statement) In(prop string, obj *Statement) (out *Statement) {
+
 	s.code.WriteString(`"` + prop + `"`)
 	s.code.WriteString(" in ")
 	if obj != nil {
@@ -675,7 +732,8 @@ func (s *Statement) In(prop string, obj *Statement) *Statement {
 	return s
 }
 
-func (s *Statement) TemplateString(parts []string, exprs []*Statement) *Statement {
+func (s *Statement) TemplateString(parts []string, exprs []*Statement) (out *Statement) {
+
 	s.code.WriteString("`")
 	for i, part := range parts {
 		s.code.WriteString(part)
@@ -689,7 +747,8 @@ func (s *Statement) TemplateString(parts []string, exprs []*Statement) *Statemen
 	return s
 }
 
-func (s *Statement) GenericWithDefault(params map[string]string) *Statement {
+func (s *Statement) GenericWithDefault(params map[string]string) (out *Statement) {
+
 	s.code.WriteString("<")
 	first := true
 	for name, defaultValue := range params {
@@ -707,39 +766,45 @@ func (s *Statement) GenericWithDefault(params map[string]string) *Statement {
 	return s
 }
 
-func (s *Statement) ExportClass(name string, fn func(*Group)) *Statement {
+func (s *Statement) ExportClass(name string, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("export class " + name)
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) ExportClassWithGeneric(name string, genericParams *Statement, fn func(*Group)) *Statement {
+func (s *Statement) ExportClassWithGeneric(name string, genericParams *Statement, fn func(*Group)) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("export class " + name)
 	if genericParams != nil {
 		s.code.WriteString(genericParams.String())
 	}
-	s.BlockFunc(fn)
+	s.Block(fn)
 	return s
 }
 
-func (s *Statement) Void() *Statement {
+func (s *Statement) Void() (out *Statement) {
+
 	s.code.WriteString("void")
 	return s
 }
 
-func (s *Statement) Any() *Statement {
+func (s *Statement) Any() (out *Statement) {
+
 	s.code.WriteString("any")
 	return s
 }
 
-func (s *Statement) Never() *Statement {
+func (s *Statement) Never() (out *Statement) {
+
 	s.code.WriteString("never")
 	return s
 }
 
-func (s *Statement) Import(imports string, path string) *Statement {
+func (s *Statement) Import(imports string, path string) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("import ")
 	s.code.WriteString(imports)
@@ -749,7 +814,8 @@ func (s *Statement) Import(imports string, path string) *Statement {
 	return s
 }
 
-func (s *Statement) ImportAll(alias string, path string) *Statement {
+func (s *Statement) ImportAll(alias string, path string) (out *Statement) {
+
 	s.writeIndent()
 	s.code.WriteString("import * as ")
 	s.code.WriteString(alias)
@@ -759,7 +825,8 @@ func (s *Statement) ImportAll(alias string, path string) *Statement {
 	return s
 }
 
-func TypeFromString(typeStr string) *Statement {
+func TypeFromString(typeStr string) (s *Statement) {
+
 	stmt := NewStatement()
 	stmt.code.WriteString(typeStr)
 	return stmt
@@ -772,6 +839,7 @@ type Group struct {
 }
 
 func (g *Group) Add(stmt *Statement) {
+
 	if stmt != nil {
 		stmtStr := stmt.String()
 		stmtTrimmed := strings.TrimSpace(stmtStr)
@@ -791,7 +859,6 @@ func (g *Group) Add(stmt *Statement) {
 			}
 		} else if g.inObject {
 			// В объектах TypeScript поля разделяются запятыми
-			// Ищем последнюю открывающую скобку и проверяем, что после неё ничего нет
 			lastBraceIdx := strings.LastIndex(currentStr, "{")
 			if lastBraceIdx >= 0 {
 				afterBrace := currentStr[lastBraceIdx+1:]
@@ -860,7 +927,8 @@ func (g *Group) Add(stmt *Statement) {
 	}
 }
 
-func (g *Group) Id(name string) *Statement {
+func (g *Group) Id(name string) (out *Statement) {
+
 	stmt := NewStatement()
 	stmt.indent = g.statement.indent
 	stmt.writeIndent()
@@ -868,7 +936,8 @@ func (g *Group) Id(name string) *Statement {
 	return stmt
 }
 
-func (g *Group) Lit(value any) *Statement {
+func (g *Group) Lit(value any) (out *Statement) {
+
 	stmt := NewStatement()
 	stmt.indent = g.statement.indent
 	stmt.writeIndent()
@@ -892,14 +961,20 @@ func (g *Group) Lit(value any) *Statement {
 }
 
 func (g *Group) Comment(text string) {
-	g.statement.Comment(text)
+
+	if text != "" {
+		g.statement.Comment(text)
+	}
 }
 
 func (g *Group) Line() {
+
+	_ = g.statement
 	g.statement.Line()
 }
 
 func (g *Group) Return(value ...*Statement) {
+
 	g.statement.writeIndent()
 	g.statement.code.WriteString("return")
 	if len(value) > 0 {
@@ -917,6 +992,7 @@ func (g *Group) Return(value ...*Statement) {
 }
 
 func (g *Group) Assign(left, right *Statement) {
+
 	g.statement.writeIndent()
 	if left != nil {
 		g.statement.code.WriteString(left.String())
@@ -929,6 +1005,7 @@ func (g *Group) Assign(left, right *Statement) {
 }
 
 func (g *Group) If(condition *Statement, fn func(*Group)) {
+
 	g.statement.writeIndent()
 	g.statement.code.WriteString("if (")
 	if condition != nil {
@@ -946,6 +1023,7 @@ func (g *Group) If(condition *Statement, fn func(*Group)) {
 }
 
 func (g *Group) Throw(expr *Statement) {
+
 	g.statement.writeIndent()
 	g.statement.code.WriteString("throw ")
 	if expr != nil {
@@ -955,6 +1033,7 @@ func (g *Group) Throw(expr *Statement) {
 }
 
 func (g *Group) Try(tryFn func(*Group), catchFn func(*Group)) {
+
 	g.statement.writeIndent()
 	g.statement.code.WriteString("try {")
 	g.statement.code.WriteString("\n")

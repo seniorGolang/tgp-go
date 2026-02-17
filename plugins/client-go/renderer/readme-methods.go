@@ -53,7 +53,7 @@ func (r *ClientRenderer) renderMethodDoc(md *markdown.Markdown, method *model.Me
 func (r *ClientRenderer) renderHTTPMethodDoc(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string, typeUsages map[string]*typeUsage) {
 
 	httpMethod := model.GetHTTPMethod(r.project, contract, method)
-	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+ToLowerCamel(method.Name))
+	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, r.defaultMethodHTTPPath(contract, method))
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 	methodAnchor := methodAnchorID(contract.Name, methodTitle)
@@ -118,6 +118,7 @@ func (r *ClientRenderer) renderHTTPMethodDoc(md *markdown.Markdown, method *mode
 }
 
 func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string, isHTTP bool) {
+
 	md.PlainText(markdown.Bold("Сигнатура:"))
 	md.LF()
 
@@ -165,6 +166,7 @@ func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *mo
 }
 
 func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, method *model.Method, contract *model.Contract, typeUsages map[string]*typeUsage) {
+
 	args := r.argsWithoutContext(method)
 	results := r.resultsWithoutError(method)
 
@@ -238,6 +240,7 @@ func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, met
 }
 
 func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model.Method, contract *model.Contract) {
+
 	if len(method.Errors) == 0 {
 		return
 	}

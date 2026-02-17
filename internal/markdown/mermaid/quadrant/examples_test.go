@@ -17,6 +17,7 @@ import (
 // the expected values are written are represented as '\n',
 // causing failures when testing on Windows.
 func ExampleChart() {
+
 	chart := quadrant.NewChart(
 		os.Stdout,
 		quadrant.WithTitle("Priority Matrix"),
@@ -54,6 +55,7 @@ func ExampleChart() {
 
 // ExampleChart_withStyling demonstrates the use of point styling and class definitions.
 func ExampleChart_withStyling() {
+
 	chart := quadrant.NewChart(
 		os.Stdout,
 		quadrant.WithTitle("Reach and engagement of campaigns"),
@@ -102,6 +104,6 @@ func ExampleChart_withStyling() {
 	//     Campaign C: [0.70, 0.20] color: #00ff33, radius: 25, stroke-color: #10f0f0
 	//     Campaign D:::class2: [0.50, 0.40]
 	//     classDef class1 color: #109060
-	//     classDef class2 color: #908342, radius: 10, stroke-color: #310085, stroke-width: 10px
+	//     classDef class2 color: #908342, radius: 10, stroke-width: 10px, stroke-color: #310085
 	// ```
 }

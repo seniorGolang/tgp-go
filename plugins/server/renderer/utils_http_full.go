@@ -9,112 +9,156 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/common"
+	"tgp/internal/converter"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *contractRenderer) varHeaderMap(method *model.Method) map[string]string {
+func (r *contractRenderer) headerEntries(method *model.Method) (out []model.ArgMapItem) {
 
-	headers := make(map[string]string)
-	if httpHeaders := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpHeader, ""); httpHeaders != "" {
-		headerPairs := strings.Split(httpHeaders, ",")
-		for _, pair := range headerPairs {
-			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-				arg := strings.TrimSpace(pairTokens[0])
-				header := strings.TrimSpace(pairTokens[1])
-				headers[arg] = header
-			}
-		}
-	}
-	return headers
+	return model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpHeader, ""))
 }
 
-func (r *contractRenderer) varCookieMap(method *model.Method) map[string]string {
+func (r *contractRenderer) cookieEntries(method *model.Method) (out []model.ArgMapItem) {
 
-	cookies := make(map[string]string)
-	if httpCookies := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpCookies, ""); httpCookies != "" {
-		cookiePairs := strings.Split(httpCookies, ",")
-		for _, pair := range cookiePairs {
-			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-				arg := strings.TrimSpace(pairTokens[0])
-				cookie := strings.TrimSpace(pairTokens[1])
-				cookies[arg] = cookie
-			}
-		}
-	}
-	return cookies
+	return model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpCookies, ""))
 }
 
-func usedHeaderNamesForMethod(project *model.Project, contract *model.Contract, method *model.Method) []string {
+func (r *contractRenderer) varHeaderMap(method *model.Method) (out map[string]string) {
+
+	out = make(map[string]string)
+	for _, it := range r.headerEntries(method) {
+		out[it.Arg] = it.Key
+	}
+	return
+}
+
+func (r *contractRenderer) varHeaderMapForRequest(method *model.Method) (out map[string]string) {
+
+	out = make(map[string]string)
+	for _, it := range r.headerEntries(method) {
+		if r.argByName(method, it.Arg) != nil {
+			out[it.Arg] = it.Key
+		}
+	}
+	return
+}
+
+func (r *contractRenderer) varCookieMap(method *model.Method) (out map[string]string) {
+
+	out = make(map[string]string)
+	for _, it := range r.cookieEntries(method) {
+		out[it.Arg] = it.Key
+	}
+	return
+}
+
+func (r *contractRenderer) varCookieMapForRequest(method *model.Method) (out map[string]string) {
+
+	out = make(map[string]string)
+	for _, it := range r.cookieEntries(method) {
+		if r.argByName(method, it.Arg) != nil {
+			out[it.Arg] = it.Key
+		}
+	}
+	return
+}
+
+func usedHeaderNamesForRequestOverlay(project *model.Project, contract *model.Contract, method *model.Method) (out []string) {
 
 	if project == nil || contract == nil || method == nil {
 		return nil
 	}
 	headers := make(map[string]struct{})
-	if httpHeaders := model.GetAnnotationValue(project, contract, method, nil, model.TagHttpHeader, ""); httpHeaders != "" {
-		for _, pair := range strings.Split(httpHeaders, ",") {
-			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-				header := strings.TrimSpace(pairTokens[1])
-				if header != "" {
-					headers[header] = struct{}{}
-				}
-			}
+	argSet := make(map[string]struct{})
+	for _, a := range argsWithoutContext(method) {
+		argSet[a.Name] = struct{}{}
+	}
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(project, contract, method, nil, model.TagHttpHeader, "")) {
+		if _, isArg := argSet[it.Arg]; isArg && it.Key != "" {
+			headers[it.Key] = struct{}{}
 		}
 	}
 	return common.SortedKeys(headers)
 }
 
-func usedCookieNamesForMethod(project *model.Project, contract *model.Contract, method *model.Method) []string {
+func usedCookieNamesForRequestOverlay(project *model.Project, contract *model.Contract, method *model.Method) (out []string) {
 
 	if project == nil || contract == nil || method == nil {
 		return nil
 	}
 	cookies := make(map[string]struct{})
-	if httpCookies := model.GetAnnotationValue(project, contract, method, nil, model.TagHttpCookies, ""); httpCookies != "" {
-		for _, pair := range strings.Split(httpCookies, ",") {
-			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-				cookie := strings.TrimSpace(pairTokens[1])
-				if cookie != "" {
-					cookies[cookie] = struct{}{}
-				}
-			}
+	argSet := make(map[string]struct{})
+	for _, a := range argsWithoutContext(method) {
+		argSet[a.Name] = struct{}{}
+	}
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(project, contract, method, nil, model.TagHttpCookies, "")) {
+		if _, isArg := argSet[it.Arg]; isArg && it.Key != "" {
+			cookies[it.Key] = struct{}{}
 		}
 	}
 	return common.SortedKeys(cookies)
 }
 
-func (r *contractRenderer) argPathMap(method *model.Method) map[string]string {
+func (r *contractRenderer) argPathMap(method *model.Method) (out map[string]string) {
 
-	paths := make(map[string]string)
+	out = make(map[string]string)
 	if urlPath := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpPath, ""); urlPath != "" {
 		urlTokens := strings.Split(urlPath, "/")
 		for _, token := range urlTokens {
 			if strings.HasPrefix(token, ":") {
 				arg := strings.TrimSpace(strings.TrimPrefix(token, ":"))
-				paths[arg] = arg
+				out[arg] = arg
 			}
 		}
 	}
-	return paths
+	return
 }
 
-func (r *contractRenderer) argParamMap(method *model.Method) map[string]string {
+func (r *contractRenderer) argParamMap(method *model.Method) (out map[string]string) {
 
-	params := make(map[string]string)
-	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, ""); urlArgs != "" {
-		paramPairs := strings.Split(urlArgs, ",")
-		for _, pair := range paramPairs {
-			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-				arg := strings.TrimSpace(pairTokens[0])
-				param := strings.TrimSpace(pairTokens[1])
-				params[arg] = param
-			}
+	out = make(map[string]string)
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, "")) {
+		if it.Arg != "path" {
+			out[it.Arg] = it.Key
 		}
 	}
-	return params
+	return
 }
 
-func (r *contractRenderer) argByName(method *model.Method, argName string) *model.Variable {
+func (r *contractRenderer) resultNamesExcludeFromBody(method *model.Method) (out map[string]struct{}) {
+
+	out = make(map[string]struct{})
+	for _, it := range r.headerEntries(method) {
+		if (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) && r.resultByName(method, it.Arg) != nil {
+			out[it.Arg] = struct{}{}
+		}
+	}
+	for _, it := range r.cookieEntries(method) {
+		if (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) && r.resultByName(method, it.Arg) != nil {
+			out[it.Arg] = struct{}{}
+		}
+	}
+	return
+}
+
+func (r *contractRenderer) resultsForBody(method *model.Method) (out []*model.Variable) {
+
+	exclude := r.resultNamesExcludeFromBody(method)
+	var list []*model.Variable
+	for _, res := range resultsWithoutError(method) {
+		if res.TypeID == TypeIDIOReadCloser {
+			continue
+		}
+		if _, ok := exclude[res.Name]; ok {
+			continue
+		}
+		list = append(list, res)
+	}
+	return list
+}
+
+func (r *contractRenderer) argByName(method *model.Method, argName string) (v *model.Variable) {
 
 	argName = strings.TrimPrefix(argName, "!")
 	for _, arg := range method.Args {
@@ -125,7 +169,7 @@ func (r *contractRenderer) argByName(method *model.Method, argName string) *mode
 	return nil
 }
 
-func (r *contractRenderer) resultByName(method *model.Method, retName string) *model.Variable {
+func (r *contractRenderer) resultByName(method *model.Method, retName string) (v *model.Variable) {
 
 	for _, ret := range method.Results {
 		if ret.Name == retName {
@@ -135,7 +179,7 @@ func (r *contractRenderer) resultByName(method *model.Method, retName string) *m
 	return nil
 }
 
-func (r *contractRenderer) retCookieMap(method *model.Method) map[string]string {
+func (r *contractRenderer) retCookieMap(method *model.Method) (out map[string]string) {
 
 	cookies := make(map[string]string)
 	cookieMap := r.varCookieMap(method)
@@ -147,20 +191,20 @@ func (r *contractRenderer) retCookieMap(method *model.Method) map[string]string 
 	return cookies
 }
 
-func (r *contractRenderer) argsWithoutSpecialArgs(method *model.Method) []*model.Variable {
+func (r *contractRenderer) argsWithoutSpecialArgs(method *model.Method) (out []*model.Variable) {
 
 	vars := make([]*model.Variable, 0)
 	argsAll := argsWithoutContext(method)
 	pathMap := r.argPathMap(method)
 	paramMap := r.argParamMap(method)
-	headerMap := r.varHeaderMap(method)
-	cookieMap := r.varCookieMap(method)
+	headerRequest := r.varHeaderMapForRequest(method)
+	cookieRequest := r.varCookieMapForRequest(method)
 
 	for _, arg := range argsAll {
 		_, inPath := pathMap[arg.Name]
 		_, inArgs := paramMap[arg.Name]
-		_, inHeader := headerMap[arg.Name]
-		_, inCookie := cookieMap[arg.Name]
+		_, inHeader := headerRequest[arg.Name]
+		_, inCookie := cookieRequest[arg.Name]
 
 		if !inArgs && !inPath && !inHeader && !inCookie {
 			vars = append(vars, arg)
@@ -169,7 +213,7 @@ func (r *contractRenderer) argsWithoutSpecialArgs(method *model.Method) []*model
 	return vars
 }
 
-func (r *contractRenderer) methodRequestBodyStreamArg(method *model.Method) *model.Variable {
+func (r *contractRenderer) methodRequestBodyStreamArg(method *model.Method) (v *model.Variable) {
 
 	for _, arg := range argsWithoutContext(method) {
 		if arg.TypeID == TypeIDIOReader {
@@ -179,7 +223,7 @@ func (r *contractRenderer) methodRequestBodyStreamArg(method *model.Method) *mod
 	return nil
 }
 
-func (r *contractRenderer) methodResponseBodyStreamResult(method *model.Method) *model.Variable {
+func (r *contractRenderer) methodResponseBodyStreamResult(method *model.Method) (v *model.Variable) {
 
 	for _, res := range resultsWithoutError(method) {
 		if res.TypeID == TypeIDIOReadCloser {
@@ -279,19 +323,7 @@ func (r *contractRenderer) varValueFromMethodMap(annotationValue string, varName
 	return ""
 }
 
-func isBuiltinTypeID(typeID string) bool {
-
-	switch typeID {
-	case "string", "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
-		"float32", "float64", "complex64", "complex128",
-		"bool", "byte", "rune", "error", "any":
-		return true
-	}
-	return false
-}
-
-func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, srcCode func(srcName string) Code, errStatement func(arg, header string) *Statement) *Statement {
+func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement) *Statement {
 
 	block := Line()
 	if len(varMap) != 0 {
@@ -306,16 +338,15 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 			}
 			srcName = strings.TrimPrefix(srcName, "!")
 
-			var argTypeName string
 			var typ *model.Type
 			var fieldTypeID string
+			var argTypeName string
+			var fieldMapKey *model.TypeRef
 			var fieldIsSlice bool
+			var fieldMapValue *model.TypeRef
 			var fieldElementPointers int
 			var fieldNumberOfPointers int
-			var fieldMapKey *model.TypeRef
-			var fieldMapValue *model.TypeRef
 
-			// Если это вложенное поле (например, "data.name"), используем данные из StructField напрямую
 			if len(argTokens) > 1 {
 				argType, ok := r.project.Types[arg.TypeID]
 				if !ok {
@@ -379,7 +410,7 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 			case fieldIsSlice:
 				// Для слайсов TypeID уже содержит тип элемента без префикса []
 				elementTypeID := fieldTypeID
-				if isBuiltinTypeID(elementTypeID) {
+				if converter.IsBuiltinTypeID(elementTypeID) {
 					argTypeName = "[]" + elementTypeID
 				} else {
 					var ok bool
@@ -392,7 +423,7 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 						argTypeName = "[]" + string(typ.Kind)
 					}
 				}
-			case isBuiltinTypeID(fieldTypeID):
+			case converter.IsBuiltinTypeID(fieldTypeID):
 				argTypeName = fieldTypeID
 			default:
 				var ok bool
@@ -406,50 +437,72 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 				}
 			}
 
-			argID := Id(argVarName)
-
-			// Обработка указателей (если нужно)
-			if fieldNumberOfPointers > 0 {
-				argID = Op("&").Add(argID)
+			rawVarName := "_" + argName + "_"
+			fieldVar := &model.Variable{
+				TypeRef: model.TypeRef{
+					TypeID:           fieldTypeID,
+					IsSlice:          fieldIsSlice,
+					ElementPointers:  fieldElementPointers,
+					NumberOfPointers: fieldNumberOfPointers,
+					MapKey:           fieldMapKey,
+					MapValue:         fieldMapValue,
+				},
 			}
 
-			// Всегда используем проверку на пустоту, как в эталонной реализации
-			block.If(Id("_" + argVarName).Op(":=").Add(srcCode(srcName)).Op(";").Id("_" + argVarName).Op("!=").Lit("")).
-				BlockFunc(func(bg *Group) {
-					// Объявляем переменную нужного типа
-					if typ != nil && typ.ImportPkgPath != "" {
-						// Если тип импортирован, используем полное имя (может содержать точку)
-						typeParts := strings.Split(argTypeName, ".")
-						if len(typeParts) > 1 {
-							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
+			if fieldTypeID == "string" && !fieldIsSlice {
+				block.If(Id(rawVarName).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarName).Op("!=").Lit("")).
+					BlockFunc(func(bg *Group) {
+						var reqID *Statement
+						if len(argTokens) == 1 {
+							reqID = getTarget(arg)
 						} else {
-							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
+							reqID = Id("request").Dot(r.requestStructFieldName(method, arg))
+							for _, token := range argTokens[1:] {
+								reqID = reqID.Dot(toCamel(token))
+							}
 						}
+						if fieldNumberOfPointers == 0 {
+							bg.Add(reqID.Op("=").Id(rawVarName))
+						} else {
+							bg.Add(reqID.Op("=").Op("&").Id(rawVarName))
+						}
+					}).Line()
+				continue
+			}
+
+			typeForArg, ok := r.project.Types[arg.TypeID]
+			useConverterTarget := ok && typeForArg != nil && typeForArg.ParseFromString != nil
+
+			block.If(Id(rawVarName).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarName).Op("!=").Lit("")).
+				BlockFunc(func(bg *Group) {
+					var reqID *Statement
+					if len(argTokens) == 1 {
+						reqID = getTarget(arg)
 					} else {
-						// Встроенный или локальный тип
-						bg.Var().Id(argVarName).Id(argTypeName)
-					}
-
-					fieldVar := &model.Variable{
-						TypeRef: model.TypeRef{
-							TypeID:           fieldTypeID,
-							IsSlice:          fieldIsSlice,
-							ElementPointers:  fieldElementPointers,
-							NumberOfPointers: fieldNumberOfPointers,
-							MapKey:           fieldMapKey,
-							MapValue:         fieldMapValue,
-						},
-					}
-					bg.Add(r.argToTypeConverter(srcFile, typeGen, Id("_"+argVarName), fieldVar, Id(argVarName), errStatement(argVarName, srcName)))
-
-					reqID := bg.Id("request").Dot(r.requestStructFieldName(method, arg))
-					if len(argTokens) > 1 {
+						reqID = Id("request").Dot(r.requestStructFieldName(method, arg))
 						for _, token := range argTokens[1:] {
 							reqID = reqID.Dot(toCamel(token))
 						}
-						reqID.Op("=").Add(argID)
+					}
+					if useConverterTarget {
+						bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarName), fieldVar, reqID, errBody(argVarName, srcName)))
 					} else {
-						reqID.Op("=").Add(argID)
+						if typ != nil && typ.ImportPkgPath != "" {
+							typeParts := strings.Split(argTypeName, ".")
+							if len(typeParts) > 1 {
+								bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
+							} else {
+								bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
+							}
+						} else {
+							bg.Var().Id(argVarName).Id(argTypeName)
+						}
+						bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarName), fieldVar, Id(argVarName), errBody(argVarName, srcName)))
+						argID := Id(argVarName)
+						if fieldNumberOfPointers > 0 {
+							argID = Op("&").Add(argID)
+						}
+						bg.Add(reqID.Op("=").Add(argID))
 					}
 				}).Line()
 		}
@@ -457,7 +510,7 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 	return block
 }
 
-func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, orderedArgs []string, srcCode func(srcName string) Code, errStatement func(arg, header string) *Statement) *Statement {
+func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, orderedArgs []string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement) *Statement {
 
 	block := Line()
 	if len(varMap) != 0 {
@@ -485,14 +538,14 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 			}
 			srcName = strings.TrimPrefix(srcName, "!")
 
-			var argTypeName string
 			var typ *model.Type
 			var fieldTypeID string
+			var argTypeName string
+			var fieldMapKey *model.TypeRef
 			var fieldIsSlice bool
+			var fieldMapValue *model.TypeRef
 			var fieldElementPointers int
 			var fieldNumberOfPointers int
-			var fieldMapKey *model.TypeRef
-			var fieldMapValue *model.TypeRef
 
 			// Если это вложенное поле (например, "data.name"), используем данные из StructField напрямую
 			if len(argTokens) > 1 {
@@ -558,7 +611,7 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 			case fieldIsSlice:
 				// Для слайсов TypeID уже содержит тип элемента без префикса []
 				elementTypeID := fieldTypeID
-				if isBuiltinTypeID(elementTypeID) {
+				if converter.IsBuiltinTypeID(elementTypeID) {
 					argTypeName = "[]" + elementTypeID
 				} else {
 					var ok bool
@@ -571,7 +624,7 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 						argTypeName = "[]" + string(typ.Kind)
 					}
 				}
-			case isBuiltinTypeID(fieldTypeID):
+			case converter.IsBuiltinTypeID(fieldTypeID):
 				argTypeName = fieldTypeID
 			default:
 				var ok bool
@@ -585,50 +638,72 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 				}
 			}
 
-			argID := Id(argVarName)
-
-			// Обработка указателей (если нужно)
-			if fieldNumberOfPointers > 0 {
-				argID = Op("&").Add(argID)
+			rawVarNameOrdered := "_" + argName + "_"
+			fieldVarOrdered := &model.Variable{
+				TypeRef: model.TypeRef{
+					TypeID:           fieldTypeID,
+					IsSlice:          fieldIsSlice,
+					ElementPointers:  fieldElementPointers,
+					NumberOfPointers: fieldNumberOfPointers,
+					MapKey:           fieldMapKey,
+					MapValue:         fieldMapValue,
+				},
 			}
 
-			// Всегда используем проверку на пустоту, как в эталонной реализации
-			block.If(Id("_" + argVarName).Op(":=").Add(srcCode(srcName)).Op(";").Id("_" + argVarName).Op("!=").Lit("")).
-				BlockFunc(func(bg *Group) {
-					// Объявляем переменную нужного типа
-					if typ != nil && typ.ImportPkgPath != "" {
-						// Если тип импортирован, используем полное имя (может содержать точку)
-						typeParts := strings.Split(argTypeName, ".")
-						if len(typeParts) > 1 {
-							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
+			if fieldTypeID == "string" && !fieldIsSlice {
+				block.If(Id(rawVarNameOrdered).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarNameOrdered).Op("!=").Lit("")).
+					BlockFunc(func(bg *Group) {
+						var reqID *Statement
+						if len(argTokens) == 1 {
+							reqID = getTarget(arg)
 						} else {
-							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
+							reqID = Id("request").Dot(r.requestStructFieldName(method, arg))
+							for _, token := range argTokens[1:] {
+								reqID = reqID.Dot(toCamel(token))
+							}
 						}
+						if fieldNumberOfPointers == 0 {
+							bg.Add(reqID.Op("=").Id(rawVarNameOrdered))
+						} else {
+							bg.Add(reqID.Op("=").Op("&").Id(rawVarNameOrdered))
+						}
+					}).Line()
+				continue
+			}
+
+			typeForArgOrdered, ok := r.project.Types[arg.TypeID]
+			useConverterTargetOrdered := ok && typeForArgOrdered != nil && typeForArgOrdered.ParseFromString != nil
+
+			block.If(Id(rawVarNameOrdered).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarNameOrdered).Op("!=").Lit("")).
+				BlockFunc(func(bg *Group) {
+					var reqID *Statement
+					if len(argTokens) == 1 {
+						reqID = getTarget(arg)
 					} else {
-						// Встроенный или локальный тип
-						bg.Var().Id(argVarName).Id(argTypeName)
-					}
-
-					fieldVar := &model.Variable{
-						TypeRef: model.TypeRef{
-							TypeID:           fieldTypeID,
-							IsSlice:          fieldIsSlice,
-							ElementPointers:  fieldElementPointers,
-							NumberOfPointers: fieldNumberOfPointers,
-							MapKey:           fieldMapKey,
-							MapValue:         fieldMapValue,
-						},
-					}
-					bg.Add(r.argToTypeConverter(srcFile, typeGen, Id("_"+argVarName), fieldVar, Id(argVarName), errStatement(argVarName, srcName)))
-
-					reqID := bg.Id("request").Dot(r.requestStructFieldName(method, arg))
-					if len(argTokens) > 1 {
+						reqID = Id("request").Dot(r.requestStructFieldName(method, arg))
 						for _, token := range argTokens[1:] {
 							reqID = reqID.Dot(toCamel(token))
 						}
-						reqID.Op("=").Add(argID)
+					}
+					if useConverterTargetOrdered {
+						bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarNameOrdered), fieldVarOrdered, reqID, errBody(argVarName, srcName)))
 					} else {
-						reqID.Op("=").Add(argID)
+						if typ != nil && typ.ImportPkgPath != "" {
+							typeParts := strings.Split(argTypeName, ".")
+							if len(typeParts) > 1 {
+								bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
+							} else {
+								bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
+							}
+						} else {
+							bg.Var().Id(argVarName).Id(argTypeName)
+						}
+						bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarNameOrdered), fieldVarOrdered, Id(argVarName), errBody(argVarName, srcName)))
+						argID := Id(argVarName)
+						if fieldNumberOfPointers > 0 {
+							argID = Op("&").Add(argID)
+						}
+						bg.Add(reqID.Op("=").Add(argID))
 					}
 				}).Line()
 		}
@@ -636,103 +711,23 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 	return block
 }
 
-func (r *contractRenderer) argToTypeConverter(srcFile *GoFile, typeGen *types.Generator, from *Statement, arg *model.Variable, id *Statement, errStatement *Statement) *Statement {
+func (r *contractRenderer) argToTypeConverter(srcFile *GoFile, typeGen *types.Generator, from *Statement, arg *model.Variable, id *Statement, errBody []Code) *Statement {
 
-	op := "="
-
-	// Обработка слайсов
-	if arg.IsSlice {
-		// Для слайсов парсим через strings.Split и конвертируем каждый элемент
-		// TypeID уже содержит тип элемента без префикса []
-		elementTypeID := arg.TypeID
-		// Создаем переменную для элемента
-		elementVar := &model.Variable{
-			TypeRef: model.TypeRef{
-				TypeID:           elementTypeID,
-				NumberOfPointers: arg.ElementPointers,
-				IsSlice:          false,
-			},
-			Name: "elem",
-		}
-		srcFile.ImportName(PackageStrings, "strings")
-		elementTypeCode := typeGen.FieldType(elementTypeID, arg.ElementPointers, false)
-		return BlockFunc(func(bg *Group) {
-			bg.Id("parts").Op(":=").Qual(PackageStrings, "Split").Call(from, Lit(","))
-			bg.Id("result").Op(":=").Make(Index().Add(elementTypeCode), Lit(0), Len(Id("parts")))
-			bg.For(List(Id("_"), Id("elemStr")).Op(":=").Range().Id("parts")).BlockFunc(func(ig *Group) {
-				ig.Id("elemStr").Op("=").Qual(PackageStrings, "TrimSpace").Call(Id("elemStr"))
-				ig.If(Id("elemStr").Op("==").Lit("")).Block(
-					Continue(),
-				)
-				ig.Var().Id("elem").Add(elementTypeCode)
-				ig.Add(r.argToTypeConverter(srcFile, typeGen, Id("elemStr"), elementVar, Id("elem"), errStatement))
-				ig.Id("result").Op("=").Append(Id("result"), Id("elem"))
-			})
-			bg.Add(id).Op("=").Id("result")
-		})
-	}
-
-	// Для встроенных типов TypeID - это имя типа, они не в project.Types
-	if isBuiltinTypeID(arg.TypeID) {
-		switch arg.TypeID {
-		case "string":
-			return id.Op(op).Add(from)
-		case "bool":
-			return List(id, Err()).Op(op).Qual(PackageStrconv, "ParseBool").Call(from).Add(errStatement)
-		case "int":
-			return List(id, Err()).Op(op).Qual(PackageStrconv, "Atoi").Call(from).Add(errStatement)
-		case "int64":
-			return List(id, Err()).Op(op).Qual(PackageStrconv, "ParseInt").Call(from, Lit(10), Lit(64)).Add(errStatement)
-		case "int32":
-			return List(id, Err()).Op(op).Qual(PackageStrconv, "ParseInt").Call(from, Lit(10), Lit(32)).Add(errStatement)
-		case "uint":
-			return List(id, Err()).Op(op).Qual(PackageStrconv, "ParseUint").Call(from, Lit(10), Lit(64)).Add(errStatement)
-		case "uint64":
-			return List(id, Err()).Op(op).Qual(PackageStrconv, "ParseUint").Call(from, Lit(10), Lit(64)).Add(errStatement)
-		case "uint32":
-			return List(id, Err()).Op(op).Qual(PackageStrconv, "ParseUint").Call(from, Lit(10), Lit(32)).Add(errStatement)
-		case "float64":
-			return List(id, Err()).Op(op).Qual(PackageStrconv, "ParseFloat").Call(from, Lit(64)).Add(errStatement)
-		case "float32":
-			temp64 := Id("temp64")
-			return List(temp64, Err()).Op(":=").Qual(PackageStrconv, "ParseFloat").Call(from, Lit(32)).Add(errStatement).Add(Line()).Add(id.Op(op).Float32().Call(temp64))
-		default:
-			// Для остальных встроенных типов (byte, rune, error, any) используем прямое преобразование
-			return id.Op(op).Add(from)
-		}
-	}
-
-	// Пользовательский тип: ищем в project.Types
-	typ, ok := r.project.Types[arg.TypeID]
-	if !ok {
-		// Если тип не найден, используем прямое преобразование
-		return id.Op(op).Add(from)
-	}
-
-	openAPIType, format := getSerializationFormat(typ, r.project)
-
-	switch {
-	case openAPIType == "string" && format == "uuid":
-		// UUID - парсим через uuid.Parse
-		uuidPackage := PackageUUID
-		return List(id, Id("_")).Op(op).Qual(uuidPackage, "Parse").Call(from)
-	case openAPIType == "string" && format == "date-time":
-		// time.Time - парсим через time.Parse
-		return List(id, Err()).Op(op).Qual(PackageTime, "Parse").Call(Qual(PackageTime, "RFC3339Nano"), from).Add(errStatement)
-	case openAPIType == "string" && containsString(typ.ImplementsInterfaces, "encoding/json:Marshaler"):
-		// Типы, реализующие json.Marshaler, парсим через JSON unmarshal
-		jsonPkg := r.getPackageJSON()
-		srcFile.ImportName(jsonPkg, "json")
-		return Op("_").Op("=").Qual(jsonPkg, "Unmarshal").Call(Op("[]").Byte().Call(Op("`\"`").Op("+").Add(from).Op("+").Op("`\"`")), Op("&").Add(id))
-	default:
-		// Для остальных сложных типов используем JSON unmarshal
-		jsonPkg := r.getPackageJSON()
-		srcFile.ImportName(jsonPkg, "json")
-		return Op("_").Op("=").Qual(jsonPkg, "Unmarshal").Call(Op("[]").Byte().Call(Op("`\"`").Op("+").Add(from).Op("+").Op("`\"`")), Op("&").Add(id))
-	}
+	return converter.BuildStringToType(converter.StringToTypeConfig{
+		Project:        r.project,
+		From:           from,
+		Arg:            arg,
+		Id:             id,
+		ErrBody:        errBody,
+		OptionalAssign: false,
+		FieldType:      typeGen.FieldType,
+		AddImport:      srcFile.ImportName,
+		JSONPkg:        r.getPackageJSON(),
+	})
 }
 
-func containsString(slice []string, s string) bool {
+func containsString(slice []string, s string) (ok bool) {
+
 	for _, item := range slice {
 		if item == s {
 			return true
@@ -741,7 +736,8 @@ func containsString(slice []string, s string) bool {
 	return false
 }
 
-func toIDWithImport(qualifiedName string, srcFile *GoFile) *Statement {
+func toIDWithImport(qualifiedName string, srcFile *GoFile) (stmt *Statement) {
+
 	// Формат: "package/path:FunctionName"
 	if tokens := strings.Split(qualifiedName, ":"); len(tokens) == 2 {
 		pkgPath := tokens[0]
@@ -754,76 +750,76 @@ func toIDWithImport(qualifiedName string, srcFile *GoFile) *Statement {
 	return Id(qualifiedName)
 }
 
-func (r *contractRenderer) arguments(method *model.Method) []*model.Variable {
+func (r *contractRenderer) arguments(method *model.Method) (out []*model.Variable) {
+
+	if method == nil {
+		return nil
+	}
 	return r.argsWithoutSpecialArgs(method)
 }
 
-func (r *contractRenderer) urlArgs(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
+func (r *contractRenderer) urlArgs(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
 	return r.argFromString(srcFile, typeGen, method, "urlParam", r.argPathMap(method),
 		func(srcName string) Code {
 			return Id(VarNameFtx).Dot("Params").Call(Lit(srcName))
 		},
-		errStatement,
+		errBody,
+		func(arg *model.Variable) *Statement {
+			return Id("request").Dot(r.requestStructFieldName(method, arg))
+		},
 	)
 }
 
-func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
+func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
+
+	pathMap := r.argPathMap(method)
+	headerMap := r.varHeaderMap(method)
+	cookieMap := r.varCookieMap(method)
 	queryParams := make(map[string]string)
-	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, ""); urlArgs != "" {
-		paramPairs := strings.Split(urlArgs, ",")
-		for _, pair := range paramPairs {
-			pair = strings.TrimSpace(pair)
-			if strings.Contains(pair, "|") && !strings.HasPrefix(pair, "path|") && !strings.HasPrefix(pair, "header|") && !strings.HasPrefix(pair, "cookie|") {
-				if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-					arg := strings.TrimSpace(pairTokens[0])
-					param := strings.TrimSpace(pairTokens[1])
-					if _, inPath := r.argPathMap(method)[arg]; !inPath {
-						if _, inHeader := r.varHeaderMap(method)[arg]; !inHeader {
-							if _, inCookie := r.varCookieMap(method)[arg]; !inCookie {
-								queryParams[arg] = param
-							}
-						}
-					}
-				}
-			}
-		}
-	}
 	var orderedArgs []string
-	if urlArgs := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, ""); urlArgs != "" {
-		paramPairs := strings.Split(urlArgs, ",")
-		for _, pair := range paramPairs {
-			pair = strings.TrimSpace(pair)
-			if strings.Contains(pair, "|") && !strings.HasPrefix(pair, "path|") && !strings.HasPrefix(pair, "header|") && !strings.HasPrefix(pair, "cookie|") {
-				if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-					arg := strings.TrimSpace(pairTokens[0])
-					if _, ok := queryParams[arg]; ok {
-						orderedArgs = append(orderedArgs, arg)
-					}
-				}
-			}
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, "")) {
+		if it.Arg == "path" {
+			continue
 		}
+		if _, inPath := pathMap[it.Arg]; inPath {
+			continue
+		}
+		if _, inHeader := headerMap[it.Arg]; inHeader {
+			continue
+		}
+		if _, inCookie := cookieMap[it.Arg]; inCookie {
+			continue
+		}
+		queryParams[it.Arg] = it.Key
+		orderedArgs = append(orderedArgs, it.Arg)
 	}
 	return r.argFromStringOrdered(srcFile, typeGen, method, "queryParam", queryParams, orderedArgs,
 		func(srcName string) Code {
 			return Id(VarNameFtx).Dot("Query").Call(Lit(srcName))
 		},
-		errStatement,
+		errBody,
+		func(arg *model.Variable) *Statement {
+			return Id("request").Dot(r.requestStructFieldName(method, arg))
+		},
 	)
 }
 
-func (r *contractRenderer) httpArgHeaders(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
-	return r.argFromString(srcFile, typeGen, method, "header", r.varHeaderMap(method),
+func (r *contractRenderer) httpArgHeaders(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
+	return r.argFromString(srcFile, typeGen, method, "header", r.varHeaderMapForRequest(method),
 		func(srcName string) Code {
 			return Id(VarNameFtx).Dot("Get").Call(Lit(srcName))
 		},
-		errStatement,
+		errBody,
+		func(arg *model.Variable) *Statement {
+			return Id("request").Dot(r.requestStructFieldName(method, arg))
+		},
 	)
 }
 
-func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement, overlayAsStruct bool) *Statement {
+func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code, overlayAsStruct bool) *Statement {
 
-	headerMap := r.varHeaderMap(method)
-	cookieMap := r.varCookieMap(method)
+	headerMap := r.varHeaderMapForRequest(method)
+	cookieMap := r.varCookieMapForRequest(method)
 	if len(headerMap) == 0 && len(cookieMap) == 0 {
 		return Line()
 	}
@@ -858,8 +854,11 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 		}
 	}
 	inner := Line()
-	inner.Add(r.argFromString(srcFile, typeGen, method, "header", headerMap, overlayFromMap, errStatement))
-	inner.Add(r.argFromString(srcFile, typeGen, method, "cookie", cookieMap, overlayFromMap, errStatement))
+	getTarget := func(arg *model.Variable) *Statement {
+		return Id("request").Dot(r.requestStructFieldName(method, arg))
+	}
+	inner.Add(r.argFromString(srcFile, typeGen, method, "header", headerMap, overlayFromMap, errBody, getTarget))
+	inner.Add(r.argFromString(srcFile, typeGen, method, "cookie", cookieMap, overlayFromMap, errBody, getTarget))
 	var block *Statement
 	if overlayAsStruct {
 		block = Id("getterVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
@@ -876,40 +875,108 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 	return Line().Add(block)
 }
 
-func (r *contractRenderer) httpCookies(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errStatement func(arg, header string) *Statement) *Statement {
-	return r.argFromString(srcFile, typeGen, method, "cookie", r.varCookieMap(method),
+func (r *contractRenderer) httpCookies(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
+	return r.argFromString(srcFile, typeGen, method, "cookie", r.varCookieMapForRequest(method),
 		func(srcName string) Code {
 			return Id(VarNameFtx).Dot("Cookies").Call(Lit(srcName))
 		},
-		errStatement,
+		errBody,
+		func(arg *model.Variable) *Statement {
+			return Id("request").Dot(r.requestStructFieldName(method, arg))
+		},
 	)
 }
 
+func (r *contractRenderer) resultToHeaderStringExpr(ret *model.Variable, valueExpr Code) Code {
+
+	deref := func(expr Code) Code { return Op("*").Add(expr) }
+	if ret.TypeID == "string" {
+		if ret.NumberOfPointers > 0 {
+			return deref(valueExpr)
+		}
+		return valueExpr
+	}
+	if converter.IsBuiltinTypeID(ret.TypeID) {
+		if ret.NumberOfPointers > 0 {
+			return Qual(PackageFmt, "Sprint").Call(deref(valueExpr))
+		}
+		return Qual(PackageFmt, "Sprint").Call(valueExpr)
+	}
+	typ, ok := r.project.Types[ret.TypeID]
+	if ok && (containsString(typ.ImplementsInterfaces, "fmt:Stringer") ||
+		(strings.Contains(typ.ImportPkgPath, "time") && (typ.TypeName == "Duration" || typ.TypeName == "Time")) ||
+		(strings.Contains(typ.ImportPkgPath, "uuid") && typ.TypeName == "UUID")) {
+		return (&Statement{}).Add(valueExpr).Dot("String").Call()
+	}
+	if ret.NumberOfPointers > 0 {
+		return Qual(PackageFmt, "Sprint").Call(deref(valueExpr))
+	}
+	return Qual(PackageFmt, "Sprint").Call(valueExpr)
+}
+
 func (r *contractRenderer) httpRetHeaders(method *model.Method) *Statement {
+
 	ex := Line()
 	headerMap := r.varHeaderMap(method)
 	for varName, headerName := range common.SortedPairs(headerMap) {
-		if ret := r.resultByName(method, varName); ret != nil {
-			ex.Id(VarNameFtx).Dot("Set").Call(Lit(headerName), Id("response").Dot(r.responseStructFieldName(method, ret)))
+		ret := r.resultByName(method, varName)
+		if ret == nil {
+			continue
+		}
+		fieldName := r.responseStructFieldName(method, ret)
+		valueExpr := Id("response").Dot(fieldName)
+		setHeaderValue := func(expr Code) Code {
+			strExpr := r.resultToHeaderStringExpr(ret, expr)
+			if headerName == "Content-Disposition" {
+				// RFC 2183: браузеры ожидают attachment; filename="..."
+				return Qual(PackageFmt, "Sprintf").Call(Lit("attachment; filename=%q"), strExpr)
+			}
+			return strExpr
+		}
+		if ret.NumberOfPointers > 0 {
+			ex.If(valueExpr.Clone().Op("!=").Nil()).Block(
+				Id(VarNameFtx).Dot("Set").Call(Lit(headerName), setHeaderValue(valueExpr.Clone())),
+			)
+		} else {
+			ex.Id(VarNameFtx).Dot("Set").Call(Lit(headerName), setHeaderValue(valueExpr))
 		}
 	}
 	return ex
 }
 
-func getSerializationFormat(typ *model.Type, project *model.Project) (openAPIType string, format string) {
+func (r *contractRenderer) httpRetCookies(method *model.Method) *Statement {
 
-	if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
-		return "string", "date-time"
+	ex := Line()
+	for retName, cookieName := range common.SortedPairs(r.retCookieMap(method)) {
+		ret := r.resultByName(method, retName)
+		if ret == nil {
+			continue
+		}
+		fieldName := r.responseStructFieldName(method, ret)
+		valueExpr := Id("response").Dot(fieldName)
+		cookieTypeBlock := If(List(Id("rCookie"), Id("ok")).Op(":=").
+			Qual(PackageReflect, "ValueOf").Call(valueExpr.Clone()).Dot("Interface").Call().
+			Op(".").Call(Id("cookieType")).Op(";").Id("ok")).Block(
+			Id("cookie").Op(":=").Id("rCookie").Dot("Cookie").Call(),
+			Id(VarNameFtx).Dot("Cookie").Call(Op("&").Id("cookie")),
+		)
+		simpleCookieStmts := func(vExpr Code) []Code {
+			return []Code{
+				Id("cookie").Op(":=").Qual(PackageFiber, "Cookie").Values(Dict{
+					Id("Name"):  Lit(cookieName),
+					Id("Value"): r.resultToHeaderStringExpr(ret, vExpr),
+				}),
+				Id(VarNameFtx).Dot("Cookie").Call(Op("&").Id("cookie")),
+			}
+		}
+		if ret.NumberOfPointers > 0 {
+			cookieTypeBlock.Else().Block(
+				If(valueExpr.Clone().Op("!=").Nil()).Block(simpleCookieStmts(valueExpr.Clone())...),
+			)
+		} else {
+			cookieTypeBlock.Else().Block(simpleCookieStmts(valueExpr)...)
+		}
+		ex.Add(cookieTypeBlock)
 	}
-
-	if strings.Contains(typ.TypeName, "UUID") || strings.Contains(typ.ImportPkgPath, "uuid") {
-		return "string", "uuid"
-	}
-
-	if containsString(typ.ImplementsInterfaces, "encoding/json:Marshaler") {
-		return "string", ""
-	}
-
-	// Для остальных типов возвращаем пустые значения
-	return "", ""
+	return ex
 }

@@ -35,13 +35,13 @@ func (tags DocTags) MarshalJSON() (bytes []byte, err error) {
 	return json.Marshal(result)
 }
 
-func (tags *DocTags) UnmarshalJSON(data []byte) error {
-	// Булевы true из JSON обратно в пустую строку в DocTags.
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return err
-	}
+func (tags *DocTags) UnmarshalJSON(data []byte) (err error) {
 
+	var raw map[string]any
+	if err = json.Unmarshal(data, &raw); err != nil {
+		return
+	}
+	// Булевы true из JSON обратно в пустую строку в DocTags.
 	if tags == nil {
 		*tags = make(DocTags)
 	}
@@ -63,8 +63,7 @@ func (tags *DocTags) UnmarshalJSON(data []byte) error {
 			(*tags)[k] = fmt.Sprintf("%v", val)
 		}
 	}
-
-	return nil
+	return
 }
 
 func (tags DocTags) Merge(t DocTags) DocTags {
@@ -120,6 +119,7 @@ func ParseTags(docs []string) (tags DocTags) {
 }
 
 func (tags DocTags) IsSet(tagName string) (found bool) {
+
 	_, found = tags[tagName]
 	return
 }

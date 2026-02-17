@@ -5,7 +5,8 @@ package internal
 
 import "runtime"
 
-func LineFeed() string {
+func LineFeed() (s string) {
+
 	if runtime.GOOS == "windows" {
 		return "\r\n"
 	}

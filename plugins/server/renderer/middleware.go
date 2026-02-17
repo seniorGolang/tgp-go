@@ -9,13 +9,14 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *contractRenderer) RenderMiddleware() error {
+func (r *contractRenderer) RenderMiddleware() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(r.contract.PkgPath, filepath.Base(r.contract.PkgPath))
 

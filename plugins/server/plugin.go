@@ -23,8 +23,9 @@ var pluginDoc string
 
 type ServerPlugin struct{}
 
-func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
+func (p *ServerPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
+	response = request
 	var project *model.Project
 	if project, err = helper.GetProject(request); err != nil {
 		return
@@ -72,11 +73,6 @@ func (p *ServerPlugin) Execute(rootDir string, request data.Storage, path ...str
 	slog.Info(i18n.Msg("generation completed"),
 		slog.String("output", output),
 	)
-
-	// Создаем response
-	if response, err = helper.CreateResponse(output); err != nil {
-		return
-	}
 
 	return
 }

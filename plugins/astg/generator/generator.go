@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"text/template"
+
+	"tgp/internal/generated"
 )
 
 //go:embed templates
@@ -17,14 +19,14 @@ var templates embed.FS
 func Generate(rootDir string, moduleName string) (err error) {
 
 	astgDir := filepath.Join(rootDir, "astg")
-	if err = os.MkdirAll(astgDir, 0755); err != nil {
-		err = fmt.Errorf("failed to create astg directory: %w", err)
-		return
+	if err = os.MkdirAll(astgDir, 0700); err != nil {
+		return fmt.Errorf("failed to create astg directory: %w", err)
 	}
 
 	// Подготавливаем метаданные для шаблонов
 	meta := map[string]string{
-		"moduleName": moduleName,
+		"moduleName":       moduleName,
+		"DoNotEditComment": generated.ByToolGatewayComment,
 	}
 
 	var tmpl *template.Template
@@ -106,7 +108,7 @@ func renderFile(tmpl *template.Template, templateName, filePath string, data any
 
 	_ = os.Remove(filePath)
 	dir := filepath.Dir(filePath)
-	if err = os.MkdirAll(dir, 0755); err != nil {
+	if err = os.MkdirAll(dir, 0700); err != nil {
 		return
 	}
 	var buf bytes.Buffer

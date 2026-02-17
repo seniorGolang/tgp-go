@@ -10,7 +10,7 @@ import (
 	"tgp/internal/model"
 )
 
-func (r *transportRenderer) fiberFunc() Code {
+func (r *transportRenderer) fiberFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("Fiber").
@@ -21,7 +21,7 @@ func (r *transportRenderer) fiberFunc() Code {
 		)
 }
 
-func (r *transportRenderer) withLogFunc() Code {
+func (r *transportRenderer) withLogFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("WithLog").
@@ -29,6 +29,9 @@ func (r *transportRenderer) withLogFunc() Code {
 		Params(Op("*").Id("Server")).
 		BlockFunc(func(bg *Group) {
 			for _, contract := range r.contractsSorted() {
+				if !model.IsAnnotationSet(r.project, contract, nil, nil, TagLogger) {
+					continue
+				}
 				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithLog").Call(),
@@ -44,7 +47,7 @@ func (r *transportRenderer) withLogFunc() Code {
 		})
 }
 
-func (r *transportRenderer) withTraceFunc() Code {
+func (r *transportRenderer) withTraceFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("WithTrace").
@@ -69,7 +72,7 @@ func (r *transportRenderer) withTraceFunc() Code {
 		})
 }
 
-func (r *transportRenderer) withMetricsFunc() Code {
+func (r *transportRenderer) withMetricsFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("WithMetrics").
@@ -80,6 +83,9 @@ func (r *transportRenderer) withMetricsFunc() Code {
 				Id("srv").Dot("metrics").Op("=").Id("NewMetrics").Call(),
 			)
 			for _, contract := range r.contractsSorted() {
+				if !model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
+					continue
+				}
 				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
 						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
@@ -95,7 +101,7 @@ func (r *transportRenderer) withMetricsFunc() Code {
 		})
 }
 
-func (r *transportRenderer) serverNewFunc() Code {
+func (r *transportRenderer) serverNewFunc() (c Code) {
 
 	return Func().Id("New").
 		Params(Id("log").Op("*").Qual(PackageSlog, "Logger"), Id("options").Op("...").Id("Option")).
@@ -162,13 +168,13 @@ func (r *transportRenderer) serverNewFunc() Code {
 			bg.Line()
 			if r.hasJsonRPC() {
 				bg.Id("initJsonRPCMethodMap").Call(Id("srv"))
-				bg.Id("srv").Dot("srvHTTP").Dot("Post").Call(Lit("/"), Id("srv").Dot("serveBatch"))
+				bg.Id("srv").Dot("srvHTTP").Dot("Post").Call(Lit(r.generalBatchPath()), Id("srv").Dot("serveBatch"))
 			}
 			bg.Return()
 		})
 }
 
-func (r *transportRenderer) serveHealthFunc() Code {
+func (r *transportRenderer) serveHealthFunc() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
 	return Func().Id("ServeHealth").
@@ -215,7 +221,7 @@ func (r *transportRenderer) serveHealthFunc() Code {
 		})
 }
 
-func (r *transportRenderer) shutdownFunc() Code {
+func (r *transportRenderer) shutdownFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("Shutdown").
@@ -238,7 +244,7 @@ func (r *transportRenderer) shutdownFunc() Code {
 		})
 }
 
-func (r *transportRenderer) sendResponseFunc() Code {
+func (r *transportRenderer) sendResponseFunc() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
 	return Func().Id("sendResponse").
@@ -257,7 +263,7 @@ func (r *transportRenderer) sendResponseFunc() Code {
 		})
 }
 
-func (r *transportRenderer) sendHTTPErrorFunc() Code {
+func (r *transportRenderer) sendHTTPErrorFunc() (c Code) {
 
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
 	return Func().Id("sendHTTPError").
@@ -279,7 +285,7 @@ func (r *transportRenderer) sendHTTPErrorFunc() Code {
 		})
 }
 
-func (r *transportRenderer) doesNotRequireHTTPFunc() Code {
+func (r *transportRenderer) doesNotRequireHTTPFunc() (c Code) {
 
 	return Func().Id("doesNotRequireHTTP").
 		Params(Id("option").Id("Option")).

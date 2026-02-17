@@ -13,6 +13,7 @@ import (
 )
 
 func (r *ClientRenderer) renderAllTypes(md *markdown.Markdown, allTypes map[string]*typeUsage) {
+
 	sharedTypesAnchor := generateAnchor("Общие типы")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", sharedTypesAnchor))
 	md.LF()
@@ -59,6 +60,7 @@ func (r *ClientRenderer) renderAllTypes(md *markdown.Markdown, allTypes map[stri
 }
 
 func (r *ClientRenderer) getTypeLinkFromStructField(field *model.StructField, pkgPath string) string {
+
 	switch {
 	case field.IsSlice || field.ArrayLen > 0:
 		return r.getTypeLink(field.TypeID, pkgPath)
@@ -86,6 +88,7 @@ func (r *ClientRenderer) getTypeLinkFromVariable(variable *model.Variable, pkgPa
 }
 
 func (r *ClientRenderer) getTypeLinkFromTypeRef(typeRef *model.TypeRef, pkgPath string) string {
+
 	if typeRef == nil {
 		return "-"
 	}
@@ -112,6 +115,7 @@ func (r *ClientRenderer) getTypeLinkFromTypeRef(typeRef *model.TypeRef, pkgPath 
 }
 
 func (r *ClientRenderer) getTypeLink(typeID, pkgPath string) string {
+
 	if r.isBuiltinType(typeID) {
 		return "-"
 	}
@@ -141,6 +145,7 @@ func (r *ClientRenderer) getTypeLink(typeID, pkgPath string) string {
 }
 
 func (r *ClientRenderer) renderStructTypeTable(md *markdown.Markdown, structType *model.Type, typeName string, pkgPath string) {
+
 	typeAnchor := typeAnchorID(typeName)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", typeAnchor))
 	md.LF()

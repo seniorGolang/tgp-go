@@ -33,13 +33,6 @@ func NewFromFile(path string) (runner Runner, err error) {
 	return
 }
 
-func NewFromFiles(files ...File) Runner {
-
-	return Runner{
-		files: files,
-	}
-}
-
 func (r Runner) Run(modulePath string) (err error) {
 
 	for _, file := range r.files {
@@ -63,16 +56,13 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 		}
 	}
 
-	// Порядок: стандартная библиотека -> локальные пакеты -> внешние пакеты
 	res, err := formatImports(src, file.Name, modulePath)
 	if err != nil {
-		// Если форматирование не удалось, возвращаем исходный код без изменений
 		err = nil
 		return
 	}
 
 	if len(res) == 0 {
-		// Если результат пустой, возвращаем исходный код
 		return
 	}
 
@@ -84,7 +74,8 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 	}
 
 	if file.Out == nil {
-		return os.WriteFile(file.Name, res, 0)
+		err = os.WriteFile(file.Name, res, 0)
+		return
 	}
 
 	_, err = file.Out.Write(res)
@@ -94,9 +85,8 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 	return
 }
 
-func isGoFile(f os.FileInfo) bool {
+func isGoFile(f os.FileInfo) (ok bool) {
 
-	// ignore non-Go files
 	name := f.Name()
 	return !f.IsDir() && !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".go")
 }
@@ -116,7 +106,7 @@ func buildFiles(paths ...string) (files []File, err error) {
 			}
 			b, err := os.ReadFile(path)
 			if err != nil {
-				return err
+				return
 			}
 			files = append(files, File{
 				Name: path,
@@ -154,31 +144,34 @@ func buildFile(path string) (files []File, err error) {
 	return
 }
 
-func GetModulePath(filePath string) string {
+func GetModulePath(filePath string) (s string) {
 
-	// Ищем go.mod, начиная с директории файла
-	dir := filepath.Dir(filePath)
+	modulePath, _ := GetModuleInfo(filePath)
+	return modulePath
+}
+
+func GetModuleInfo(path string) (modulePath string, moduleRoot string) {
+
+	dir := path
+	if strings.HasSuffix(path, ".go") {
+		dir = filepath.Dir(path)
+	}
 	for {
-		if dir == "" || dir == "/" {
-			return ""
-		}
 		goModPath := filepath.Join(dir, "go.mod")
 		if data, err := os.ReadFile(goModPath); err == nil {
-			// Простой парсинг module path из go.mod
 			lines := strings.Split(string(data), "\n")
 			for _, line := range lines {
 				line = strings.TrimSpace(line)
 				if strings.HasPrefix(line, "module ") {
-					modulePath := strings.TrimSpace(strings.TrimPrefix(line, "module"))
-					return strings.Trim(modulePath, `"`)
+					modulePath = strings.TrimSpace(strings.TrimPrefix(line, "module"))
+					return strings.Trim(modulePath, `"`), dir
 				}
 			}
 		}
 		parentDir := filepath.Dir(dir)
-		if parentDir == dir {
-			break
+		if parentDir == dir || dir == "" || dir == "/" {
+			return "", ""
 		}
 		dir = parentDir
 	}
-	return ""
 }

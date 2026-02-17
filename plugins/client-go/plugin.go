@@ -5,9 +5,9 @@ package main
 
 import (
 	_ "embed"
-	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	"tgp/core/data"
@@ -18,6 +18,7 @@ import (
 	"tgp/internal/model"
 	"tgp/internal/stats"
 	"tgp/plugins/client-go/generator"
+	"tgp/plugins/client-go/goimports"
 )
 
 //go:embed plugin.md
@@ -25,8 +26,9 @@ var pluginDoc string
 
 type ClientGoPlugin struct{}
 
-func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
+func (p *ClientGoPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
+	response = request
 	var project *model.Project
 	if project, err = helper.GetProject(request); err != nil {
 		return
@@ -34,12 +36,23 @@ func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...s
 
 	var output string
 	if output, err = helper.GetOutput(request); err != nil || output == "" {
-		return nil, errors.New(i18n.Msg("out option is required and must be a string"))
+		return
 	}
 
-	docOpts := generator.DocOptions{
-		Enabled: true,
+	if err = os.MkdirAll(output, 0700); err != nil {
+		return
 	}
+
+	targetModulePath, moduleRoot := goimports.GetModuleInfo(filepath.Join(output, "_.go"))
+	if targetModulePath == "" {
+		return nil, fmt.Errorf("go.mod not found for output directory %s", output)
+	}
+	var outputRelPath string
+	if outputRelPath, err = filepath.Rel(moduleRoot, output); err != nil {
+		return nil, fmt.Errorf("output path outside module: %w", err)
+	}
+
+	docOpts := generator.DocOptions{Enabled: true}
 
 	var noDoc bool
 	if noDoc, err = data.Get[bool](request, "no-doc"); err == nil {
@@ -70,10 +83,9 @@ func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...s
 	// Очищаем старые сгенерированные файлы перед новой генерацией
 	if err = cleanup.GeneratedFiles(output); err != nil {
 		slog.Debug(i18n.Msg("failed to cleanup generated files"), slog.String("error", err.Error()))
-		// Не возвращаем ошибку, так как очистка не критична
 	}
 
-	if err = generator.GenerateClient(project, output, docOpts); err != nil {
+	if err = generator.GenerateClient(project, output, targetModulePath, outputRelPath, docOpts); err != nil {
 		slog.Error(i18n.Msg("failed to generate Go client"), slog.String("error", err.Error()))
 		err = fmt.Errorf("%s: %w", i18n.Msg("generate Go client"), err)
 		return
@@ -85,11 +97,6 @@ func (p *ClientGoPlugin) Execute(rootDir string, request data.Storage, path ...s
 	// Логируем завершение генерации с деталями
 	attrs = stats.CompleteGenerationAttrs(clientStats, output, docOpts)
 	slog.Info(i18n.Msg("Go client generation completed"), attrs...)
-
-	// Создаем response
-	if response, err = helper.CreateResponse(output); err != nil {
-		return nil, err
-	}
 
 	return
 }
@@ -150,7 +157,7 @@ func (p *ClientGoPlugin) Info() (info plugin.Info, err error) {
 			"GOMODCACHE", // Для поиска модулей в кэше модулей
 		},
 		AllowedPaths: map[string]string{
-			"@go/":        "w", // Доступ к директории с go.mod (монтируется хостом в корень "/")
+			"@go":         "w", // Доступ к директории с go.mod (монтируется хостом в корень "/")
 			"$GOPATH/src": "r", // Для чтения пакетов из GOPATH/src (для goimports)
 			"$GOROOT":     "r", // Для чтения стандартной библиотеки Go (для goimports)
 			"$GOMODCACHE": "r", // Для чтения модулей из кэша (для goimports)

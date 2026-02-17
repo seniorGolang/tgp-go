@@ -11,41 +11,74 @@ import (
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) varHeaderMap(contract *model.Contract, method *model.Method) map[string]string {
+func (r *ClientRenderer) resultByName(method *model.Method, retName string) (v *model.Variable) {
 
-	headers := make(map[string]string)
-	if httpHeaders := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpHeader, ""); httpHeaders != "" {
-		headerPairs := strings.Split(httpHeaders, ",")
-		for _, pair := range headerPairs {
-			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-				arg := strings.TrimSpace(pairTokens[0])
-				header := strings.TrimSpace(pairTokens[1])
-				headers[arg] = header
-			}
+	for _, ret := range method.Results {
+		if ret.Name == retName {
+			return ret
 		}
 	}
-	return headers
+	return nil
 }
 
-func (r *ClientRenderer) varCookieMap(contract *model.Contract, method *model.Method) map[string]string {
+func (r *ClientRenderer) argsForClient(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	cookies := make(map[string]string)
-	if httpCookies := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpCookies, ""); httpCookies != "" {
-		cookiePairs := strings.Split(httpCookies, ",")
-		for _, pair := range cookiePairs {
-			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-				arg := strings.TrimSpace(pairTokens[0])
-				cookie := strings.TrimSpace(pairTokens[1])
-				cookies[arg] = cookie
-			}
+	mappings := model.BuildHTTPArgMappings(r.project, contract, method)
+	implicit := model.HTTPImplicitArgSet(mappings)
+	var list []*model.Variable
+	for _, arg := range r.argsWithoutContext(method) {
+		if _, ok := implicit[arg.Name]; !ok {
+			list = append(list, arg)
 		}
 	}
-	return cookies
+	return list
 }
 
-func (r *ClientRenderer) argPathMap(contract *model.Contract, method *model.Method) map[string]struct{} {
+func (r *ClientRenderer) argsForExchangeRequest(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	out := make(map[string]struct{})
+	mappings := model.BuildHTTPArgMappings(r.project, contract, method)
+	exclude := model.HTTPExcludeFromExchangeRequestSet(mappings)
+	var list []*model.Variable
+	for _, arg := range r.argsWithoutContext(method) {
+		if _, ok := exclude[arg.Name]; !ok {
+			list = append(list, arg)
+		}
+	}
+	return list
+}
+
+func (r *ClientRenderer) argsForRequestBody(contract *model.Contract, method *model.Method) (out []*model.Variable) {
+
+	pathParams := r.argPathMap(contract, method)
+	headerForReq := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
+	cookieForReq := model.HTTPCookieArgMapForRequest(r.project, contract, method)
+	queryForReq := model.HTTPArgQueryMapForRequest(r.project, contract, method)
+
+	var list []*model.Variable
+	for _, arg := range r.argsForClient(contract, method) {
+		if arg.TypeID == TypeIDIOReader {
+			continue
+		}
+		if _, inPath := pathParams[arg.Name]; inPath {
+			continue
+		}
+		if _, inHeader := headerForReq[arg.Name]; inHeader {
+			continue
+		}
+		if _, inCookie := cookieForReq[arg.Name]; inCookie {
+			continue
+		}
+		if _, inQuery := queryForReq[arg.Name]; inQuery {
+			continue
+		}
+		list = append(list, arg)
+	}
+	return list
+}
+
+func (r *ClientRenderer) argPathMap(contract *model.Contract, method *model.Method) (out map[string]struct{}) {
+
+	out = make(map[string]struct{})
 	if urlPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, ""); urlPath != "" {
 		for _, token := range strings.Split(urlPath, "/") {
 			token = strings.TrimSpace(token)
@@ -58,10 +91,10 @@ func (r *ClientRenderer) argPathMap(contract *model.Contract, method *model.Meth
 			}
 		}
 	}
-	return out
+	return
 }
 
-func (r *ClientRenderer) argByPathParamName(contract *model.Contract, method *model.Method, pathSegmentName string) *model.Variable {
+func (r *ClientRenderer) argByPathParamName(contract *model.Contract, method *model.Method, pathSegmentName string) (v *model.Variable) {
 
 	for _, arg := range method.Args {
 		if arg.Name == pathSegmentName || ToLowerCamel(arg.Name) == pathSegmentName {
@@ -71,23 +104,8 @@ func (r *ClientRenderer) argByPathParamName(contract *model.Contract, method *mo
 	return nil
 }
 
-func (r *ClientRenderer) argParamMap(contract *model.Contract, method *model.Method) map[string]string {
+func (r *ClientRenderer) argByName(method *model.Method, argName string) (v *model.Variable) {
 
-	params := make(map[string]string)
-	if urlArgs := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpArg, ""); urlArgs != "" {
-		paramPairs := strings.Split(urlArgs, ",")
-		for _, pair := range paramPairs {
-			if pairTokens := strings.Split(pair, "|"); len(pairTokens) == 2 {
-				arg := strings.TrimSpace(pairTokens[0])
-				param := strings.TrimSpace(pairTokens[1])
-				params[arg] = param
-			}
-		}
-	}
-	return params
-}
-
-func (r *ClientRenderer) argByName(method *model.Method, argName string) *model.Variable {
 	argName = strings.TrimPrefix(argName, "!")
 	for _, arg := range method.Args {
 		if arg.Name == argName {
@@ -97,7 +115,8 @@ func (r *ClientRenderer) argByName(method *model.Method, argName string) *model.
 	return nil
 }
 
-func (r *ClientRenderer) varToString(ctx context.Context, variable *model.Variable) Code {
+func (r *ClientRenderer) varToString(ctx context.Context, variable *model.Variable) (c Code) {
+
 	if variable.TypeID == "string" {
 		return Id(ToLowerCamel(variable.Name))
 	}
@@ -105,28 +124,37 @@ func (r *ClientRenderer) varToString(ctx context.Context, variable *model.Variab
 	return Qual(PackageFmt, "Sprint").Call(Id(ToLowerCamel(variable.Name)))
 }
 
-func (r *ClientRenderer) contractNameToLowerCamel(contract *model.Contract) string {
+func (r *ClientRenderer) contractNameToLowerCamel(contract *model.Contract) (s string) {
+
 	if contract == nil {
 		return ""
 	}
 	return ToLowerCamel(contract.Name)
 }
 
-func (r *ClientRenderer) methodNameToLowerCamel(method *model.Method) string {
+func (r *ClientRenderer) methodNameToLowerCamel(method *model.Method) (s string) {
+
 	if method == nil {
 		return ""
 	}
 	return ToLowerCamel(method.Name)
 }
 
-func (r *ClientRenderer) contractNameToLower(contract *model.Contract) string {
+func (r *ClientRenderer) defaultMethodHTTPPath(contract *model.Contract, method *model.Method) (s string) {
+
+	return "/" + r.contractNameToLowerCamel(contract) + "/" + r.methodNameToLowerCamel(method)
+}
+
+func (r *ClientRenderer) contractNameToLower(contract *model.Contract) (s string) {
+
 	if contract == nil {
 		return ""
 	}
 	return strings.ToLower(contract.Name)
 }
 
-func (r *ClientRenderer) methodNameToLower(method *model.Method) string {
+func (r *ClientRenderer) methodNameToLower(method *model.Method) (s string) {
+
 	if method == nil {
 		return ""
 	}

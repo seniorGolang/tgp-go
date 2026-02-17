@@ -50,8 +50,7 @@ func PkgModPath(pkgName string) (modPathResult string) {
 	if modBytes, err = os.ReadFile(modPath); err != nil {
 		return
 	}
-	_, err = modfile.Parse(modPath, modBytes, nil)
-	if err != nil {
+	if _, err = modfile.Parse(modPath, modBytes, nil); err != nil {
 		return
 	}
 	modInfo := parseMod(modPath)
@@ -139,8 +138,8 @@ func isReceiverForStruct(recvType ast.Expr, structName string) (isReceiver bool)
 		isReceiver = rt.Name == structName
 		return
 	case *ast.StarExpr:
-		var ident *ast.Ident
 		var ok bool
+		var ident *ast.Ident
 		if ident, ok = rt.X.(*ast.Ident); ok {
 			isReceiver = ident.Name == structName
 			return

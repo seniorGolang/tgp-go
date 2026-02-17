@@ -125,7 +125,8 @@ type Schema struct {
 	AdditionalProperties any `json:"additionalProperties,omitempty" yaml:"additionalProperties,omitempty"`
 }
 
-func (s Schema) IsEmpty() bool {
+func (s Schema) IsEmpty() (ok bool) {
+
 	if s.Ref != "" {
 		return false
 	}
@@ -164,7 +165,7 @@ type Encoding struct {
 }
 
 type Media struct {
-	Schema   Schema            `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Schema   Schema              `json:"schema,omitempty" yaml:"schema,omitempty"`
 	Encoding map[string]Encoding `json:"encoding,omitempty" yaml:"encoding,omitempty"`
 }
 

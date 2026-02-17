@@ -13,22 +13,43 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/common"
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) RenderExchange(contract *model.Contract) error {
+func (r *ClientRenderer) RenderExchange(contract *model.Contract) (err error) {
 
 	outDir := r.outDir
 	pkgName := filepath.Base(outDir)
 	srcFile := NewSrcFile(pkgName)
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	ctx := context.WithValue(context.Background(), keyCode, srcFile) // nolint
 	ctx = context.WithValue(ctx, keyPackage, pkgName)                // nolint
 
 	for _, method := range contract.Methods {
-		srcFile.Add(r.exchange(ctx, contract, r.requestStructName(contract, method), r.fieldsArgument(method))).Line()
-		srcFile.Add(r.exchange(ctx, contract, r.responseStructName(contract, method), r.fieldsResult(method))).Line()
+		isHTTP := r.methodIsHTTP(contract, method)
+		isJSONRPC := r.methodIsJsonRPC(contract, method)
+
+		if isJSONRPC {
+			srcFile.Add(r.exchange(ctx, contract, r.requestStructName(contract, method), r.fieldsArgumentForClient(contract, method))).Line()
+		}
+		if isHTTP && len(r.argsForRequestBody(contract, method)) > 0 {
+			srcFile.Add(r.exchange(ctx, contract, r.requestBodyStructName(contract, method), r.fieldsRequestForBody(contract, method))).Line()
+		}
+
+		responseStreamResult := r.methodResponseBodyStreamResult(method)
+		responseMultipart := r.methodResponseMultipart(contract, method)
+		if isHTTP && (responseStreamResult != nil || responseMultipart) {
+			continue
+		}
+
+		exclude := r.resultNamesExcludeFromBody(contract, method)
+		if len(exclude) > 0 && isHTTP {
+			srcFile.Add(r.exchange(ctx, contract, r.responseBodyStructName(contract, method), r.fieldsResultBody(contract, method))).Line()
+		} else {
+			srcFile.Add(r.exchange(ctx, contract, r.responseStructName(contract, method), r.fieldsResult(method))).Line()
+		}
 	}
 	return srcFile.Save(path.Join(outDir, strings.ToLower(contract.Name)+"-exchange.go"))
 }

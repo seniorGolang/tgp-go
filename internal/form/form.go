@@ -12,11 +12,11 @@ func DecodeToStruct(values url.Values, dst any) (err error) {
 
 	dstVal := reflect.ValueOf(dst)
 	if dstVal.Kind() != reflect.Ptr || dstVal.IsNil() {
-		return nil
+		return
 	}
 	dstVal = dstVal.Elem()
 	if dstVal.Kind() != reflect.Struct {
-		return nil
+		return
 	}
 	typ := dstVal.Type()
 	for i := 0; i < typ.NumField(); i++ {
@@ -69,7 +69,7 @@ func DecodeToStruct(values url.Values, dst any) (err error) {
 			fv.Set(reflect.ValueOf(s).Convert(fv.Type()))
 		}
 	}
-	return nil
+	return
 }
 
 func EncodeFromStruct(src any) (values url.Values) {
@@ -119,10 +119,10 @@ func EncodeFromStruct(src any) (values url.Values) {
 			values.Set(key, s)
 		}
 	}
-	return values
+	return
 }
 
-func fmtString(v reflect.Value) string {
+func fmtString(v reflect.Value) (s string) {
 
 	switch v.Kind() {
 	case reflect.String:

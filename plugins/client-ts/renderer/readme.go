@@ -26,12 +26,12 @@ type DocOptions struct {
 	FilePath string // Полный путь к файлу документации (пусто = outDir/readme.md)
 }
 
-func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
-	var err error
+func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
+
 	outDir := r.outDir
 
 	if !docOpts.Enabled {
-		return nil
+		return
 	}
 
 	var buf bytes.Buffer
@@ -77,7 +77,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method, contract) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "")
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+r.lcName(contract.Name)+"/"+r.lcName(method.Name))
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
@@ -193,7 +193,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 	r.renderErrorsSectionTS(md, outDir)
 
 	if err = md.Build(); err != nil {
-		return err
+		return
 	}
 
 	outFilename := path.Join(outDir, "readme.md")
@@ -201,14 +201,15 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) error {
 		outFilename = docOpts.FilePath
 		readmeDir := path.Dir(outFilename)
 		if err = os.MkdirAll(readmeDir, 0777); err != nil {
-			return err
+			return
 		}
 	}
 
 	return os.WriteFile(outFilename, buf.Bytes(), 0600)
 }
 
-func generateAnchor(title string) string {
+func generateAnchor(title string) (s string) {
+
 	anchor := strings.ToLower(title)
 
 	anchor = strings.ReplaceAll(anchor, " ", "-")
@@ -231,22 +232,22 @@ func generateAnchor(title string) string {
 	return anchor
 }
 
-func contractAnchorID(contractName string) string {
+func contractAnchorID(contractName string) (s string) {
 
 	return "contract-" + generateAnchor(contractName)
 }
 
-func methodAnchorID(contractName string, methodNameOrTitle string) string {
+func methodAnchorID(contractName string, methodNameOrTitle string) (s string) {
 
 	return contractAnchorID(contractName) + "-" + generateAnchor(methodNameOrTitle)
 }
 
-func typeAnchorID(typeName string) string {
+func typeAnchorID(typeName string) (s string) {
 
 	return "type-" + generateAnchor(typeName)
 }
 
-func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) bool {
+func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) (ok bool) {
 
 	if method == nil {
 		return false
@@ -254,12 +255,13 @@ func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model
 	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
 }
 
-func (r *ClientRenderer) methodIsHTTP(method *model.Method, contract *model.Contract) bool {
+func (r *ClientRenderer) methodIsHTTP(method *model.Method, contract *model.Contract) (ok bool) {
 
 	return r.isHTTP(method, contract)
 }
 
-func filterDocsComments(docs []string) []string {
+func filterDocsComments(docs []string) (out []string) {
+
 	if len(docs) == 0 {
 		return docs
 	}
@@ -273,6 +275,7 @@ func filterDocsComments(docs []string) []string {
 }
 
 func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
+
 	md.H2("Описание клиента")
 	md.PlainText("TypeScript клиент для работы с API. Клиент поддерживает JSON-RPC и HTTP методы.")
 	md.LF()
@@ -289,8 +292,8 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	md.BulletList(capabilities...)
 	md.LF()
 
-	var exampleContract *model.Contract
 	var exampleMethod *model.Method
+	var exampleContract *model.Contract
 
 	contracts := make([]*model.Contract, len(r.project.Contracts))
 	copy(contracts, r.project.Contracts)
@@ -374,12 +377,13 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			codeExample, err = r.renderTemplate("templates/simple_init_with_result.tmpl", templateData)
+			if codeExample, err = r.renderTemplate("templates/simple_init_with_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		} else {
-			codeExample, err = r.renderTemplate("templates/simple_init_no_result.tmpl", templateData)
-		}
-		if err != nil {
-			codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			if codeExample, err = r.renderTemplate("templates/simple_init_no_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		}
 		md.CodeBlocks(markdown.SyntaxHighlightTypeScript, codeExample)
 	}
@@ -435,12 +439,13 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			codeExample, err = r.renderTemplate("templates/init_with_options_with_result.tmpl", templateData)
+			if codeExample, err = r.renderTemplate("templates/init_with_options_with_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		} else {
-			codeExample, err = r.renderTemplate("templates/init_with_options_no_result.tmpl", templateData)
-		}
-		if err != nil {
-			codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			if codeExample, err = r.renderTemplate("templates/init_with_options_no_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		}
 		md.CodeBlocks(markdown.SyntaxHighlightTypeScript, codeExample)
 	}
@@ -497,12 +502,13 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			codeExample, err = r.renderTemplate("templates/init_with_headers_with_result.tmpl", templateData)
+			if codeExample, err = r.renderTemplate("templates/init_with_headers_with_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		} else {
-			codeExample, err = r.renderTemplate("templates/init_with_headers_no_result.tmpl", templateData)
-		}
-		if err != nil {
-			codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			if codeExample, err = r.renderTemplate("templates/init_with_headers_no_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		}
 		md.CodeBlocks(markdown.SyntaxHighlightTypeScript, codeExample)
 	}
@@ -561,12 +567,13 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			codeExample, err = r.renderTemplate("templates/init_with_dynamic_headers_with_result.tmpl", templateData)
+			if codeExample, err = r.renderTemplate("templates/init_with_dynamic_headers_with_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		} else {
-			codeExample, err = r.renderTemplate("templates/init_with_dynamic_headers_no_result.tmpl", templateData)
-		}
-		if err != nil {
-			codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			if codeExample, err = r.renderTemplate("templates/init_with_dynamic_headers_no_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		}
 		md.CodeBlocks(markdown.SyntaxHighlightTypeScript, codeExample)
 	}
@@ -577,6 +584,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 }
 
 func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model.Contract, outDir string) {
+
 	contractAnchor := contractAnchorID(contract.Name)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", contractAnchor))
 	md.LF()
@@ -610,6 +618,7 @@ func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model
 }
 
 func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string) {
+
 	methodAnchor := methodAnchorID(contract.Name, method.Name)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
 	md.LF()
@@ -649,7 +658,7 @@ func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.
 func (r *ClientRenderer) renderHTTPMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string) {
 
 	httpMethod := model.GetHTTPMethod(r.project, contract, method)
-	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "")
+	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+r.lcName(contract.Name)+"/"+r.lcName(method.Name))
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 	methodAnchor := methodAnchorID(contract.Name, methodTitle)
@@ -714,6 +723,7 @@ func (r *ClientRenderer) renderHTTPMethodDocTS(md *markdown.Markdown, method *mo
 }
 
 func (r *ClientRenderer) renderMethodSignatureTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, isHTTP bool) {
+
 	md.PlainText(markdown.Bold("Сигнатура:"))
 	md.LF()
 
@@ -781,6 +791,7 @@ func (r *ClientRenderer) renderMethodSignatureTS(md *markdown.Markdown, method *
 }
 
 func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, method *model.Method, contract *model.Contract) {
+
 	args := r.argsWithoutContext(method)
 	results := r.resultsWithoutError(method)
 
@@ -838,6 +849,7 @@ func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, m
 }
 
 func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *model.Method, contract *model.Contract) {
+
 	if len(method.Errors) == 0 {
 		return
 	}
@@ -870,6 +882,7 @@ func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *mod
 }
 
 func (r *ClientRenderer) renderBatchSectionTS(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
+
 	batchAnchor := generateAnchor("Batch запросы (JSON-RPC)")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", batchAnchor))
 	md.LF()
@@ -887,6 +900,7 @@ func (r *ClientRenderer) renderBatchSectionTS(md *markdown.Markdown, contracts [
 }
 
 func (r *ClientRenderer) renderBatchExampleTS(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
+
 	var jsonRPCContracts []*model.Contract
 	for _, contract := range contracts {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
@@ -950,7 +964,7 @@ await client.batch(
 	codeBuilder.WriteString("const client = new Client('http://localhost:9000');\n\n")
 
 	serviceVar := r.getClientMethodName(exampleContract)
-	codeBuilder.WriteString(fmt.Sprintf("const %s = client.%s();\n\n", serviceVar, serviceVar))
+	_, _ = fmt.Fprintf(&codeBuilder, "const %s = client.%s();\n\n", serviceVar, serviceVar)
 
 	// Порядок: callback-функции, затем массив вызовов reqXxx() — как в сгенерированном клиенте.
 	if exampleMethod1 != nil {
@@ -962,14 +976,14 @@ await client.batch(
 			callbackParams1 = append(callbackParams1, fmt.Sprintf("%s: %s", tsSafeName(ret.Name), typeStr))
 		}
 		callbackParams1 = append(callbackParams1, "error: Error | null")
-		codeBuilder.WriteString(fmt.Sprintf("function %s(%s) {\n", callbackName1, strings.Join(callbackParams1, ", ")))
+		_, _ = fmt.Fprintf(&codeBuilder, "function %s(%s) {\n", callbackName1, strings.Join(callbackParams1, ", "))
 		codeBuilder.WriteString("  if (error) {\n")
-		codeBuilder.WriteString(fmt.Sprintf("    console.error('Error in %s.%s:', error);\n", exampleContract.Name, exampleMethod1.Name))
+		_, _ = fmt.Fprintf(&codeBuilder, "    console.error('Error in %s.%s:', error);\n", exampleContract.Name, exampleMethod1.Name)
 		codeBuilder.WriteString("    return;\n")
 		codeBuilder.WriteString("  }\n")
 		if len(results1) > 0 {
 			resultVar := tsSafeName(results1[0].Name)
-			codeBuilder.WriteString(fmt.Sprintf("  console.log('Result:', %s);\n", resultVar))
+			_, _ = fmt.Fprintf(&codeBuilder, "  console.log('Result:', %s);\n", resultVar)
 		}
 		codeBuilder.WriteString("}\n\n")
 	}
@@ -982,14 +996,14 @@ await client.batch(
 			callbackParams2 = append(callbackParams2, fmt.Sprintf("%s: %s", tsSafeName(ret.Name), typeStr))
 		}
 		callbackParams2 = append(callbackParams2, "error: Error | null")
-		codeBuilder.WriteString(fmt.Sprintf("function %s(%s) {\n", callbackName2, strings.Join(callbackParams2, ", ")))
+		_, _ = fmt.Fprintf(&codeBuilder, "function %s(%s) {\n", callbackName2, strings.Join(callbackParams2, ", "))
 		codeBuilder.WriteString("  if (error) {\n")
-		codeBuilder.WriteString(fmt.Sprintf("    console.error('Error in %s.%s:', error);\n", exampleContract.Name, exampleMethod2.Name))
+		_, _ = fmt.Fprintf(&codeBuilder, "    console.error('Error in %s.%s:', error);\n", exampleContract.Name, exampleMethod2.Name)
 		codeBuilder.WriteString("    return;\n")
 		codeBuilder.WriteString("  }\n")
 		if len(results2) > 0 {
 			resultVar := tsSafeName(results2[0].Name)
-			codeBuilder.WriteString(fmt.Sprintf("  console.log('Result:', %s);\n", resultVar))
+			_, _ = fmt.Fprintf(&codeBuilder, "  console.log('Result:', %s);\n", resultVar)
 		}
 		codeBuilder.WriteString("}\n\n")
 	}
@@ -1037,13 +1051,14 @@ await client.batch(
 }
 
 func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, outDir string) {
+
 	errorsAnchor := generateAnchor("Обработка ошибок")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", errorsAnchor))
 	md.LF()
 	md.H2("Обработка ошибок")
 
-	var jsonrpcContract *model.Contract
 	var jsonrpcMethod *model.Method
+	var jsonrpcContract *model.Contract
 	contracts := make([]*model.Contract, len(r.project.Contracts))
 	copy(contracts, r.project.Contracts)
 	sort.Slice(contracts, func(i, j int) bool {
@@ -1135,8 +1150,8 @@ try {
 	}
 	md.BulletList(errorCodes...)
 
-	var httpContract *model.Contract
 	var httpMethod *model.Method
+	var httpContract *model.Contract
 	for _, contract := range contracts {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
@@ -1218,12 +1233,14 @@ try {
 	md.HorizontalRule()
 }
 
-func (r *ClientRenderer) tsTypeStringFromVariable(variable *model.Variable, pkgPath string) string {
+func (r *ClientRenderer) tsTypeStringFromVariable(variable *model.Variable, pkgPath string) (s string) {
+
 	schema := r.walkVariable(variable.Name, pkgPath, variable, nil, false)
 	return schema.typeLink()
 }
 
-func (r *ClientRenderer) renderTemplate(templatePath string, data any) (string, error) {
+func (r *ClientRenderer) renderTemplate(templatePath string, data any) (s string, err error) {
+
 	contentBytes, err := templatesFS.ReadFile(templatePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read template %s: %w", templatePath, err)
@@ -1239,14 +1256,15 @@ func (r *ClientRenderer) renderTemplate(templatePath string, data any) (string, 
 	}
 
 	var buf strings.Builder
-	if err := tmpl.Execute(&buf, data); err != nil {
+	if err = tmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("failed to execute template %s: %w", templatePath, err)
 	}
 
 	return buf.String(), nil
 }
 
-func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variable, docs, pkgPath string) string {
+func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variable, docs, pkgPath string) (s string) {
+
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		return "[]"
 	}
@@ -1276,7 +1294,8 @@ func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variab
 	}
 }
 
-func (r *ClientRenderer) getClientMethodName(contract *model.Contract) string {
+func (r *ClientRenderer) getClientMethodName(contract *model.Contract) (s string) {
+
 	fileName := r.tsFileName(contract)
 	methodName := ""
 	parts := strings.Split(fileName, "_")
@@ -1296,6 +1315,7 @@ func (r *ClientRenderer) getClientMethodName(contract *model.Contract) string {
 }
 
 func (r *ClientRenderer) getStructType(typeID, pkgPath string) (structType *model.Type, typeName string, pkg string) {
+
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		return nil, "", ""
@@ -1314,11 +1334,12 @@ func (r *ClientRenderer) getStructType(typeID, pkgPath string) (structType *mode
 	return typ, typeName, pkg
 }
 
-func (r *ClientRenderer) getTypeLinkFromVariableTS(variable *model.Variable, pkgPath string) string {
+func (r *ClientRenderer) getTypeLinkFromVariableTS(variable *model.Variable, pkgPath string) (s string) {
 	return r.getTypeLinkFromTypeRefTS(&variable.TypeRef, pkgPath)
 }
 
-func (r *ClientRenderer) getTypeLinkFromTypeRefTS(typeRef *model.TypeRef, pkgPath string) string {
+func (r *ClientRenderer) getTypeLinkFromTypeRefTS(typeRef *model.TypeRef, pkgPath string) (s string) {
+
 	if typeRef == nil {
 		return "-"
 	}
@@ -1345,6 +1366,7 @@ func (r *ClientRenderer) getTypeLinkFromTypeRefTS(typeRef *model.TypeRef, pkgPat
 }
 
 func (r *ClientRenderer) getTypeLinkTS(typeID, pkgPath string) string {
+
 	if r.isBuiltinType(typeID) {
 		return "-"
 	}
@@ -1427,6 +1449,7 @@ func (r *ClientRenderer) getTypeLinkTS(typeID, pkgPath string) string {
 }
 
 func (r *ClientRenderer) tsTypeString(typeID, pkgPath string) string {
+
 	if r.isBuiltinType(typeID) {
 		return r.typeIDToTSType(typeID)
 	}
@@ -1481,6 +1504,7 @@ type typeUsageTS struct {
 }
 
 func (r *ClientRenderer) collectStructTypesTS() map[string]*typeUsageTS {
+
 	typeUsages := make(map[string]*typeUsageTS)
 
 	contracts := make([]*model.Contract, len(r.project.Contracts))
@@ -1570,6 +1594,7 @@ func (r *ClientRenderer) collectStructTypesTS() map[string]*typeUsageTS {
 }
 
 func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[string]*typeUsageTS) {
+
 	sharedTypesAnchor := generateAnchor("Общие типы")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", sharedTypesAnchor))
 	md.LF()
@@ -1655,6 +1680,7 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 }
 
 func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structType *model.Type, typeName string, pkgPath string) {
+
 	typeAnchor := typeAnchorID(typeName)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", typeAnchor))
 	md.LF()
@@ -1723,6 +1749,7 @@ func (r *ClientRenderer) tsTypeStringFromStructField(field *model.StructField, p
 }
 
 func (r *ClientRenderer) tsTypeStringFromTypeRef(typeRef *model.TypeRef, pkgPath string) string {
+
 	if typeRef == nil {
 		return "any"
 	}
@@ -1741,6 +1768,7 @@ func (r *ClientRenderer) tsTypeStringFromTypeRef(typeRef *model.TypeRef, pkgPath
 }
 
 func (r *ClientRenderer) getTypeLinkFromStructFieldTS(field *model.StructField, pkgPath string) string {
+
 	switch {
 	case field.IsSlice || field.ArrayLen > 0:
 		return r.getTypeLinkTS(field.TypeID, pkgPath)

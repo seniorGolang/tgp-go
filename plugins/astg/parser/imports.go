@@ -157,6 +157,7 @@ func extractImportsFromFieldList(fieldList *ast.FieldList, importAliases map[str
 }
 
 func extractImportsFromType(expr ast.Expr, importAliases map[string]string, requiredImports map[string]bool) {
+
 	if expr == nil {
 		return
 	}

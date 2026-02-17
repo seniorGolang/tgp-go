@@ -12,6 +12,7 @@ import (
 )
 
 func TestArchitecture_JunctionsInParent(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("set junctions in parent", func(t *testing.T) {

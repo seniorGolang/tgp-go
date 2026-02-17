@@ -59,6 +59,7 @@ func (r *ClientRenderer) collectTypeIDsFromContract(contract *model.Contract, co
 }
 
 func (r *ClientRenderer) collectTypeIDFromVariable(variable *model.Variable, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
+
 	if variable == nil {
 		return
 	}
@@ -66,6 +67,7 @@ func (r *ClientRenderer) collectTypeIDFromVariable(variable *model.Variable, col
 }
 
 func (r *ClientRenderer) collectTypeIDFromTypeRef(typeRef *model.TypeRef, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
+
 	if typeRef == nil {
 		return
 	}
@@ -81,6 +83,7 @@ func (r *ClientRenderer) collectTypeIDFromTypeRef(typeRef *model.TypeRef, collec
 }
 
 func (r *ClientRenderer) collectTypeIDFromStructField(field *model.StructField, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
+
 	if field == nil {
 		return
 	}
@@ -173,6 +176,7 @@ func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs 
 }
 
 func (r *ClientRenderer) isExcludedTypeID(typeID string) bool {
+
 	if typeID == "" {
 		return false
 	}
@@ -251,6 +255,7 @@ func (r *ClientRenderer) isExcludedTypeID(typeID string) bool {
 }
 
 func (r *ClientRenderer) isExcludedType(typ *model.Type) bool {
+
 	if typ == nil {
 		return false
 	}
@@ -277,6 +282,7 @@ func (r *ClientRenderer) isExcludedType(typ *model.Type) bool {
 }
 
 func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) bool {
+
 	if typ == nil {
 		return false
 	}

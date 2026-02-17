@@ -16,7 +16,7 @@ type config struct {
 	oriental oriental
 }
 
-func newConfig() *config {
+func newConfig() (c *config) {
 	return &config{
 		oriental: tb,
 	}
@@ -24,37 +24,37 @@ func newConfig() *config {
 
 type Option func(*config)
 
-func WithTitle(title string) Option {
+func WithTitle(title string) (o Option) {
 	return func(c *config) {
 		c.title = title
 	}
 }
 
-func WithOrientalTopToBottom() Option {
+func WithOrientalTopToBottom() (o Option) {
 	return func(c *config) {
 		c.oriental = tb
 	}
 }
 
-func WithOrientalTopDown() Option {
+func WithOrientalTopDown() (o Option) {
 	return func(c *config) {
 		c.oriental = td
 	}
 }
 
-func WithOrientalBottomToTop() Option {
+func WithOrientalBottomToTop() (o Option) {
 	return func(c *config) {
 		c.oriental = bt
 	}
 }
 
-func WithOrientalRightToLeft() Option {
+func WithOrientalRightToLeft() (o Option) {
 	return func(c *config) {
 		c.oriental = rl
 	}
 }
 
-func WithOrientalLeftToRight() Option {
+func WithOrientalLeftToRight() (o Option) {
 	return func(c *config) {
 		c.oriental = lr
 	}

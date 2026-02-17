@@ -2,44 +2,26 @@
 // conditions defined in file 'LICENSE', which is part of this project source code.
 package renderer
 
-type Renderer interface {
-	// RenderHTTP генерирует HTTP обработчики для контракта.
-	RenderHTTP() error
+type ContractRenderer interface {
+	RenderHTTP() (err error)
+	RenderServer() (err error)
+	RenderExchange() (err error)
+	RenderMiddleware() (err error)
+	RenderTrace() (err error)
+	RenderMetrics() (err error)
+	RenderLogger() (err error)
+	RenderJsonRPC() (err error)
+	RenderREST() (err error)
+}
 
-	// RenderServer генерирует серверную обертку для контракта.
-	RenderServer() error
-
-	// RenderExchange генерирует структуры обмена данными (request/response).
-	RenderExchange() error
-
-	// RenderMiddleware генерирует типы middleware.
-	RenderMiddleware() error
-
-	// RenderTrace генерирует middleware для трейсинга.
-	RenderTrace() error
-
-	// RenderMetrics генерирует middleware для метрик.
-	RenderMetrics() error
-
-	// RenderLogger генерирует middleware для логирования.
-	RenderLogger() error
-
-	// RenderJsonRPC генерирует JSON-RPC обработчики.
-	RenderJsonRPC() error
-
-	// RenderREST генерирует REST обработчики.
-	RenderREST() error
-
-	// Транспортные файлы (генерируются один раз для всех контрактов)
-	RenderTransportHTTP() error
-	RenderTransportContext() error
-	RenderTransportLogger() error
-	RenderTransportFiber() error
-	RenderTransportHeader() error
-	RenderTransportErrors() error
-	RenderTransportServer() error
-	RenderTransportOptions() error
-	RenderTransportMetrics() error
-	RenderTransportVersion() error
-	RenderTransportJsonRPC() error
+type TransportRenderer interface {
+	RenderTransportContext() (err error)
+	RenderTransportFiber() (err error)
+	RenderTransportHeader() (err error)
+	RenderTransportErrors() (err error)
+	RenderTransportServer() (err error)
+	RenderTransportOptions() (err error)
+	RenderTransportMetrics() (err error)
+	RenderTransportVersion() (err error)
+	RenderTransportJsonRPC() (err error)
 }

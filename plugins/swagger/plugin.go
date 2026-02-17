@@ -11,6 +11,7 @@ import (
 	"tgp/core/data"
 	"tgp/core/i18n"
 	"tgp/core/plugin"
+	"tgp/internal/common"
 	"tgp/internal/helper"
 	"tgp/internal/model"
 	"tgp/internal/stats"
@@ -18,16 +19,18 @@ import (
 	"tgp/plugins/swagger/server"
 )
 
+const defaultServeAddr = ":8080"
+
 //go:embed plugin.md
 var pluginDoc string
 
 type SwaggerPlugin struct{}
 
-func (p *SwaggerPlugin) Execute(rootDir string, request data.Storage, path ...string) (response data.Storage, err error) {
+func (p *SwaggerPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
 	slog.Info(i18n.Msg("swagger plugin started"))
 
-	response = data.NewStorage()
+	response = request
 
 	var project *model.Project
 	if project, err = helper.GetProject(request); err != nil {
@@ -46,13 +49,12 @@ func (p *SwaggerPlugin) Execute(rootDir string, request data.Storage, path ...st
 		return nil, fmt.Errorf("%s: %w", i18n.Msg("generate Swagger"), err)
 	}
 
+	var addr string
 	var output string
-	if output, err = helper.GetOutput(request); err != nil {
-		return
+	if rawOut, _ := data.Get[string](request, "out"); rawOut != "" {
+		output = common.NormalizeWASMPath(rawOut)
 	}
-
 	if output != "" {
-		// Логируем начало генерации с деталями
 		attrs := stats.StartSwaggerGenerationAttrs(swaggerStats, output)
 		slog.Info(i18n.Msg("generating Swagger documentation"), attrs...)
 
@@ -61,22 +63,16 @@ func (p *SwaggerPlugin) Execute(rootDir string, request data.Storage, path ...st
 			return nil, fmt.Errorf("%s: %w", i18n.Msg("generate Swagger"), err)
 		}
 
-		// Подсчитываем количество типов (приблизительно, из project.Types)
 		swaggerStats.SetTotalTypes(len(project.Types))
-
-		// Логируем завершение генерации с деталями
 		attrs = stats.CompleteSwaggerGenerationAttrs(swaggerStats, output)
 		slog.Info(i18n.Msg("Swagger documentation generated successfully"), attrs...)
-
-		// Сохраняем результат в response
-		if err = response.Set("out", output); err != nil {
-			return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to set response"), err)
-		}
 	}
 
-	var addr string
-	if addr, _ = data.Get[string](request, "serve"); addr != "" {
-
+	addr, _ = data.Get[string](request, "serve")
+	if addr == "" && output == "" {
+		addr = defaultServeAddr
+	}
+	if addr != "" {
 		if err = server.Serve(addr, swaggerDoc); err != nil {
 			slog.Error(i18n.Msg("failed to start swagger server"), "error", err)
 			return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to start swagger server"), err)

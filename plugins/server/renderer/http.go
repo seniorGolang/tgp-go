@@ -9,13 +9,14 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *contractRenderer) RenderHTTP() error {
+func (r *contractRenderer) RenderHTTP() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageCors, "cors")
 	srcFile.ImportName(PackageFiber, "fiber")
@@ -73,7 +74,9 @@ func (r *contractRenderer) renderHTTPServiceFunc(srcFile *GoFile) {
 
 func (r *contractRenderer) renderHTTPWithFuncs(srcFile *GoFile) {
 
-	srcFile.Line().Add(r.httpWithLogFunc())
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagLogger) {
+		srcFile.Line().Add(r.httpWithLogFunc())
+	}
 	if model.IsAnnotationSet(r.project, r.contract, nil, nil, TagTrace) {
 		srcFile.Line().Add(r.httpWithTraceFunc())
 	}
@@ -121,7 +124,7 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 		})
 }
 
-func (r *contractRenderer) httpWithErrorHandler() Code {
+func (r *contractRenderer) httpWithErrorHandler() (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("WithErrorHandler").
@@ -133,7 +136,7 @@ func (r *contractRenderer) httpWithErrorHandler() Code {
 		})
 }
 
-func (r *contractRenderer) httpWithLogFunc() Code {
+func (r *contractRenderer) httpWithLogFunc() (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("WithLog").
@@ -145,7 +148,7 @@ func (r *contractRenderer) httpWithLogFunc() Code {
 		})
 }
 
-func (r *contractRenderer) httpWithTraceFunc() Code {
+func (r *contractRenderer) httpWithTraceFunc() (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("WithTrace").
@@ -157,7 +160,7 @@ func (r *contractRenderer) httpWithTraceFunc() Code {
 		})
 }
 
-func (r *contractRenderer) httpWithMetricsFunc() Code {
+func (r *contractRenderer) httpWithMetricsFunc() (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("WithMetrics").
@@ -169,7 +172,7 @@ func (r *contractRenderer) httpWithMetricsFunc() Code {
 		})
 }
 
-func (r *contractRenderer) httpWithRedirectFunc() Code {
+func (r *contractRenderer) httpWithRedirectFunc() (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("WithRedirect").

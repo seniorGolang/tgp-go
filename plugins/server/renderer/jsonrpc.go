@@ -10,18 +10,19 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *contractRenderer) RenderJsonRPC() error {
+func (r *contractRenderer) RenderJsonRPC() (err error) {
 
-	if err := r.pkgCopyTo("srvctx", r.outDir); err != nil {
-		return fmt.Errorf("copy srvctx package: %w", err)
+	if err = r.pkgRenderTo("srvctx", r.outDir, newPkgTemplateData()); err != nil {
+		return fmt.Errorf("render srvctx package: %w", err)
 	}
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	jsonPkg := r.getPackageJSON()
 	srcFile.ImportName(PackageFiber, "fiber")
@@ -58,10 +59,11 @@ func (r *contractRenderer) RenderJsonRPC() error {
 	srcFile.Add(r.serviceServeBatchFunc(jsonPkg))
 	srcFile.Add(r.serviceSingleBatchFunc(typeGen))
 
-	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-jsonrpc.go"))
+	err = srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-jsonrpc.go"))
+	return
 }
 
-func (r *contractRenderer) rpcMethodFuncWithFiberCtx(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) Code {
+func (r *contractRenderer) rpcMethodFuncWithFiberCtx(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
 		Id(toLowerCamel(method.Name)).
@@ -73,7 +75,7 @@ func (r *contractRenderer) rpcMethodFuncWithFiberCtx(srcFile *GoFile, typeGen *t
 		})
 }
 
-func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) Code {
+func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
 		Id(toLowerCamel(method.Name)+"WithContext").
@@ -117,25 +119,37 @@ func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *ty
 				ig.If(List(Id("errCoder"), Id("ok")).Op(":=").Err().Op(".").Call(Id("withErrorCode")).Op(";").Id("ok")).Block(
 					Id("code").Op("=").Id("errCoder").Dot("Code").Call(),
 				)
-				ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("code"), Id("sanitizeErrorMessage").Call(Err()), Nil()))
+				ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("code"), Err().Dot("Error").Call(), Nil()))
 			})
 			bg.Id("responseBase").Op("=").Op("&").Id("baseJsonRPC").Values(Dict{
 				Id("ID"):      Id("requestBase").Dot("ID"),
 				Id("Version"): Id("Version"),
 			})
-			resp := Id("response")
-			if len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
-				resp = Id("response").Dot(r.responseStructFieldName(method, resultsWithoutError(method)[0]))
+			if len(r.resultNamesExcludeFromBody(method)) > 0 {
+				resultName := responseResultStructName(r.contract.Name, method.Name)
+				bg.Id("resultForMarshal").Op(":=").Id(resultName).Values(DictFunc(func(d Dict) {
+					for _, ret := range resultsWithoutError(method) {
+						d[Id(r.responseStructFieldName(method, ret))] = Id("response").Dot(r.responseStructFieldName(method, ret))
+					}
+				}))
+				bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(Op("&").Id("resultForMarshal")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+					ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("parseError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
+				})
+			} else {
+				resp := Id("response")
+				if len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
+					resp = Id("response").Dot(r.responseStructFieldName(method, resultsWithoutError(method)[0]))
+				}
+				bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(resp).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+					ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("parseError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
+				})
 			}
-			bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(resp).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-				ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("parseError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
-			})
 			bg.Line()
 			bg.Return()
 		})
 }
 
-func (r *contractRenderer) serveMethodFunc(jsonPkg string) Code {
+func (r *contractRenderer) serveMethodFunc(jsonPkg string) (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("_serveMethod").
@@ -180,7 +194,7 @@ func (r *contractRenderer) serveMethodFunc(jsonPkg string) Code {
 		})
 }
 
-func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) Code {
+func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
@@ -287,7 +301,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) Code {
 		})
 }
 
-func (r *contractRenderer) serviceSingleBatchFunc(typeGen *types.Generator) Code {
+func (r *contractRenderer) serviceSingleBatchFunc(typeGen *types.Generator) (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
 		Id("doSingleBatch").
@@ -321,11 +335,11 @@ func (r *contractRenderer) serviceSingleBatchFunc(typeGen *types.Generator) Code
 		})
 }
 
-func (r *contractRenderer) jsonRPCArgErrReturn() func(arg, header string) *Statement {
+func (r *contractRenderer) jsonRPCArgErrReturn() func(arg, header string) []Code {
 
-	return func(arg, header string) *Statement {
-		return Line().If(Err().Op("!=").Nil()).Block(
+	return func(arg, header string) []Code {
+		return []Code{
 			Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("invalidParamsError"), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())),
-		)
+		}
 	}
 }

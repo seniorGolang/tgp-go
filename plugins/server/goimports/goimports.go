@@ -21,23 +21,10 @@ type Runner struct {
 	files []File
 }
 
-func New(path ...string) (runner Runner, err error) {
-
-	runner.files, err = buildFiles(path...)
-	return
-}
-
 func NewFromFile(path string) (runner Runner, err error) {
 
 	runner.files, err = buildFile(path)
 	return
-}
-
-func NewFromFiles(files ...File) Runner {
-
-	return Runner{
-		files: files,
-	}
 }
 
 func (r Runner) Run(modulePath string) (err error) {
@@ -63,16 +50,13 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 		}
 	}
 
-	// Порядок: стандартная библиотека -> локальные пакеты -> внешние пакеты
 	res, err := formatImports(src, file.Name, modulePath)
 	if err != nil {
-		// Если форматирование не удалось, возвращаем исходный код без изменений
 		err = nil
 		return
 	}
 
 	if len(res) == 0 {
-		// Если результат пустой, возвращаем исходный код
 		return
 	}
 
@@ -84,7 +68,8 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 	}
 
 	if file.Out == nil {
-		return os.WriteFile(file.Name, res, 0)
+		err = os.WriteFile(file.Name, res, 0)
+		return
 	}
 
 	_, err = file.Out.Write(res)
@@ -94,41 +79,10 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 	return
 }
 
-func isGoFile(f os.FileInfo) bool {
+func isGoFile(f os.FileInfo) (ok bool) {
 
-	// ignore non-Go files
 	name := f.Name()
 	return !f.IsDir() && !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".go")
-}
-
-func buildFiles(paths ...string) (files []File, err error) {
-
-	for _, root := range paths {
-		err = filepath.Walk(root, func(path string, info os.FileInfo, _ error) (err error) {
-			if info == nil {
-				return nil
-			}
-			if info.IsDir() {
-				return nil
-			}
-			if !isGoFile(info) {
-				return nil
-			}
-			b, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			files = append(files, File{
-				Name: path,
-				In:   bytes.NewReader(b),
-			})
-			return
-		})
-		if err != nil {
-			return
-		}
-	}
-	return
 }
 
 func buildFile(path string) (files []File, err error) {
@@ -154,9 +108,8 @@ func buildFile(path string) (files []File, err error) {
 	return
 }
 
-func GetModulePath(filePath string) string {
+func GetModulePath(filePath string) (s string) {
 
-	// Ищем go.mod, начиная с директории файла
 	dir := filepath.Dir(filePath)
 	for {
 		if dir == "" || dir == "/" {

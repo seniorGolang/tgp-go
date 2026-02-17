@@ -11,8 +11,7 @@ import (
 
 func GetProjectID(rootDir string) (id string, err error) {
 
-	id, err = marker.ProjectID(rootDir)
-	if err != nil {
+	if id, err = marker.ProjectID(rootDir); err != nil {
 		slog.Debug(i18n.Msg("failed to compute project ID"), slog.String("error", err.Error()), slog.String("rootDir", rootDir))
 	}
 	return id, err

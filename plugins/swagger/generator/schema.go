@@ -54,17 +54,11 @@ func (g *generator) registerStruct(name string, pkgPath string, methodTags tags.
 		}
 	}
 
-	schema := types.Schema{
+	g.schemas[name] = types.Schema{
 		Type:       "object",
 		Properties: properties,
 		Required:   required,
 	}
-
-	if desc := methodTags.Value("desc", ""); desc != "" {
-		schema.Description = desc
-	}
-
-	g.schemas[name] = schema
 }
 
 func (g *generator) variableToSchema(variable *model.Variable, pkgPath string, isArgument bool) (schema *types.Schema) {
@@ -72,6 +66,7 @@ func (g *generator) variableToSchema(variable *model.Variable, pkgPath string, i
 }
 
 func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.DocTags, pkgPath string, isArgument bool) (schema *types.Schema) {
+
 	if typeRef == nil {
 		return nil
 	}
@@ -155,7 +150,8 @@ func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.Doc
 					},
 				}
 			}
-			return result
+			schema = result
+			return
 		}
 
 		anySchema := types.Schema{
@@ -176,7 +172,8 @@ func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.Doc
 				},
 			}
 		}
-		return result
+		schema = result
+		return
 	}
 
 	if types.IsExplicitlyExcludedType(typeInfo) {
@@ -433,7 +430,17 @@ func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTag
 
 		fieldSchema := g.variableToSchema(fieldVar, typeInfo.ImportPkgPath, true)
 		if fieldSchema != nil && !fieldSchema.IsEmpty() {
-			properties[jsonName] = *fieldSchema
+			fieldDesc := descriptionFromStructField(field)
+			if fieldSchema.Ref != "" && fieldSchema.Type == "" && len(fieldSchema.Enum) == 0 && fieldDesc != "" {
+				properties[jsonName] = types.Schema{
+					AllOf: []types.Schema{
+						{Ref: fieldSchema.Ref},
+						{Description: fieldDesc},
+					},
+				}
+			} else {
+				properties[jsonName] = *fieldSchema
+			}
 			if field.NumberOfPointers > 0 {
 				continue
 			}
@@ -455,9 +462,10 @@ func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTag
 	}
 
 	schemaObj := types.Schema{
-		Type:       "object",
-		Properties: properties,
-		Required:   required,
+		Type:        "object",
+		Properties:  properties,
+		Required:    required,
+		Description: descriptionFromType(typeInfo),
 	}
 
 	g.schemas[typeName] = schemaObj

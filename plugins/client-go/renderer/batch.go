@@ -8,13 +8,15 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/generated"
 )
 
-func (r *ClientRenderer) RenderClientBatch() error {
+func (r *ClientRenderer) RenderClientBatch() (err error) {
 
 	outDir := r.outDir
 	srcFile := NewSrcFile(filepath.Base(outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageFmt, "fmt")
 	srcFile.ImportName(PackageContext, "context")
@@ -41,8 +43,7 @@ func (r *ClientRenderer) RenderClientBatch() error {
 		)
 		bg.Var().Err().Error()
 		bg.Var().Id("rpcResponses").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ResponsesRPC")
-		bg.List(Id("rpcResponses"), Err()).Op("=").Id("cli").Dot("rpc").Dot("CallBatch").Call(Id(_ctx_), Id("rpcRequests"))
-		bg.If(Err().Op("!=").Nil().Op("||").Id("rpcResponses").Op("==").Nil()).Block(
+		bg.If(List(Id("rpcResponses"), Err()).Op("=").Id("cli").Dot("rpc").Dot("CallBatch").Call(Id(_ctx_), Id("rpcRequests")).Op(";").Err().Op("!=").Nil().Op("||").Id("rpcResponses").Op("==").Nil()).Block(
 			For(List(Id("_"), Id("callback")).Op(":=").Range().Id("callbacks")).Block(
 				Id("callback").Call(Err(), Nil()),
 			),
@@ -78,5 +79,6 @@ func (r *ClientRenderer) RenderClientBatch() error {
 			)
 		})
 	})
-	return srcFile.Save(path.Join(outDir, "batch.go"))
+	err = srcFile.Save(path.Join(outDir, "batch.go"))
+	return
 }

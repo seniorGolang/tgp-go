@@ -9,42 +9,49 @@ import (
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map[string]bool {
+func (r *ClientRenderer) CollectTypeIDsForExchangeFromContracts(contracts []*model.Contract) (collectedTypeIDs map[string]bool) {
 
-	collectedTypeIDs := make(map[string]bool)
+	collectedTypeIDs = make(map[string]bool)
 	processedTypes := make(map[string]bool)
+	for _, contract := range contracts {
+		r.collectTypeIDsFromContract(contract, collectedTypeIDs, processedTypes)
+	}
+	return
+}
+
+func (r *ClientRenderer) collectTypeIDsFromContract(contract *model.Contract, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
 
 	for _, method := range contract.Methods {
 		for _, arg := range r.argsWithoutContext(method) {
 			r.collectTypeIDFromVariable(arg, collectedTypeIDs, processedTypes)
 		}
-
 		for _, result := range r.resultsWithoutError(method) {
 			r.collectTypeIDFromVariable(result, collectedTypeIDs, processedTypes)
 		}
-
-		// Ошибки могут быть указаны через @tg 400=, @tg 401= и т.д., а также через defaultError
 		for _, errInfo := range method.Errors {
 			if errInfo.TypeID != "" {
 				r.collectTypeIDRecursive(errInfo.TypeID, collectedTypeIDs, processedTypes)
 			}
 		}
-
 		if defaultError := model.GetAnnotationValue(r.project, contract, method, nil, "defaultError", ""); defaultError != "" && defaultError != "skip" {
-			// Парсим формат "pkgPath:TypeName"
 			if tokens := strings.Split(defaultError, ":"); len(tokens) == 2 {
-				pkgPath := tokens[0]
-				typeName := tokens[1]
-				typeID := fmt.Sprintf("%s:%s", pkgPath, typeName)
+				typeID := fmt.Sprintf("%s:%s", tokens[0], tokens[1])
 				r.collectTypeIDRecursive(typeID, collectedTypeIDs, processedTypes)
 			}
 		}
 	}
+}
 
+func (r *ClientRenderer) CollectTypeIDsForExchange(contract *model.Contract) map[string]bool {
+
+	collectedTypeIDs := make(map[string]bool)
+	processedTypes := make(map[string]bool)
+	r.collectTypeIDsFromContract(contract, collectedTypeIDs, processedTypes)
 	return collectedTypeIDs
 }
 
 func (r *ClientRenderer) collectTypeIDFromVariable(variable *model.Variable, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
+
 	if variable == nil {
 		return
 	}
@@ -52,6 +59,7 @@ func (r *ClientRenderer) collectTypeIDFromVariable(variable *model.Variable, col
 }
 
 func (r *ClientRenderer) collectTypeIDFromTypeRef(typeRef *model.TypeRef, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
+
 	if typeRef == nil {
 		return
 	}
@@ -67,6 +75,7 @@ func (r *ClientRenderer) collectTypeIDFromTypeRef(typeRef *model.TypeRef, collec
 }
 
 func (r *ClientRenderer) collectTypeIDFromStructField(field *model.StructField, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
+
 	if field == nil {
 		return
 	}
@@ -139,7 +148,8 @@ func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs 
 	}
 }
 
-func (r *ClientRenderer) isBuiltinType(typeID string) bool {
+func (r *ClientRenderer) isBuiltinType(typeID string) (ok bool) {
+
 	builtinTypes := map[string]bool{
 		"string":  true,
 		"int":     true,
@@ -163,27 +173,10 @@ func (r *ClientRenderer) isBuiltinType(typeID string) bool {
 	return builtinTypes[typeID]
 }
 
-func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) bool {
+func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) (ok bool) {
+
 	if typ == nil {
 		return false
-	}
-
-	// time.Time - преобразуется в Date
-	if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
-		return false // НЕ исключаем, преобразуем
-	}
-	if typ.ImportPkgPath == "" && typ.TypeName == "Time" {
-		return false // НЕ исключаем, преобразуем
-	}
-
-	// time.Duration - преобразуется в number
-	if typ.ImportPkgPath == "time" && typ.TypeName == "Duration" {
-		return false // НЕ исключаем, преобразуем
-	}
-
-	// UUID типы - преобразуются в string
-	if strings.HasSuffix(typ.TypeName, "UUID") || typ.TypeName == "UUID" {
-		return false // НЕ исключаем, преобразуем
 	}
 
 	// Decimal типы - преобразуются в number

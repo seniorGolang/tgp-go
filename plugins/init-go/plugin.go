@@ -19,12 +19,11 @@ var docContent string
 // BaseGoPlugin реализует интерфейсы Plugin и InitGenerator.
 type BaseGoPlugin struct{}
 
-// Execute выполняет основную логику плагина: генерирует базовый Go-проект по параметрам из request.
-func (p *BaseGoPlugin) Execute(_ string, request data.Storage, _ ...string) (response data.Storage, err error) {
+func (p *BaseGoPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
 	response = request
-	moduleName, err := data.Get[string](request, "module")
-	if err != nil || moduleName == "" {
+	var moduleName string
+	if moduleName, err = data.Get[string](request, "module"); err != nil || moduleName == "" {
 		return nil, errors.New(i18n.Msg("module option is required"))
 	}
 	var out, rest, jsonRPC string
@@ -35,12 +34,10 @@ func (p *BaseGoPlugin) Execute(_ string, request data.Storage, _ ...string) (res
 	if err = generator.Generate(out, moduleName, jsonRPC, rest); err != nil {
 		absOut, _ := filepath.Abs(out)
 		err = fmt.Errorf("init go in %s %s: %w", absOut, i18n.Msg("init generate"), err)
-		return
 	}
 	return
 }
 
-// Info возвращает информацию о плагине.
 func (p *BaseGoPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{
@@ -71,7 +68,7 @@ func (p *BaseGoPlugin) Info() (info plugin.Info, err error) {
 	return
 }
 
-// Generate создаёт базовый Go-проект. rootDir — корень, out — относительный путь от корня; плагин разрешает путь и передаёт в генератор.
+// rootDir — корень, out — относительный путь от корня; плагин разрешает путь и передаёт в генератор.
 func (p *BaseGoPlugin) Generate(rootDir string, out string, moduleName string, jsonRPC string, rest string) (err error) {
 
 	outDir := filepath.Join(rootDir, out)

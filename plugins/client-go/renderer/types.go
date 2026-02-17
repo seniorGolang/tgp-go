@@ -16,14 +16,14 @@ import (
 
 	"tgp/core/i18n"
 	"tgp/internal/common"
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) error {
+func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) (err error) {
 
 	if len(collectedTypeIDs) == 0 {
-		// Нет типов для генерации
-		return nil
+		return
 	}
 
 	// Отладка: логируем количество собранных типов
@@ -31,12 +31,12 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 
 	// Создаем директорию dto, если её нет
 	dtoDir := path.Join(r.outDir, "dto")
-	if err := os.MkdirAll(dtoDir, 0755); err != nil {
+	if err = os.MkdirAll(dtoDir, 0700); err != nil {
 		return fmt.Errorf("%s: %w", i18n.Msg("failed to create dto directory"), err)
 	}
 
 	srcFile := NewSrcFile("dto")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	ctx := context.WithValue(context.Background(), keyCode, srcFile) // nolint
 	ctx = context.WithValue(ctx, keyPackage, "dto")                  // nolint
@@ -121,7 +121,7 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 		if typeCode != nil {
 			// Создаем отдельный файл для каждого типа
 			typeFile := NewSrcFile("dto")
-			typeFile.PackageComment(DoNotEdit)
+			typeFile.PackageComment(generated.ByToolGateway)
 			typeCtx := context.WithValue(context.Background(), keyCode, typeFile) // nolint
 			typeCtx = context.WithValue(typeCtx, keyPackage, "dto")               // nolint
 
@@ -134,9 +134,8 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 
 			typeFile.Add(typeCode)
 
-			// Сохраняем файл с именем типа (в нижнем регистре)
 			fileName := strings.ToLower(typeName) + ".go"
-			if err := typeFile.Save(path.Join(dtoDir, fileName)); err != nil {
+			if err = typeFile.Save(path.Join(dtoDir, fileName)); err != nil {
 				return fmt.Errorf("%s: %w", fmt.Sprintf(i18n.Msg("failed to save type file %s"), typeName), err)
 			}
 			generatedCount++
@@ -148,7 +147,7 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) err
 	}
 
 	slog.Debug(i18n.Msg("RenderClientTypes: summary"), slog.Int("total", len(collectedTypeIDs)), slog.Int("notFound", notFoundCount), slog.Int("skipped", skippedCount), slog.Int("generated", generatedCount))
-	return nil
+	return
 }
 
 func (r *ClientRenderer) generateClientStruct(ctx context.Context, typeName string, typ *model.Type) Code {
@@ -289,14 +288,14 @@ func (r *ClientRenderer) generateClientMethod(ctx context.Context, method *model
 
 	args := make([]Code, 0, len(method.Args))
 	for _, arg := range method.Args {
-		argType := r.fieldTypeFromVariableForClient(ctx, arg, false)
+		argType := r.fieldTypeFromTypeRefForClient(ctx, &arg.TypeRef, false)
 		args = append(args, Id(ToLowerCamel(arg.Name)).Add(argType))
 	}
 
 	// Результаты
 	results := make([]Code, 0, len(method.Results))
 	for _, result := range method.Results {
-		resultType := r.fieldTypeFromVariableForClient(ctx, result, false)
+		resultType := r.fieldTypeFromTypeRefForClient(ctx, &result.TypeRef, false)
 		results = append(results, resultType)
 	}
 
@@ -517,12 +516,12 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 	case model.TypeKindFunction:
 		args := make([]Code, 0, len(typ.FunctionArgs))
 		for _, arg := range typ.FunctionArgs {
-			argType := r.fieldTypeFromVariableForClient(ctx, arg, false)
+			argType := r.fieldTypeFromTypeRefForClient(ctx, &arg.TypeRef, false)
 			args = append(args, argType)
 		}
 		results := make([]Code, 0, len(typ.FunctionResults))
 		for _, res := range typ.FunctionResults {
-			resType := r.fieldTypeFromVariableForClient(ctx, res, false)
+			resType := r.fieldTypeFromTypeRefForClient(ctx, &res.TypeRef, false)
 			results = append(results, resType)
 		}
 		return c.Func().Params(args...).Params(results...)
@@ -651,6 +650,7 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 }
 
 func (r *ClientRenderer) isBuiltinType(typeID string) bool {
+
 	builtinTypes := map[string]bool{
 		"string":  true,
 		"int":     true,
@@ -674,11 +674,8 @@ func (r *ClientRenderer) isBuiltinType(typeID string) bool {
 	return builtinTypes[typeID]
 }
 
-func (r *ClientRenderer) fieldTypeFromVariableForClient(ctx context.Context, variable *model.Variable, allowEllipsis bool) *Statement {
-	return r.fieldTypeFromTypeRefForClient(ctx, &variable.TypeRef, allowEllipsis)
-}
-
 func (r *ClientRenderer) fieldTypeFromTypeRefForClient(ctx context.Context, typeRef *model.TypeRef, allowEllipsis bool) *Statement {
+
 	c := &Statement{}
 
 	if typeRef.IsEllipsis && allowEllipsis {

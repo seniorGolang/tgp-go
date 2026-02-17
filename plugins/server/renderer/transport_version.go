@@ -5,14 +5,16 @@ package renderer
 import (
 	"path"
 	"path/filepath"
+
+	"tgp/internal/generated"
 )
 
-func (r *transportRenderer) RenderTransportVersion() error {
+func (r *transportRenderer) RenderTransportVersion() (err error) {
 
 	versionPath := path.Join(r.outDir, "version.go")
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.Const().Id("VersionASTg").Op("=").Lit(r.project.Version)
 

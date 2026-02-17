@@ -38,6 +38,7 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 		if existingType, exists = project.Types[typeID]; exists {
 			if len(existingType.ImplementsInterfaces) == 0 && existingType.ImportPkgPath != "" && existingType.TypeName != "" && loader != nil {
 				detectInterfaces(typ, existingType, project, loader)
+				detectParseFromString(typ, existingType, project, loader)
 				project.Types[typeID] = existingType
 			}
 			coreType = existingType
@@ -52,6 +53,7 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 			if existingType, exists = project.Types[typeID]; exists {
 				if len(existingType.ImplementsInterfaces) == 0 && existingType.ImportPkgPath != "" && existingType.TypeName != "" && loader != nil {
 					detectInterfaces(typ, existingType, project, loader)
+					detectParseFromString(typ, existingType, project, loader)
 					project.Types[typeID] = existingType
 				}
 				coreType = existingType
@@ -59,8 +61,8 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 			}
 			// Создаем минимальный тип для рекурсивного случая
 			coreType = &model.Type{}
-			var named *types.Named
 			var ok bool
+			var named *types.Named
 			if named, ok = typ.(*types.Named); ok {
 				if named.Obj() != nil {
 					coreType.TypeName = named.Obj().Name()
@@ -210,7 +212,6 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 		if named, ok := underlying.(*types.Named); ok {
 			if named.Obj() != nil {
 				coreType.AliasOf = fmt.Sprintf("%s:%s", named.Obj().Pkg().Path(), named.Obj().Name())
-				// Сохраняем базовый тип, если его еще нет
 				baseTypeID := coreType.AliasOf
 				if _, exists := project.Types[baseTypeID]; !exists {
 					basePkgPath := named.Obj().Pkg().Path()
@@ -267,8 +268,9 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 		return
 	}
 
-	// detectInterfaces будет вызвана позже, когда loader будет доступен
-	// Пока пропускаем
+	if loader != nil && coreType.ImportPkgPath != "" && coreType.TypeName != "" {
+		coreType.Docs, coreType.Directives = getTypeDocs(loader, coreType.ImportPkgPath, coreType.TypeName)
+	}
 
 	return
 }

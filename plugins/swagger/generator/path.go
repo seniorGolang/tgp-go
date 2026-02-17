@@ -76,12 +76,26 @@ func (g *generator) generateMethodPath(paths map[string]types.Path, contract *mo
 	}
 }
 
+func buildFullPath(prefix string, pathValue string) (s string) {
+
+	trimmed := strings.TrimPrefix(pathValue, "/")
+	if prefix == "" {
+		return "/" + trimmed
+	}
+	return path.Join("/", prefix, trimmed)
+}
+
+func (g *generator) defaultMethodPathValue(contract *model.Contract, method *model.Method) (s string) {
+
+	return "/" + types.ToLowerCamel(contract.Name) + "/" + types.ToLowerCamel(method.Name)
+}
+
 func (g *generator) generateJsonRPCPath(paths map[string]types.Path, contract *model.Contract, method *model.Method, serviceTags []string) {
 
 	prefix := model.GetAnnotationValue(g.project, contract, nil, nil, model.TagHttpPrefix, "")
-	urlPath := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpPath, "/"+types.ToLowerCamel(method.Name))
-	urlPath = strings.Split(urlPath, ":")[0]
-	jsonrpcPath := path.Join("/", prefix, urlPath)
+	pathValue := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpPath, g.defaultMethodPathValue(contract, method))
+	pathBase := strings.TrimPrefix(strings.Split(pathValue, ":")[0], "/")
+	jsonrpcPath := buildFullPath(prefix, "/"+pathBase)
 
 	requestStructName := g.requestStructName(contract, method)
 	responseStructName := g.responseStructName(contract, method)
@@ -89,13 +103,19 @@ func (g *generator) generateJsonRPCPath(paths map[string]types.Path, contract *m
 	g.registerStruct(requestStructName, contract.PkgPath, method.Annotations, method.Args, contentJSON)
 	g.registerStruct(responseStructName, contract.PkgPath, method.Annotations, method.Results, contentJSON)
 
+	opSummary := ""
+	opDesc := descriptionFromMethod(method)
+	if method.Annotations != nil {
+		opSummary = method.Annotations.Value(tagSummary, "")
+	}
 	operation := &types.Operation{
 		OperationID: types.ToCamel(contract.Name) + types.ToCamel(method.Name),
-		Summary:     model.GetAnnotationValue(g.project, contract, method, nil, tagSummary, ""),
-		Description: model.GetAnnotationValue(g.project, contract, method, nil, tagDesc, ""),
+		Summary:     opSummary,
+		Description: opDesc,
 		Tags:        serviceTags,
 		Deprecated:  model.IsAnnotationSet(g.project, contract, method, nil, tagDeprecated),
 		RequestBody: &types.RequestBody{
+			Description: requestBodyDescription(method),
 			Content: types.Content{
 				contentJSON: types.Media{
 					Schema: types.JSONRPCSchemaPerPath("params", g.toSchema(requestStructName)),
@@ -134,7 +154,7 @@ func (g *generator) countIOReaderArgs(method *model.Method) (n int) {
 			n++
 		}
 	}
-	return n
+	return
 }
 
 func (g *generator) countIOReadCloserResults(method *model.Method) (n int) {
@@ -144,10 +164,10 @@ func (g *generator) countIOReadCloserResults(method *model.Method) (n int) {
 			n++
 		}
 	}
-	return n
+	return
 }
 
-func (g *generator) requestMultipart(contract *model.Contract, method *model.Method) bool {
+func (g *generator) requestMultipart(contract *model.Contract, method *model.Method) (ok bool) {
 
 	n := g.countIOReaderArgs(method)
 	if n > 1 {
@@ -159,7 +179,7 @@ func (g *generator) requestMultipart(contract *model.Contract, method *model.Met
 	return false
 }
 
-func (g *generator) responseMultipart(contract *model.Contract, method *model.Method) bool {
+func (g *generator) responseMultipart(contract *model.Contract, method *model.Method) (ok bool) {
 
 	n := g.countIOReadCloserResults(method)
 	if n > 1 {
@@ -171,7 +191,7 @@ func (g *generator) responseMultipart(contract *model.Contract, method *model.Me
 	return false
 }
 
-func (g *generator) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) string {
+func (g *generator) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) (s string) {
 
 	if v != nil && v.Annotations != nil {
 		if val, found := v.Annotations[model.TagHttpPartName]; found && val != "" {
@@ -188,7 +208,7 @@ func (g *generator) streamPartName(contract *model.Contract, method *model.Metho
 	return v.Name
 }
 
-func (g *generator) streamPartContent(contract *model.Contract, method *model.Method, v *model.Variable) string {
+func (g *generator) streamPartContent(contract *model.Contract, method *model.Method, v *model.Variable) (s string) {
 
 	if v != nil && v.Annotations != nil {
 		if val, found := v.Annotations[model.TagHttpPartContent]; found && val != "" {
@@ -203,7 +223,7 @@ func (g *generator) streamPartContent(contract *model.Contract, method *model.Me
 	return ""
 }
 
-func (g *generator) varValueFromMethodMap(annotationValue string, varName string) string {
+func (g *generator) varValueFromMethodMap(annotationValue string, varName string) (s string) {
 
 	for _, pair := range strings.Split(annotationValue, ",") {
 		if pairTokens := strings.Split(strings.TrimSpace(pair), "|"); len(pairTokens) == 2 {
@@ -235,6 +255,7 @@ func (g *generator) multipartRequestBody(contract *model.Contract, method *model
 		media.Encoding = encoding
 	}
 	return &types.RequestBody{
+		Description: requestBodyDescription(method),
 		Content: types.Content{
 			contentMultipartFormData: media,
 		},
@@ -253,12 +274,61 @@ func (g *generator) multipartResponseSchema(contract *model.Contract, method *mo
 	return types.Schema{Type: "object", Properties: properties}
 }
 
-func (g *generator) effectiveResponseSchema(contract *model.Contract, method *model.Method, responseStructName string) types.Schema {
+func (g *generator) resultNamesExcludeFromBody(contract *model.Contract, method *model.Method) (out map[string]struct{}) {
+
+	out = make(map[string]struct{})
+	resultByName := func(name string) bool {
+		for _, r := range method.Results {
+			if r.Name == name && r.TypeID != "error" {
+				return true
+			}
+		}
+		return false
+	}
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")) {
+		if (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) && resultByName(it.Arg) {
+			out[it.Arg] = struct{}{}
+		}
+	}
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpCookies, "")) {
+		if (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) && resultByName(it.Arg) {
+			out[it.Arg] = struct{}{}
+		}
+	}
+	return
+}
+
+func (g *generator) resultsForBody(contract *model.Contract, method *model.Method) (out []*model.Variable) {
+
+	exclude := g.resultNamesExcludeFromBody(contract, method)
+	var list []*model.Variable
+	for _, r := range method.Results {
+		if r.TypeID == "error" || r.TypeID == typeIDIOReadCloser {
+			continue
+		}
+		if _, ok := exclude[r.Name]; ok {
+			continue
+		}
+		list = append(list, r)
+	}
+	return list
+}
+
+func (g *generator) responseBodyStructName(contract *model.Contract, method *model.Method) (s string) {
+
+	return types.ToCamel(contract.Name) + types.ToCamel(method.Name) + "ResponseBody"
+}
+
+func (g *generator) effectiveResponseSchema(contract *model.Contract, method *model.Method, responseStructName string, bodyResults []*model.Variable) types.Schema {
 
 	var results []*model.Variable
-	for _, r := range method.Results {
-		if r.TypeID != "error" {
-			results = append(results, r)
+	if bodyResults != nil {
+		results = bodyResults
+	} else {
+		for _, r := range method.Results {
+			if r.TypeID != "error" {
+				results = append(results, r)
+			}
 		}
 	}
 	if len(results) == 0 {
@@ -327,7 +397,7 @@ func (g *generator) mergeSchema(dst *types.Schema, src types.Schema) {
 	dst.Required = append(dst.Required, src.Required...)
 }
 
-func (g *generator) resultHasJsonInline(method *model.Method, v *model.Variable) bool {
+func (g *generator) resultHasJsonInline(method *model.Method, v *model.Variable) (ok bool) {
 
 	sub := method.Annotations.Sub(v.Name)
 	for key, value := range sub {
@@ -360,7 +430,7 @@ func (g *generator) bodyArgs(method *model.Method, contract *model.Contract, htt
 		}
 		out = append(out, arg)
 	}
-	return out
+	return
 }
 
 func (g *generator) effectiveRequestBodySchema(contract *model.Contract, method *model.Method, requestStructName string, bodyArgs []*model.Variable) types.Schema {
@@ -404,11 +474,8 @@ func (g *generator) effectiveRequestBodySchema(contract *model.Contract, method 
 func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *model.Contract, method *model.Method, serviceTags []string) {
 
 	prefix := model.GetAnnotationValue(g.project, contract, nil, nil, model.TagHttpPrefix, "")
-	methodPath := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpPath, "/"+types.ToLowerCamel(method.Name))
-	httpPath := methodPath
-	if prefix != "" {
-		httpPath = path.Join("/", prefix, methodPath)
-	}
+	methodPath := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpPath, g.defaultMethodPathValue(contract, method))
+	httpPath := buildFullPath(prefix, methodPath)
 
 	requestStructName := g.requestStructName(contract, method)
 	responseStructName := g.responseStructName(contract, method)
@@ -421,7 +488,6 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 	g.registerStruct(requestStructName, contract.PkgPath, method.Annotations, method.Args, requestContentType)
 	g.registerStruct(responseStructName, contract.PkgPath, method.Annotations, method.Results, contentJSON)
 
-
 	reqMultipart := g.requestMultipart(contract, method)
 	respMultipart := g.responseMultipart(contract, method)
 	customResponse := model.IsAnnotationSet(g.project, contract, method, nil, tagHttpResponse)
@@ -430,8 +496,9 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 	if !customResponse {
 		switch {
 		case g.countIOReadCloserResults(method) > 0 && !respMultipart:
+			streamResponseContentType := model.GetAnnotationValue(g.project, contract, method, nil, model.TagResponseContentType, contentOctetStream)
 			successContent = types.Content{
-				contentOctetStream: types.Media{Schema: types.Schema{Type: "string", Format: "binary"}},
+				streamResponseContentType: types.Media{Schema: types.Schema{Type: "string", Format: "binary"}},
 			}
 		case respMultipart:
 			successContent = types.Content{
@@ -440,7 +507,14 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 				},
 			}
 		default:
-			successSchema := g.effectiveResponseSchema(contract, method, responseStructName)
+			var successSchema types.Schema
+			if len(g.resultNamesExcludeFromBody(contract, method)) > 0 {
+				bodyStructName := g.responseBodyStructName(contract, method)
+				g.registerStruct(bodyStructName, contract.PkgPath, method.Annotations, g.resultsForBody(contract, method), contentJSON)
+				successSchema = g.effectiveResponseSchema(contract, method, bodyStructName, g.resultsForBody(contract, method))
+			} else {
+				successSchema = g.effectiveResponseSchema(contract, method, responseStructName, nil)
+			}
 			successContent = types.Content{
 				responseContentType: types.Media{
 					Schema: successSchema,
@@ -453,12 +527,17 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 	if customResponse {
 		successDesc = "Ответ определяется кастомным обработчиком"
 	}
+	opSummary := ""
+	opDesc := descriptionFromMethod(method)
+	if method.Annotations != nil {
+		opSummary = method.Annotations.Value(tagSummary, "")
+	}
 	operation := &types.Operation{
-		OperationID:  types.ToCamel(contract.Name) + types.ToCamel(method.Name),
-		Summary:      model.GetAnnotationValue(g.project, contract, method, nil, tagSummary, ""),
-		Description:  model.GetAnnotationValue(g.project, contract, method, nil, tagDesc, ""),
-		Tags:         serviceTags,
-		Deprecated:   model.IsAnnotationSet(g.project, contract, method, nil, tagDeprecated),
+		OperationID: types.ToCamel(contract.Name) + types.ToCamel(method.Name),
+		Summary:     opSummary,
+		Description: opDesc,
+		Tags:        serviceTags,
+		Deprecated:  model.IsAnnotationSet(g.project, contract, method, nil, tagDeprecated),
 		Responses: types.Responses{
 			fmt.Sprintf("%d", successCode): types.Response{
 				Description: successDesc,
@@ -479,6 +558,7 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 		} else {
 			requestContentType = contentOctetStream
 			operation.RequestBody = &types.RequestBody{
+				Description: requestBodyDescription(method),
 				Content: types.Content{
 					requestContentType: types.Media{
 						Schema: types.Schema{Type: "string", Format: "binary"},
@@ -491,6 +571,7 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 		if len(bodyArgs) > 0 {
 			requestSchema := g.effectiveRequestBodySchema(contract, method, requestStructName, bodyArgs)
 			operation.RequestBody = &types.RequestBody{
+				Description: requestBodyDescription(method),
 				Content: types.Content{
 					requestContentType: types.Media{
 						Schema: requestSchema,
@@ -542,10 +623,11 @@ func (g *generator) addPathParameters(operation *types.Operation, contract *mode
 						schema = *schemaPtr
 					}
 					operation.Parameters = append(operation.Parameters, types.Parameter{
-						In:       "path",
-						Name:     paramName,
-						Required: true,
-						Schema:   schema,
+						In:          "path",
+						Name:        paramName,
+						Required:    true,
+						Schema:      schema,
+						Description: descriptionFromVariable(arg),
 					})
 					break
 				}
@@ -556,33 +638,26 @@ func (g *generator) addPathParameters(operation *types.Operation, contract *mode
 
 func (g *generator) addQueryParameters(operation *types.Operation, contract *model.Contract, method *model.Method, httpPath string) {
 
-	httpArgs := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpArg, "")
-	if httpArgs == "" {
-		return
-	}
-
-	argPairs := strings.Split(httpArgs, ",")
-	for _, pair := range argPairs {
-		pairTokens := strings.Split(pair, "|")
-		if len(pairTokens) == 2 {
-			argName := strings.TrimSpace(pairTokens[0])
-			queryName := strings.TrimSpace(pairTokens[1])
-			for _, arg := range method.Args {
-				if arg.Name == argName {
-					if g.isArgInPath(arg, method, httpPath) {
-						break
-					}
-					var schema types.Schema
-					if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
-						schema = *schemaPtr
-					}
-					operation.Parameters = append(operation.Parameters, types.Parameter{
-						In:     "query",
-						Name:   queryName,
-						Schema: schema,
-					})
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpArg, "")) {
+		if it.Arg == "path" {
+			continue
+		}
+		for _, arg := range method.Args {
+			if arg.Name == it.Arg {
+				if g.isArgInPath(arg, method, httpPath) {
 					break
 				}
+				var schema types.Schema
+				if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
+					schema = *schemaPtr
+				}
+				operation.Parameters = append(operation.Parameters, types.Parameter{
+					In:          "query",
+					Name:        it.Key,
+					Schema:      schema,
+					Description: descriptionFromVariable(arg),
+				})
+				break
 			}
 		}
 	}
@@ -590,32 +665,25 @@ func (g *generator) addQueryParameters(operation *types.Operation, contract *mod
 
 func (g *generator) addHeaderParameters(operation *types.Operation, contract *model.Contract, method *model.Method) {
 
-	httpHeaders := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")
-	if httpHeaders == "" {
-		return
-	}
-
-	headerPairs := strings.Split(httpHeaders, ",")
-	for _, pair := range headerPairs {
-		pairTokens := strings.Split(pair, "|")
-		if len(pairTokens) == 2 {
-			argName := strings.TrimSpace(pairTokens[0])
-			headerName := strings.TrimSpace(pairTokens[1])
-			for _, arg := range method.Args {
-				if arg.Name == argName {
-					var schema types.Schema
-					if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
-						schema = *schemaPtr
-					}
-					required := arg.Annotations != nil && arg.Annotations.IsSet(model.TagRequired)
-					operation.Parameters = append(operation.Parameters, types.Parameter{
-						In:       "header",
-						Name:     headerName,
-						Required: required,
-						Schema:   schema,
-					})
-					break
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")) {
+		if it.Mode != model.ArgModeExplicit && it.Mode != model.ArgModeImplicit {
+			continue
+		}
+		for _, arg := range method.Args {
+			if arg.Name == it.Arg {
+				var schema types.Schema
+				if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
+					schema = *schemaPtr
 				}
+				required := arg.Annotations != nil && arg.Annotations.IsSet(model.TagRequired)
+				operation.Parameters = append(operation.Parameters, types.Parameter{
+					In:          "header",
+					Name:        it.Key,
+					Required:    required,
+					Schema:      schema,
+					Description: descriptionFromVariable(arg),
+				})
+				break
 			}
 		}
 	}
@@ -623,32 +691,25 @@ func (g *generator) addHeaderParameters(operation *types.Operation, contract *mo
 
 func (g *generator) addCookieParameters(operation *types.Operation, contract *model.Contract, method *model.Method) {
 
-	httpCookies := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpCookies, "")
-	if httpCookies == "" {
-		return
-	}
-
-	cookiePairs := strings.Split(httpCookies, ",")
-	for _, pair := range cookiePairs {
-		pairTokens := strings.Split(pair, "|")
-		if len(pairTokens) == 2 {
-			argName := strings.TrimSpace(pairTokens[0])
-			cookieName := strings.TrimSpace(pairTokens[1])
-			for _, arg := range method.Args {
-				if arg.Name == argName {
-					var schema types.Schema
-					if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
-						schema = *schemaPtr
-					}
-					required := arg.Annotations != nil && arg.Annotations.IsSet(model.TagRequired)
-					operation.Parameters = append(operation.Parameters, types.Parameter{
-						In:       "cookie",
-						Name:     cookieName,
-						Required: required,
-						Schema:   schema,
-					})
-					break
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpCookies, "")) {
+		if it.Mode != model.ArgModeExplicit && it.Mode != model.ArgModeImplicit {
+			continue
+		}
+		for _, arg := range method.Args {
+			if arg.Name == it.Arg {
+				var schema types.Schema
+				if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
+					schema = *schemaPtr
 				}
+				required := arg.Annotations != nil && arg.Annotations.IsSet(model.TagRequired)
+				operation.Parameters = append(operation.Parameters, types.Parameter{
+					In:          "cookie",
+					Name:        it.Key,
+					Required:    required,
+					Schema:      schema,
+					Description: descriptionFromVariable(arg),
+				})
+				break
 			}
 		}
 	}
@@ -656,35 +717,28 @@ func (g *generator) addCookieParameters(operation *types.Operation, contract *mo
 
 func (g *generator) addResponseHeaders(operation *types.Operation, contract *model.Contract, method *model.Method, successCode int) {
 
-	httpHeaders := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")
-	if httpHeaders == "" {
-		return
-	}
-
-	headerPairs := strings.Split(httpHeaders, ",")
-	for _, pair := range headerPairs {
-		pairTokens := strings.Split(pair, "|")
-		if len(pairTokens) == 2 {
-			argName := strings.TrimSpace(pairTokens[0])
-			headerName := strings.TrimSpace(pairTokens[1])
-			for _, result := range method.Results {
-				if result.Name == argName {
-					schemaPtr := g.variableToSchema(result, contract.PkgPath, false)
-					if schemaPtr == nil {
-						schemaPtr = &types.Schema{Type: "string"}
-					}
-					schema := *schemaPtr
-					successKey := fmt.Sprintf("%d", successCode)
-					if operation.Responses[successKey].Headers == nil {
-						response := operation.Responses[successKey]
-						response.Headers = make(map[string]types.Header)
-						operation.Responses[successKey] = response
-					}
-					operation.Responses[successKey].Headers[headerName] = types.Header{
-						Schema: schema,
-					}
-					break
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")) {
+		if it.Mode != model.ArgModeExplicit && it.Mode != model.ArgModeImplicit {
+			continue
+		}
+		for _, result := range method.Results {
+			if result.Name == it.Arg {
+				schemaPtr := g.variableToSchema(result, contract.PkgPath, false)
+				if schemaPtr == nil {
+					schemaPtr = &types.Schema{Type: "string"}
 				}
+				schema := *schemaPtr
+				successKey := fmt.Sprintf("%d", successCode)
+				if operation.Responses[successKey].Headers == nil {
+					response := operation.Responses[successKey]
+					response.Headers = make(map[string]types.Header)
+					operation.Responses[successKey] = response
+				}
+				operation.Responses[successKey].Headers[it.Key] = types.Header{
+					Description: descriptionFromVariable(result),
+					Schema:      schema,
+				}
+				break
 			}
 		}
 	}
@@ -746,7 +800,7 @@ func (g *generator) errorInfoToType(errInfo *model.ErrorInfo) (typeInfo *model.T
 			return ti
 		}
 	}
-	return nil
+	return
 }
 
 func (g *generator) requestStructName(contract *model.Contract, method *model.Method) (name string) {
@@ -771,50 +825,32 @@ func (g *generator) isArgInPath(arg *model.Variable, method *model.Method, httpP
 
 func (g *generator) isArgInQuery(arg *model.Variable, contract *model.Contract, method *model.Method) (found bool) {
 
-	httpArgs := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpArg, "")
-	if httpArgs == "" {
-		return
-	}
-	argPairs := strings.Split(httpArgs, ",")
-	for _, pair := range argPairs {
-		pairTokens := strings.Split(pair, "|")
-		if len(pairTokens) == 2 && strings.TrimSpace(pairTokens[0]) == arg.Name {
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpArg, "")) {
+		if it.Arg != "path" && it.Arg == arg.Name {
 			return true
 		}
 	}
-	return
+	return false
 }
 
 func (g *generator) isArgInHeader(arg *model.Variable, contract *model.Contract, method *model.Method) (found bool) {
 
-	httpHeaders := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")
-	if httpHeaders == "" {
-		return
-	}
-	headerPairs := strings.Split(httpHeaders, ",")
-	for _, pair := range headerPairs {
-		pairTokens := strings.Split(pair, "|")
-		if len(pairTokens) == 2 && strings.TrimSpace(pairTokens[0]) == arg.Name {
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")) {
+		if it.Arg == arg.Name && (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) {
 			return true
 		}
 	}
-	return
+	return false
 }
 
 func (g *generator) isArgInCookie(arg *model.Variable, contract *model.Contract, method *model.Method) (found bool) {
 
-	httpCookies := model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpCookies, "")
-	if httpCookies == "" {
-		return
-	}
-	cookiePairs := strings.Split(httpCookies, ",")
-	for _, pair := range cookiePairs {
-		pairTokens := strings.Split(pair, "|")
-		if len(pairTokens) == 2 && strings.TrimSpace(pairTokens[0]) == arg.Name {
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpCookies, "")) {
+		if it.Arg == arg.Name && (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) {
 			return true
 		}
 	}
-	return
+	return false
 }
 
 func pathParamColonToBraces(httpPath string) (openAPIPath string) {

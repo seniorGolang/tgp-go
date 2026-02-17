@@ -16,7 +16,7 @@ type GoFile struct {
 	filepath string
 }
 
-func NewSrcFile(pkgName string) GoFile {
+func NewSrcFile(pkgName string) (f GoFile) {
 	return GoFile{
 		File: jen.NewFile(pkgName),
 	}
@@ -26,9 +26,8 @@ func (src *GoFile) Save(filePath string) (err error) {
 
 	src.filepath = filePath
 
-	// Создаем директорию, если она не существует
 	dir := filepath.Dir(filePath)
-	if err = os.MkdirAll(dir, 0755); err != nil {
+	if err = os.MkdirAll(dir, 0700); err != nil {
 		return
 	}
 

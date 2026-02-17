@@ -44,6 +44,8 @@ type Project struct {
 
 	Git *GitInfo `json:"git,omitempty"`
 
+	Docs        []string     `json:"docs,omitempty"`
+	Directives  []string     `json:"directives,omitempty"`
 	Annotations tags.DocTags `json:"annotations,omitempty"`
 
 	Services  []*Service       `json:"services,omitempty"`
@@ -52,8 +54,7 @@ type Project struct {
 
 	ExcludeDirs []string `json:"excludeDirs,omitempty"`
 
-	ProjectID string `json:"projectId,omitempty"` // Base58 UUIDv5 идентификатор проекта
-	Marker    string `json:"marker,omitempty"`    // SHA256 маркер состояния проекта
+	ProjectID string `json:"projectID,omitempty"`
 }
 
 type GitInfo struct {
@@ -78,6 +79,7 @@ type Contract struct {
 	FilePath        string                `json:"filePath"`
 	ID              string                `json:"id"`
 	Docs            []string              `json:"docs,omitempty"`
+	Directives      []string              `json:"directives,omitempty"`
 	Annotations     tags.DocTags          `json:"annotations,omitempty"`
 	Methods         []*Method             `json:"methods,omitempty"`
 	Implementations []*ImplementationInfo `json:"implementations,omitempty"`
@@ -89,12 +91,12 @@ type Method struct {
 	Args        []*Variable  `json:"args,omitempty"`
 	Results     []*Variable  `json:"results,omitempty"`
 	Docs        []string     `json:"docs,omitempty"`
+	Directives  []string     `json:"directives,omitempty"`
 	Annotations tags.DocTags `json:"annotations,omitempty"`
 	Errors      []*ErrorInfo `json:"errors,omitempty"`
 	Handler     *HandlerInfo `json:"handler,omitempty"`
 }
 
-// TypeRef описывает использование типа в конкретном месте: какой тип, указатели, слайс/массив/map.
 // Рекурсивно используется в MapKey/MapValue для вложенных map. Не содержит имени, тегов и аннотаций.
 type TypeRef struct {
 	TypeID           string   `json:"typeID,omitempty"`
@@ -112,6 +114,7 @@ type Variable struct {
 	TypeRef     `json:",inline"`
 	Name        string       `json:"name"`
 	Docs        []string     `json:"docs,omitempty"`
+	Directives  []string     `json:"directives,omitempty"`
 	Annotations tags.DocTags `json:"annotations,omitempty"`
 }
 
@@ -181,14 +184,26 @@ type Type struct {
 	UnderlyingKind   TypeKind `json:"underlyingKind,omitempty"`
 
 	ImplementsInterfaces []string `json:"implementsInterfaces,omitempty"`
+
+	ParseFromString *ParseFromStringInfo `json:"parseFromString,omitempty"`
+
+	Docs       []string `json:"docs,omitempty"`
+	Directives []string `json:"directives,omitempty"`
+}
+
+type ParseFromStringInfo struct {
+	FuncName       string `json:"funcName"`
+	ReturnsError   bool   `json:"returnsError"`
+	ReturnsPointer bool   `json:"returnsPointer"`
 }
 
 // StructField — поле структуры. Содержит TypeRef + имя поля, теги и документацию.
 type StructField struct {
-	TypeRef `json:",inline"`
-	Name    string              `json:"name"`
-	Tags    map[string][]string `json:"tags,omitempty"`
-	Docs    []string            `json:"docs,omitempty"`
+	TypeRef    `json:",inline"`
+	Name       string              `json:"name"`
+	Tags       map[string][]string `json:"tags,omitempty"`
+	Docs       []string            `json:"docs,omitempty"`
+	Directives []string            `json:"directives,omitempty"`
 }
 
 type Function struct {

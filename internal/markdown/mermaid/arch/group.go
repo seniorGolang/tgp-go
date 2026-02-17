@@ -5,12 +5,12 @@ package arch
 
 import "fmt"
 
-func (a *Architecture) Group(groupID string, icon Icon, title string) *Architecture {
+func (a *Architecture) Group(groupID string, icon Icon, title string) (out *Architecture) {
 	a.body = append(a.body, fmt.Sprintf("    group %s(%s)[%s]", groupID, icon, title))
 	return a
 }
 
-func (a *Architecture) GroupInParentGroup(groupID string, icon Icon, title, parentGroupID string) *Architecture {
+func (a *Architecture) GroupInParentGroup(groupID string, icon Icon, title, parentGroupID string) (out *Architecture) {
 	a.body = append(a.body, fmt.Sprintf("    group %s(%s)[%s] in %s", groupID, icon, title, parentGroupID))
 	return a
 }

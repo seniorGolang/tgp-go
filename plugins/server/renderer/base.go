@@ -3,36 +3,38 @@
 package renderer
 
 import (
+	"bytes"
 	"embed"
-	"fmt"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"tgp/internal/common"
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-//go:embed pkg
-var pkgFiles embed.FS
+//go:embed pkg_tmpl
+var pkgTmplFS embed.FS
 
 type baseRenderer struct {
+	outDir   string
 	project  *model.Project
 	contract *model.Contract
-	outDir   string
 }
 
-func newBaseRenderer(project *model.Project, contract *model.Contract, outDir string) *baseRenderer {
+func newBaseRenderer(project *model.Project, contract *model.Contract, outDir string) (r *baseRenderer) {
 	return &baseRenderer{
+		outDir:   outDir,
 		project:  project,
 		contract: contract,
-		outDir:   outDir,
 	}
 }
 
-func (r *baseRenderer) pkgPath(dir string) string {
+func (r *baseRenderer) pkgPath(dir string) (s string) {
 
 	pkgDir := filepath.ToSlash(dir)
 
@@ -56,13 +58,13 @@ func (r *baseRenderer) contractsSorted() (out []*model.Contract) {
 	for _, n := range names {
 		out = append(out, m[n])
 	}
-	return out
+	return
 }
 
 func methodsSorted(methods []*model.Method) (out []*model.Method) {
 
 	if len(methods) == 0 {
-		return nil
+		return
 	}
 	m := make(map[string]*model.Method, len(methods))
 	for _, method := range methods {
@@ -73,33 +75,45 @@ func methodsSorted(methods []*model.Method) (out []*model.Method) {
 	for _, n := range names {
 		out = append(out, m[n])
 	}
-	return out
+	return
 }
 
-func (r *baseRenderer) pkgCopyTo(pkg, dst string) (err error) {
+func (r *baseRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateData) (err error) {
 
-	pkgPath := path.Join("pkg", pkg)
-	var entries []fs.DirEntry
-	if entries, err = pkgFiles.ReadDir(pkgPath); err != nil {
+	pattern := "pkg_tmpl/" + pkg + "/*.go.tmpl"
+	var names []string
+	if names, err = fs.Glob(pkgTmplFS, pattern); err != nil {
 		return
 	}
-	for _, entry := range entries {
-		var fileContent []byte
-		if fileContent, err = pkgFiles.ReadFile(fmt.Sprintf("%s/%s", pkgPath, entry.Name())); err != nil {
+	var tmpl *template.Template
+	if tmpl, err = template.ParseFS(pkgTmplFS, pattern); err != nil {
+		return
+	}
+	if err = os.MkdirAll(path.Join(dst, pkg), 0700); err != nil {
+		return
+	}
+	for _, name := range names {
+		var buf bytes.Buffer
+		if err = tmpl.ExecuteTemplate(&buf, filepath.Base(name), data); err != nil {
 			return
 		}
-		if err = os.MkdirAll(path.Join(dst, pkg), 0700); err != nil {
-			return
-		}
-		filename := path.Join(dst, pkg, entry.Name())
-		if err = os.WriteFile(filename, fileContent, 0600); err != nil {
+		outName := strings.TrimSuffix(filepath.Base(name), ".tmpl")
+		if err = os.WriteFile(path.Join(dst, pkg, outName), buf.Bytes(), 0600); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (r *baseRenderer) hasJsonRPC() bool {
+type pkgTemplateData struct {
+	DoNotEditComment string
+}
+
+func newPkgTemplateData() (data *pkgTemplateData) {
+	return &pkgTemplateData{DoNotEditComment: generated.ByToolGatewayComment}
+}
+
+func (r *baseRenderer) hasJsonRPC() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
@@ -109,7 +123,7 @@ func (r *baseRenderer) hasJsonRPC() bool {
 	return false
 }
 
-func (r *baseRenderer) hasMetrics() bool {
+func (r *baseRenderer) hasMetrics() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
@@ -119,7 +133,7 @@ func (r *baseRenderer) hasMetrics() bool {
 	return false
 }
 
-func (r *baseRenderer) hasTrace() bool {
+func (r *baseRenderer) hasTrace() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, TagTrace) {
@@ -129,16 +143,17 @@ func (r *baseRenderer) hasTrace() bool {
 	return false
 }
 
-func (r *baseRenderer) getPackageJSON() string {
+func (r *baseRenderer) getPackageJSON() (s string) {
 
-	return model.GetAnnotationValue(r.project, r.contract, nil, nil, TagPackageJSON, PackageStdJSON)
+	s = model.GetAnnotationValue(r.project, r.contract, nil, nil, TagPackageJSON, PackageStdJSON)
+	return
 }
 
 type contractRenderer struct {
 	*baseRenderer
 }
 
-func NewContractRenderer(project *model.Project, contract *model.Contract, outDir string) Renderer {
+func NewContractRenderer(project *model.Project, contract *model.Contract, outDir string) (r ContractRenderer) {
 	return &contractRenderer{
 		baseRenderer: newBaseRenderer(project, contract, outDir),
 	}
@@ -148,7 +163,7 @@ type transportRenderer struct {
 	*baseRenderer
 }
 
-func NewTransportRenderer(project *model.Project, outDir string) Renderer {
+func NewTransportRenderer(project *model.Project, outDir string) (r TransportRenderer) {
 	return &transportRenderer{
 		baseRenderer: newBaseRenderer(project, nil, outDir),
 	}

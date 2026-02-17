@@ -14,66 +14,60 @@ import (
 	"github.com/goccy/go-json"
 
 	"tgp/core/i18n"
+	"tgp/internal/merkle"
 	"tgp/internal/model"
 	"tgp/plugins/astg/marker"
 )
 
 const (
-	// CacheBaseDir базовый путь к директории кэша.
-	CacheBaseDir = "/tg/cache/astg"
+	BaseDir = "/tg/astg/cache"
 )
 
-func GetProject(rootDir string) (project *model.Project, fromCache bool, projectID string, currentMarker string) {
+func GetProject(rootDir string) (project *model.Project, fromCache bool, projectID string) {
 
 	var err error
-	projectID, err = GetProjectID(rootDir)
-	if err != nil {
-		// Если не удалось вычислить ProjectID, пропускаем кэширование
-		slog.Debug(i18n.Msg("cannot compute project ID, skipping cache"), slog.String("error", err.Error()))
-		return nil, false, "", ""
+	if projectID, err = GetProjectID(rootDir); err != nil {
+		slog.Debug(i18n.Msg("cannot compute project ID, skipping cache"), slog.Any("error", err))
+		return
 	}
 
 	branch := getGitBranchForCache(rootDir)
-	normalizedBranch := NormalizeBranch(branch)
+	cacheFile := GetCachePath(projectID, branch)
 
-	// Путь к кэшу
-	cacheFile := GetCachePath(projectID, normalizedBranch)
-
-	// Вычисление текущего маркера
-	if currentMarker, err = marker.ComputeMarker(rootDir); err != nil {
-		// Если не удалось вычислить маркер, пропускаем кэширование
-		slog.Debug(i18n.Msg("failed to compute marker, skipping cache"), slog.String("error", err.Error()))
-		return nil, false, projectID, ""
-	}
-
-	// Загрузка и валидация кэша
-	cachedProject, valid := loadProject(cacheFile, projectID, currentMarker)
-	if valid && cachedProject != nil {
-		// Кэш валиден - используем его
+	project, fromCache = loadEntry(rootDir, cacheFile, projectID)
+	if fromCache {
 		slog.Debug(i18n.Msg("using cached project"), slog.String("cacheFile", cacheFile))
-		return cachedProject, true, projectID, currentMarker
 	}
 
-	// Кэш невалиден или отсутствует
-	return nil, false, projectID, currentMarker
+	return
 }
 
-func SaveProject(projectID string, currentMarker string, project *model.Project) {
+func SaveProject(projectID string, project *model.Project, rootDir string, contractsDir string, excludeDirs []string) {
 
-	// Заполняем метаданные в проекте
 	project.ProjectID = projectID
-	project.Marker = currentMarker
 
+	var err error
+	var paths []string
+	if paths, err = marker.DiscoverPaths(rootDir, contractsDir, excludeDirs); err != nil {
+		slog.Debug(i18n.Msg("failed to discover paths, skipping cache"), slog.Any("error", err))
+		return
+	}
+
+	var files map[string]string
+	if files, err = merkle.FileHashes(rootDir, paths); err != nil {
+		slog.Debug(i18n.Msg("failed to compute file hashes, skipping cache"), slog.Any("error", err))
+		return
+	}
+
+	entry := cacheEntry{Project: project, Files: files}
 	branch := ""
 	if project.Git != nil && project.Git.Branch != "" {
 		branch = project.Git.Branch
 	}
-	normalizedBranch := NormalizeBranch(branch)
-	cacheFile := GetCachePath(projectID, normalizedBranch)
+	cacheFile := GetCachePath(projectID, branch)
 
-	// Сохранение в кэш (ошибки игнорируются, логируются на DEBUG)
-	if saveErr := saveProject(cacheFile, project); saveErr != nil {
-		slog.Debug(i18n.Msg("failed to save cache"), slog.String("error", saveErr.Error()), slog.String("cacheFile", cacheFile))
+	if saveErr := saveEntry(cacheFile, &entry); saveErr != nil {
+		slog.Debug(i18n.Msg("failed to save cache"), slog.Any("error", saveErr), slog.String("cacheFile", cacheFile))
 	} else {
 		slog.Debug(i18n.Msg("project cached"), slog.String("cacheFile", cacheFile))
 	}
@@ -116,7 +110,6 @@ func getGitBranchForCache(rootDir string) (branch string) {
 		return ""
 	}
 
-	// Читаем HEAD для получения ветки
 	headPath := filepath.Join(gitDir, "HEAD")
 	var headContent []byte
 	if headContent, err = os.ReadFile(headPath); err != nil {
@@ -125,7 +118,6 @@ func getGitBranchForCache(rootDir string) (branch string) {
 
 	headStr := strings.TrimSpace(string(headContent))
 
-	// Если HEAD указывает на ветку
 	if strings.HasPrefix(headStr, "ref: ") {
 		refPath := strings.TrimPrefix(headStr, "ref: ")
 		refPath = strings.TrimSpace(refPath)
@@ -138,7 +130,7 @@ func getGitBranchForCache(rootDir string) (branch string) {
 	return ""
 }
 
-func loadProject(cacheFile string, projectID string, currentMarker string) (project *model.Project, valid bool) {
+func loadEntry(rootDir string, cacheFile string, projectID string) (project *model.Project, valid bool) {
 
 	var err error
 	var info os.FileInfo
@@ -146,7 +138,7 @@ func loadProject(cacheFile string, projectID string, currentMarker string) (proj
 		if os.IsNotExist(err) {
 			slog.Debug(i18n.Msg("cache file not found"), slog.String("cacheFile", cacheFile))
 		} else {
-			slog.Debug(i18n.Msg("failed to stat cache file"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
+			slog.Debug(i18n.Msg("failed to stat cache file"), slog.Any("error", err), slog.String("cacheFile", cacheFile))
 		}
 		return
 	}
@@ -158,15 +150,14 @@ func loadProject(cacheFile string, projectID string, currentMarker string) (proj
 
 	var file *os.File
 	if file, err = os.Open(cacheFile); err != nil {
-		slog.Debug(i18n.Msg("failed to open cache file"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
+		slog.Debug(i18n.Msg("failed to open cache file"), slog.Any("error", err), slog.String("cacheFile", cacheFile))
 		return
 	}
 	defer file.Close()
 
 	var gzipReader *gzip.Reader
 	if gzipReader, err = gzip.NewReader(file); err != nil {
-		slog.Debug(i18n.Msg("failed to create gzip reader"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
-		// Удалить поврежденный файл
+		slog.Debug(i18n.Msg("failed to create gzip reader"), slog.Any("error", err), slog.String("cacheFile", cacheFile))
 		_ = os.Remove(cacheFile)
 		return
 	}
@@ -174,102 +165,104 @@ func loadProject(cacheFile string, projectID string, currentMarker string) (proj
 
 	var jsonData []byte
 	if jsonData, err = io.ReadAll(gzipReader); err != nil {
-		slog.Debug(i18n.Msg("failed to read cache data"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
+		slog.Debug(i18n.Msg("failed to read cache data"), slog.Any("error", err), slog.String("cacheFile", cacheFile))
 		_ = os.Remove(cacheFile)
 		return
 	}
 
-	// 5. Десериализация JSON
-	cachedProject := &model.Project{}
-	if err = json.Unmarshal(jsonData, cachedProject); err != nil {
-		slog.Debug(i18n.Msg("failed to unmarshal cache"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
+	var entry cacheEntry
+	if err = json.Unmarshal(jsonData, &entry); err != nil {
+		slog.Debug(i18n.Msg("failed to unmarshal cache"), slog.Any("error", err), slog.String("cacheFile", cacheFile))
 		_ = os.Remove(cacheFile)
 		return
 	}
 
-	// 6. Валидация ProjectID - должен полностью совпадать
-	if cachedProject.ProjectID == "" {
+	if entry.Project == nil || entry.Project.ProjectID == "" {
 		slog.Debug(i18n.Msg("cached project has no ProjectID"), slog.String("cacheFile", cacheFile))
 		return
 	}
 
-	if cachedProject.ProjectID != projectID {
+	if entry.Project.ProjectID != projectID {
 		slog.Debug(i18n.Msg("project ID mismatch"),
 			slog.String("expected", projectID),
-			slog.String("got", cachedProject.ProjectID),
+			slog.String("got", entry.Project.ProjectID),
 			slog.String("cacheFile", cacheFile))
-		// Кэш невалиден, но не удаляем файл - он может быть для другого проекта
 		return
 	}
 
-	// 7. Валидация маркера - должен полностью совпадать
-	if cachedProject.Marker == "" {
-		slog.Debug(i18n.Msg("cached project has no Marker"), slog.String("cacheFile", cacheFile))
+	if len(entry.Files) == 0 {
+		slog.Debug(i18n.Msg("cached entry has no Files"), slog.String("cacheFile", cacheFile))
 		return
 	}
 
-	if cachedProject.Marker != currentMarker {
-		slog.Debug(i18n.Msg("marker mismatch"),
-			slog.String("expected", currentMarker),
-			slog.String("got", cachedProject.Marker),
-			slog.String("cacheFile", cacheFile))
-		// Маркер изменился - проект изменился, кэш невалиден
+	paths := make([]string, 0, len(entry.Files))
+	for p := range entry.Files {
+		paths = append(paths, p)
+	}
+	var current map[string]string
+	if current, err = merkle.FileHashes(rootDir, paths); err != nil {
+		slog.Debug(i18n.Msg("failed to compute current file hashes"), slog.Any("error", err))
 		return
 	}
 
-	// 8. Кэш валиден - ProjectID и Marker полностью совпадают
-	return cachedProject, true
+	for path, want := range entry.Files {
+		if current[path] != want {
+			slog.Debug(i18n.Msg("file hash mismatch"), slog.String("path", path))
+			return
+		}
+	}
+
+	return entry.Project, true
 }
 
-func saveProject(cacheFile string, project *model.Project) (err error) {
+func saveEntry(cacheFile string, entry *cacheEntry) (err error) {
 
-	// 1. Создание директории кэша
 	cacheDir := filepath.Dir(cacheFile)
 	if err = os.MkdirAll(cacheDir, 0755); err != nil {
-		slog.Debug(i18n.Msg("failed to create cache directory"), slog.String("error", err.Error()), slog.String("cacheDir", cacheDir))
+		slog.Debug(i18n.Msg("failed to create cache directory"), slog.Any("error", err), slog.String("cacheDir", cacheDir))
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
 	var jsonData []byte
-	if jsonData, err = json.MarshalIndent(project, "", "  "); err != nil {
-		slog.Debug(i18n.Msg("failed to marshal project"), slog.String("error", err.Error()))
-		return fmt.Errorf("failed to marshal project: %w", err)
+	if jsonData, err = json.MarshalIndent(entry, "", "  "); err != nil {
+		slog.Debug(i18n.Msg("failed to marshal cache entry"), slog.Any("error", err))
+		return fmt.Errorf("failed to marshal cache entry: %w", err)
 	}
 
 	var file *os.File
 	if file, err = os.Create(cacheFile); err != nil {
-		slog.Debug(i18n.Msg("failed to create cache file"), slog.String("error", err.Error()), slog.String("cacheFile", cacheFile))
+		slog.Debug(i18n.Msg("failed to create cache file"), slog.Any("error", err), slog.String("cacheFile", cacheFile))
 		return fmt.Errorf("failed to create cache file: %w", err)
 	}
 
-	// 4. Сжатие JSON (gzip) и запись
 	gzipWriter := gzip.NewWriter(file)
+	defer gzipWriter.Close()
 	if _, err = gzipWriter.Write(jsonData); err != nil {
 		file.Close()
-		os.Remove(cacheFile)
-		slog.Debug(i18n.Msg("failed to write compressed data"), slog.String("error", err.Error()))
+		_ = os.Remove(cacheFile)
+		slog.Debug(i18n.Msg("failed to write compressed data"), slog.Any("error", err))
 		return fmt.Errorf("failed to write compressed data: %w", err)
 	}
 
 	if err = gzipWriter.Close(); err != nil {
 		file.Close()
-		os.Remove(cacheFile)
-		slog.Debug(i18n.Msg("failed to close gzip writer"), slog.String("error", err.Error()))
+		_ = os.Remove(cacheFile)
+		slog.Debug(i18n.Msg("failed to close gzip writer"), slog.Any("error", err))
 		return fmt.Errorf("failed to close gzip writer: %w", err)
 	}
 
 	if err = file.Close(); err != nil {
-		os.Remove(cacheFile)
-		slog.Debug(i18n.Msg("failed to close cache file"), slog.String("error", err.Error()))
+		_ = os.Remove(cacheFile)
+		slog.Debug(i18n.Msg("failed to close cache file"), slog.Any("error", err))
 		return fmt.Errorf("failed to close cache file: %w", err)
 	}
 
 	return
 }
 
-func GetCachePath(projectID string, branch string) string {
+func GetCachePath(projectID string, branch string) (s string) {
 
-	normalizedBranch := NormalizeBranch(branch)
-	cacheFile := fmt.Sprintf("%s/%s/%s.astg", CacheBaseDir, projectID, normalizedBranch)
+	normalizedBranch := marker.NormalizeBranchName(branch)
+	cacheFile := fmt.Sprintf("%s/%s/%s.astg", BaseDir, projectID, normalizedBranch)
 	return cacheFile
 }

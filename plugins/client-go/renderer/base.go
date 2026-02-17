@@ -3,69 +3,88 @@
 package renderer
 
 import (
+	"bytes"
 	"embed"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+	"text/template"
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-//go:embed pkg
-var schemaPkgFiles embed.FS
+//go:embed pkg_tmpl
+var pkgTmplFS embed.FS
 
 type ClientRenderer struct {
-	project        *model.Project
-	outDir         string
-	typeAnchorsSet map[string]bool // множество якорей типов из секции «Общие типы» (заполняется при генерации readme)
+	outDir           string
+	outputRelPath    string
+	project          *model.Project
+	targetModulePath string
+	typeAnchorsSet   map[string]bool
 }
 
-func NewClientRenderer(project *model.Project, outDir string) *ClientRenderer {
+func NewClientRenderer(project *model.Project, outDir string, targetModulePath string, outputRelPath string) (r *ClientRenderer) {
 	return &ClientRenderer{
-		project: project,
-		outDir:  outDir,
+		outDir:           outDir,
+		outputRelPath:    outputRelPath,
+		project:          project,
+		targetModulePath: targetModulePath,
 	}
 }
 
-func (r *ClientRenderer) pkgPath(dir string) string {
+func (r *ClientRenderer) pkgPath(dir string) (s string) {
 
-	pkgDir := filepath.ToSlash(dir)
-
-	pkgDir = strings.TrimPrefix(pkgDir, "./")
-
-	if pkgDir != "" && !strings.HasPrefix(pkgDir, "/") {
-		pkgDir = "/" + pkgDir
+	rel, err := filepath.Rel(r.outDir, dir)
+	if err != nil {
+		rel = filepath.Base(dir)
 	}
-
-	return r.project.ModulePath + pkgDir
+	rel = filepath.ToSlash(rel)
+	if rel == "." {
+		return r.targetModulePath + "/" + r.outputRelPath
+	}
+	return r.targetModulePath + "/" + r.outputRelPath + "/" + rel
 }
 
-func (r *ClientRenderer) copySchemaTo(dst string) (err error) {
+func (r *ClientRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateData) (err error) {
 
-	embedPath := "pkg/schema"
-	var entries []fs.DirEntry
-	if entries, err = schemaPkgFiles.ReadDir(embedPath); err != nil {
-		return err
+	pattern := "pkg_tmpl/" + pkg + "/*.go.tmpl"
+	var names []string
+	if names, err = fs.Glob(pkgTmplFS, pattern); err != nil {
+		return
 	}
-	schemaDir := path.Join(dst, "schema")
-	for _, entry := range entries {
-		var fileContent []byte
-		if fileContent, err = schemaPkgFiles.ReadFile(path.Join(embedPath, entry.Name())); err != nil {
-			return err
+	var tmpl *template.Template
+	if tmpl, err = template.ParseFS(pkgTmplFS, pattern); err != nil {
+		return
+	}
+	if err = os.MkdirAll(path.Join(dst, pkg), 0700); err != nil {
+		return
+	}
+	for _, name := range names {
+		var buf bytes.Buffer
+		if err = tmpl.ExecuteTemplate(&buf, filepath.Base(name), data); err != nil {
+			return
 		}
-		if err = os.MkdirAll(schemaDir, 0700); err != nil {
-			return err
-		}
-		if err = os.WriteFile(path.Join(schemaDir, entry.Name()), fileContent, 0600); err != nil {
-			return err
+		outName := strings.TrimSuffix(filepath.Base(name), ".tmpl")
+		if err = os.WriteFile(path.Join(dst, pkg, outName), buf.Bytes(), 0600); err != nil {
+			return
 		}
 	}
-	return nil
+	return
 }
 
-func (r *ClientRenderer) HasJsonRPC() bool {
+type pkgTemplateData struct {
+	DoNotEditComment string
+}
+
+func newPkgTemplateData() (data *pkgTemplateData) {
+	return &pkgTemplateData{DoNotEditComment: generated.ByToolGatewayComment}
+}
+
+func (r *ClientRenderer) HasJsonRPC() (ok bool) {
 
 	for _, contract := range r.project.Contracts {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
@@ -75,7 +94,7 @@ func (r *ClientRenderer) HasJsonRPC() bool {
 	return false
 }
 
-func (r *ClientRenderer) HasHTTP() bool {
+func (r *ClientRenderer) HasHTTP() (ok bool) {
 
 	for _, contract := range r.project.Contracts {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
@@ -85,7 +104,7 @@ func (r *ClientRenderer) HasHTTP() bool {
 	return false
 }
 
-func (r *ClientRenderer) HasMetrics() bool {
+func (r *ClientRenderer) HasMetrics() (ok bool) {
 
 	for _, contract := range r.project.Contracts {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
@@ -94,16 +113,3 @@ func (r *ClientRenderer) HasMetrics() bool {
 	}
 	return false
 }
-
-// Все методы Render* реализованы в соответствующих файлах:
-// - RenderClientOptions - options.go
-// - RenderVersion - version.go
-// - RenderClient - client.go
-// - RenderClientError - error.go
-// - RenderClientBatch - batch.go
-// - CollectTypeIDsForExchange - collector.go
-// - RenderClientTypes - types.go
-// - RenderExchange - exchange.go
-// - RenderServiceClient - service.go
-// - RenderClientMetrics - metrics.go
-// - RenderReadmeGo - readme.go

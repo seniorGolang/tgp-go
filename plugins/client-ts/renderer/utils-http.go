@@ -14,7 +14,7 @@ import (
 	"tgp/plugins/client-ts/tsg"
 )
 
-func (r *ClientRenderer) isHTTP(method *model.Method, contract *model.Contract) bool {
+func (r *ClientRenderer) isHTTP(method *model.Method, contract *model.Contract) (ok bool) {
 
 	if method == nil || contract == nil {
 		return false
@@ -29,7 +29,8 @@ func (r *ClientRenderer) isHTTP(method *model.Method, contract *model.Contract) 
 }
 
 func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, contract *model.Contract) {
-	args := r.argsWithoutContext(method)
+
+	args := r.argsForClient(contract, method)
 	results := r.resultsWithoutError(method)
 
 	filteredDocs := r.filterDocsComments(method.Docs)
@@ -130,20 +131,24 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		urlStmt2.Op("+").Add(ternaryExpr)
 		urlStmt2.Op("+").Lit(fullPath)
 		mg.Add(urlStmt2.Semicolon())
-		for _, paramName := range r.httpPathParamNames(method, contract) {
-			mg.Add(tsg.NewStatement().
-				Id(tsLocalVar("url")).
-				Op("=").
-				Id(tsLocalVar("url")).
-				Dot("replace").
-				Call(tsg.NewStatement().Lit(":"+paramName), tsg.NewStatement().Id("encodeURIComponent").Call(tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(paramName)))).
-				Semicolon())
+		for _, segmentName := range r.httpPathParamNames(method, contract) {
+			if arg := r.argByPathParamName(contract, method, segmentName); arg != nil {
+				mg.Add(tsg.NewStatement().
+					Id(tsLocalVar("url")).
+					Op("=").
+					Id(tsLocalVar("url")).
+					Dot("replace").
+					Call(tsg.NewStatement().Lit(":"+segmentName), tsg.NewStatement().Id("encodeURIComponent").Call(tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(arg.Name)))).
+					Semicolon())
+			}
 		}
 		pathParamSet := make(map[string]bool)
-		for _, n := range r.httpPathParamNames(method, contract) {
-			pathParamSet[n] = true
+		for _, segmentName := range r.httpPathParamNames(method, contract) {
+			if arg := r.argByPathParamName(contract, method, segmentName); arg != nil {
+				pathParamSet[arg.Name] = true
+			}
 		}
-		argParamMap := r.httpArgParamMap(contract, method)
+		argParamMap := model.HTTPArgQueryMapForRequest(r.project, contract, method)
 		var queryParams []struct{ argName, queryKey string }
 		for _, arg := range args {
 			if pathParamSet[arg.Name] {
@@ -175,8 +180,9 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		bodyStreamArgs := r.methodRequestBodyStreamArgs(method)
 		responseMultipart := r.methodResponseMultipart(contract, method)
 		responseStreamResult := r.methodResponseBodyStreamResult(method)
+		bodyArgs := r.argsForRequestBody(contract, method)
 
-		r.renderHTTPBody(mg, contract, method, args, httpMethod, requestMultipart, bodyStreamArg, bodyStreamArgs)
+		r.renderHTTPBody(mg, contract, method, bodyArgs, httpMethod, requestMultipart, bodyStreamArg, bodyStreamArgs)
 
 		headersVar := tsg.NewStatement().
 			Const(tsLocalVar("clientHeaders")).
@@ -193,26 +199,32 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		mg.Add(headersStmt)
 		r.renderHTTPHeaders(mg, contract, method, requestMultipart, bodyStreamArg, responseMultipart, responseStreamResult)
 
-		mg.Add(tsg.NewStatement().
-			ForOf("["+tsLocalVar("key")+", "+tsLocalVar("value")+"]", "Object.entries("+tsLocalVar("clientHeaders")+")", func(fg *tsg.Group) {
-				fg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Id(tsLocalVar("key")), tsg.NewStatement().Id(tsLocalVar("value"))))
-			}).
-			Semicolon())
-
-		for argName, headerName := range common.SortedPairs(r.httpHeaderParamMap(contract, method)) {
-			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit(headerName), tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(argName))).Semicolon())
+		headerMap := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
+		for _, arg := range r.argsForClient(contract, method) {
+			if headerName, ok := headerMap[arg.Name]; ok {
+				mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit(headerName), tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(arg.Name))).Semicolon())
+			}
 		}
 
-		cookieMap := r.httpCookieParamMap(contract, method)
-		if len(cookieMap) > 0 {
+		cookieMap := model.HTTPCookieArgMapForRequest(r.project, contract, method)
+		hasCookieParams := false
+		for _, arg := range r.argsForClient(contract, method) {
+			if _, ok := cookieMap[arg.Name]; ok {
+				hasCookieParams = true
+				break
+			}
+		}
+		if hasCookieParams {
 			mg.Add(tsg.NewStatement().Const(tsLocalVar("cookieParts")).Colon().Id("string").Array(nil).Op("=").Index(nil).Semicolon())
-			for argName, cookieName := range common.SortedPairs(cookieMap) {
-				pushStmt := tsg.NewStatement().
-					Id(tsLocalVar("cookieParts")).
-					Dot("push").
-					Call(tsg.NewStatement().Lit(cookieName + "=").Op("+").Id("encodeURIComponent").Call(tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(argName)))).
-					Semicolon()
-				mg.Add(pushStmt)
+			for _, arg := range r.argsForClient(contract, method) {
+				if cookieName, ok := cookieMap[arg.Name]; ok {
+					pushStmt := tsg.NewStatement().
+						Id(tsLocalVar("cookieParts")).
+						Dot("push").
+						Call(tsg.NewStatement().Lit(cookieName + "=").Op("+").Id("encodeURIComponent").Call(tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(arg.Name)))).
+						Semicolon()
+					mg.Add(pushStmt)
+				}
 			}
 			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Cookie"), tsg.NewStatement().Id(tsLocalVar("cookieParts")).Dot("join").Call(tsg.NewStatement().Lit("; "))).Semicolon())
 		}
@@ -225,13 +237,13 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Id(tsLocalVar("multipartReq")).Dot("headers").Dot("get").Call(tsg.NewStatement().Lit("Content-Type")).Op("!")).Semicolon())
 		}
 
-		// Multipart: body как stream, запрос с chunked; Content-Type с boundary уже в headers.
+		hasBodyContent := httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" || len(bodyArgs) > 0
 		fetchOptions := tsg.NewStatement()
 		fetchOptions.Values(func(fg *tsg.Group) {
 			fg.Add(tsg.NewStatement().Id("method").Colon().Lit(httpMethod))
 			fg.Add(tsg.NewStatement().Id("headers").Colon().Id(tsLocalVar("headers")))
-			if httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" {
-				if requestMultipart {
+			if hasBodyContent {
+				if requestMultipart && (httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH") {
 					fg.Add(tsg.NewStatement().Id("body").Colon().Id(tsLocalVar("multipartReq")).Dot("body"))
 					fg.Add(tsg.NewStatement().Id("duplex").Colon().Lit("half"))
 				} else {
@@ -295,12 +307,12 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 	grp.Line()
 }
 
-func (r *ClientRenderer) httpPath(method *model.Method, contract *model.Contract) string {
+func (r *ClientRenderer) httpPath(method *model.Method, contract *model.Contract) (s string) {
 
-	return model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+r.lcName(method.Name))
+	return model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+r.lcName(contract.Name)+"/"+r.lcName(method.Name))
 }
 
-func (r *ClientRenderer) httpPathParamNames(method *model.Method, contract *model.Contract) []string {
+func (r *ClientRenderer) httpPathParamNames(method *model.Method, contract *model.Contract) (out []string) {
 
 	pathStr := r.httpPath(method, contract)
 	var names []string
@@ -313,55 +325,74 @@ func (r *ClientRenderer) httpPathParamNames(method *model.Method, contract *mode
 	return names
 }
 
-func (r *ClientRenderer) httpArgParamMap(contract *model.Contract, method *model.Method) map[string]string {
+func (r *ClientRenderer) argByPathParamName(contract *model.Contract, method *model.Method, pathSegmentName string) (v *model.Variable) {
 
-	out := make(map[string]string)
-	if v := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpArg, ""); v != "" {
-		for _, pair := range strings.Split(v, ",") {
-			parts := strings.SplitN(strings.TrimSpace(pair), "|", 2)
-			if len(parts) == 2 {
-				arg, param := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-				if arg != "" && param != "" {
-					out[arg] = param
-				}
-			}
+	for _, arg := range method.Args {
+		if arg.Name == pathSegmentName || r.lcName(arg.Name) == pathSegmentName {
+			return arg
 		}
 	}
-	return out
+	return nil
 }
 
-func (r *ClientRenderer) httpHeaderParamMap(contract *model.Contract, method *model.Method) map[string]string {
+func (r *ClientRenderer) argsForClient(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	out := make(map[string]string)
-	if v := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpHeader, ""); v != "" {
-		for _, pair := range strings.Split(v, ",") {
-			parts := strings.SplitN(strings.TrimSpace(pair), "|", 2)
-			if len(parts) == 2 {
-				arg, header := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-				if arg != "" && header != "" {
-					out[arg] = header
-				}
-			}
+	mappings := model.BuildHTTPArgMappings(r.project, contract, method)
+	implicit := model.HTTPImplicitArgSet(mappings)
+	var list []*model.Variable
+	for _, arg := range r.argsWithoutContext(method) {
+		if _, ok := implicit[arg.Name]; !ok {
+			list = append(list, arg)
 		}
 	}
-	return out
+	return list
 }
 
-func (r *ClientRenderer) httpCookieParamMap(contract *model.Contract, method *model.Method) map[string]string {
+func (r *ClientRenderer) argsForExchangeRequest(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	out := make(map[string]string)
-	if v := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpCookies, ""); v != "" {
-		for _, pair := range strings.Split(v, ",") {
-			parts := strings.SplitN(strings.TrimSpace(pair), "|", 2)
-			if len(parts) == 2 {
-				arg, cookie := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-				if arg != "" && cookie != "" {
-					out[arg] = cookie
-				}
-			}
+	mappings := model.BuildHTTPArgMappings(r.project, contract, method)
+	exclude := model.HTTPExcludeFromExchangeRequestSet(mappings)
+	var list []*model.Variable
+	for _, arg := range r.argsWithoutContext(method) {
+		if _, ok := exclude[arg.Name]; !ok {
+			list = append(list, arg)
 		}
 	}
-	return out
+	return list
+}
+
+func (r *ClientRenderer) argsForRequestBody(contract *model.Contract, method *model.Method) (out []*model.Variable) {
+
+	pathParamSet := make(map[string]bool)
+	for _, segmentName := range r.httpPathParamNames(method, contract) {
+		if arg := r.argByPathParamName(contract, method, segmentName); arg != nil {
+			pathParamSet[arg.Name] = true
+		}
+	}
+	headerForReq := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
+	cookieForReq := model.HTTPCookieArgMapForRequest(r.project, contract, method)
+	queryForReq := model.HTTPArgQueryMapForRequest(r.project, contract, method)
+
+	var list []*model.Variable
+	for _, arg := range r.argsForClient(contract, method) {
+		if arg.TypeID == TypeIDIOReader {
+			continue
+		}
+		if pathParamSet[arg.Name] {
+			continue
+		}
+		if _, inHeader := headerForReq[arg.Name]; inHeader {
+			continue
+		}
+		if _, inCookie := cookieForReq[arg.Name]; inCookie {
+			continue
+		}
+		if _, inQuery := queryForReq[arg.Name]; inQuery {
+			continue
+		}
+		list = append(list, arg)
+	}
+	return list
 }
 
 func (r *ClientRenderer) formFieldName(method *model.Method, variable *model.Variable) (key string) {
@@ -389,7 +420,7 @@ func (r *ClientRenderer) renderFormParseHelper() (stmt *tsg.Statement) {
 		pg.Add(tsg.NewStatement().Id("kind").Colon().Lit("string").Op("|").Lit("number").Op("|").Lit("boolean").Op("|").Lit("json"))
 	})
 	stmt.Colon().Id("string").Op("|").Id("number").Op("|").Id("boolean").Op("|").Id("unknown").Op("|").Id("undefined")
-	stmt.BlockFunc(func(bg *tsg.Group) {
+	stmt.Block(func(bg *tsg.Group) {
 		bg.Add(tsg.NewStatement().If(tsg.NewStatement().Id("val").Op("==").Id("null"), func(ig *tsg.Group) {
 			ig.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("undefined")).Semicolon())
 		}))
@@ -443,8 +474,7 @@ func (r *ClientRenderer) formParseKind(variable *model.Variable) (kind string) {
 
 func (r *ClientRenderer) renderHTTPBody(mg *tsg.Group, contract *model.Contract, method *model.Method, args []*model.Variable, httpMethod string, requestMultipart bool, bodyStreamArg *model.Variable, bodyStreamArgs []*model.Variable) {
 
-	// Генерируем body только для POST/PUT/PATCH, чтобы избежать noUnusedLocals в сгенерированном коде.
-	needBody := httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH"
+	needBody := httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" || len(args) > 0
 	if !needBody {
 		return
 	}
@@ -507,9 +537,11 @@ func (r *ClientRenderer) renderHTTPHeaders(mg *tsg.Group, contract *model.Contra
 		case responseMultipart:
 			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("multipart/form-data")).Semicolon())
 		case responseStreamResult != nil:
-			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("*/*")).Semicolon())
+			acceptType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/octet-stream")
+			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit(acceptType)).Semicolon())
 		default:
-			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("application/json")).Semicolon())
+			acceptType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json")
+			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit(acceptType)).Semicolon())
 		}
 	case bodyStreamArg != nil:
 		requestContentType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/octet-stream")
@@ -518,15 +550,23 @@ func (r *ClientRenderer) renderHTTPHeaders(mg *tsg.Group, contract *model.Contra
 		case responseMultipart:
 			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("multipart/form-data")).Semicolon())
 		case responseStreamResult != nil:
-			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("*/*")).Semicolon())
+			acceptType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/octet-stream")
+			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit(acceptType)).Semicolon())
 		default:
-			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit("application/json")).Semicolon())
+			acceptType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json")
+			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit(acceptType)).Semicolon())
 		}
 	default:
 		reqCT := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")
 		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Lit(reqCT)).Semicolon())
-		resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
-		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit(content.CanonicalMIME(resKind))).Semicolon())
+		var defaultAccept string
+		if responseStreamResult != nil {
+			defaultAccept = "application/octet-stream"
+		} else {
+			defaultAccept = "application/json"
+		}
+		acceptType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, defaultAccept)
+		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit(acceptType)).Semicolon())
 	}
 	mg.Add(tsg.NewStatement().
 		ForOf("["+tsLocalVar("key")+", "+tsLocalVar("value")+"]", "Object.entries("+tsLocalVar("clientHeaders")+")", func(fg *tsg.Group) {
@@ -561,13 +601,16 @@ func (r *ClientRenderer) renderHTTPResponse(mg *tsg.Group, contract *model.Contr
 			mg.Return(tsg.NewStatement().Id(tsLocalVar("bodyData")))
 			return
 		}
+		responseHeaderMap := model.HTTPResultHeaderMapForResponse(r.project, contract, method)
 		returnObj := tsg.NewStatement()
 		returnObj.Values(func(rg *tsg.Group) {
 			for _, ret := range results {
 				if ret.TypeID == TypeIDIOReadCloser {
 					rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Id(tsLocalVar("bodyData")))
 				} else {
-					rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Id(tsLocalVar("response")).Dot("headers").Dot("get").Call(tsg.NewStatement().Lit("Content-Type")))
+					headerName := responseHeaderMap[ret.Name]
+					headerExpr := tsg.NewStatement().Id(tsLocalVar("response")).Dot("headers").Dot("get").Call(tsg.NewStatement().Lit(headerName))
+					rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Add(headerExpr).Op("??").Lit(""))
 				}
 			}
 		})
@@ -577,6 +620,7 @@ func (r *ClientRenderer) renderHTTPResponse(mg *tsg.Group, contract *model.Contr
 	resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
 	switch resKind {
 	case content.KindForm:
+		r.needParseFormValueHelper = true
 		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
 		mg.Add(tsg.NewStatement().Const(tsLocalVar("formParams")).Op("=").Id("new URLSearchParams").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Semicolon())
 		responseDataObj := tsg.NewStatement()
@@ -587,41 +631,138 @@ func (r *ClientRenderer) renderHTTPResponse(mg *tsg.Group, contract *model.Contr
 				rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Id("parseFormValue").Call(tsg.NewStatement().Id(tsLocalVar("formParams")).Dot("get").Call(tsg.NewStatement().Lit(formKey)), tsg.NewStatement().Lit(kind)))
 			}
 		})
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Add(responseDataObj).Semicolon())
+		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Add(responseDataObj).Semicolon())
 	case content.KindXML:
 		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("new XMLParser").Call().Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
+		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("new XMLParser").Call().Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
 	case content.KindMsgpack:
 		mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Msgpack").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
+		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Msgpack").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
 	case content.KindCBOR:
 		mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Cbor").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
+		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Cbor").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
 	case content.KindYAML:
 		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("YAML").Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
+		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("YAML").Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
 	default:
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("json").Call()).Op("as").Id(responseTypeName).Semicolon())
+		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("json").Call()).Op("as").Id(responseTypeName).Semicolon())
 	}
+	r.renderHTTPResponseMergeHeadersAndCookies(mg, contract, method, results, responseTypeName)
 	switch {
 	case len(results) == 1 && (model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) || r.resultHasJsonInline(method, results[0])):
 		mg.Return(tsg.NewStatement().Id(tsLocalVar("responseData")))
 	case len(results) == 1:
-		mg.Return(tsg.NewStatement().Id(tsLocalVar("responseData")).Dot(tsSafeName(results[0].Name)))
+		res := results[0]
+		dataRef := tsg.NewStatement().Id(tsLocalVar("responseData"))
+		if res.NumberOfPointers > 0 {
+			mg.Return(dataRef.OptionalChain(tsSafeName(res.Name)).Op("??").Id("null"))
+		} else {
+			mg.Return(dataRef.Dot(tsSafeName(res.Name)))
+		}
 	case r.responseHasAnyInline(method, results):
 		mg.Return(tsg.NewStatement().Id(tsLocalVar("responseData")))
 	default:
 		returnObj := tsg.NewStatement()
 		returnObj.Values(func(rg *tsg.Group) {
 			for _, ret := range results {
-				rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Id(tsLocalVar("responseData")).Dot(tsSafeName(ret.Name)))
+				dataRef := tsg.NewStatement().Id(tsLocalVar("responseData"))
+				var val *tsg.Statement
+				if ret.NumberOfPointers > 0 {
+					val = dataRef.OptionalChain(tsSafeName(ret.Name)).Op("??").Id("null")
+				} else {
+					val = dataRef.Dot(tsSafeName(ret.Name))
+				}
+				rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Add(val))
 			}
 		})
 		mg.Return(returnObj)
 	}
 }
 
-func (r *ClientRenderer) resultHasJsonInline(method *model.Method, v *model.Variable) bool {
+func (r *ClientRenderer) renderHTTPResponseMergeHeadersAndCookies(mg *tsg.Group, contract *model.Contract, method *model.Method, results []*model.Variable, responseTypeName string) {
+
+	headerMap := model.HTTPResultHeaderMapForResponse(r.project, contract, method)
+	cookieMap := model.HTTPResultCookieMapForResponse(r.project, contract, method)
+	if len(headerMap) == 0 && len(cookieMap) == 0 {
+		return
+	}
+
+	excludeFromBody := model.HTTPResultNamesExcludeFromBody(r.project, contract, method)
+
+	needGetResponseCookie := false
+	for _, ret := range results {
+		if _, exclude := excludeFromBody[ret.Name]; exclude && cookieMap[ret.Name] != "" {
+			needGetResponseCookie = true
+			break
+		}
+	}
+	if needGetResponseCookie {
+		paramStmt := tsg.NewStatement().Params(func(pg *tsg.Group) {
+			pg.Add(tsg.NewStatement().Id("res").Colon().Id("Response"))
+			pg.Add(tsg.NewStatement().Id("name").Colon().Id("string"))
+		})
+		getCookieBlock := func(bg *tsg.Group) {
+			hStmt := tsg.NewStatement().Const("h").Op("=").Id("res").Dot("headers").Dot("get").Call(tsg.NewStatement().Lit("Set-Cookie")).Op("??").Lit("")
+			bg.Add(hStmt.Semicolon())
+			forOfStmt := tsg.NewStatement().ForOf("part", "h.split(';')", func(fg *tsg.Group) {
+				trimmedStmt := tsg.NewStatement().Const("trimmed").Op("=").Id("part").Dot("trim").Call()
+				fg.Add(trimmedStmt.Semicolon())
+				eqStmt := tsg.NewStatement().Const("eq").Op("=").Id("trimmed").Dot("indexOf").Call(tsg.NewStatement().Lit("="))
+				fg.Add(eqStmt.Semicolon())
+				ifContinue := tsg.NewStatement().If(tsg.NewStatement().Id("eq").Op("<").Lit(0), func(ig *tsg.Group) {
+					ig.Add(tsg.NewStatement().Id("continue").Semicolon())
+				})
+				fg.Add(ifContinue)
+				kStmt := tsg.NewStatement().Const("k").Op("=").Id("trimmed").Dot("slice").Call(tsg.NewStatement().Lit(0), tsg.NewStatement().Id("eq"))
+				fg.Add(kStmt.Semicolon())
+				vStmt := tsg.NewStatement().Const("v").Op("=").Id("trimmed").Dot("slice").Call(tsg.NewStatement().Id("eq").Op("+").Lit(1))
+				fg.Add(vStmt.Semicolon())
+				ifReturn := tsg.NewStatement().If(tsg.NewStatement().Id("k").Op("===").Id("name"), func(ig *tsg.Group) {
+					ig.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("decodeURIComponent").Call(tsg.NewStatement().Id("v"))).Semicolon())
+				})
+				fg.Add(ifReturn)
+			})
+			bg.Add(forOfStmt.Semicolon())
+			bg.Add(tsg.NewStatement().Return(tsg.NewStatement().Id("null")).Semicolon())
+		}
+		getCookieStmt := tsg.NewStatement().Const("getResponseCookie").Op("=").Add(paramStmt).Colon().Id("string").Op("|").Id("null").Op("=>").Block(getCookieBlock)
+		mg.Add(getCookieStmt.Semicolon())
+	}
+
+	mg.Add(tsg.NewStatement().Const("mergedResult").Colon().Id(responseTypeName).Op("=").Values(nil).Op("as").Id(responseTypeName).Semicolon())
+	for _, ret := range results {
+		if _, exclude := excludeFromBody[ret.Name]; exclude {
+			r.needParseFormValueHelper = true
+			kind := r.formParseKind(ret)
+			if headerName, ok := headerMap[ret.Name]; ok {
+				mg.Add(tsg.NewStatement().Assign(
+					tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
+					tsg.NewStatement().Id("parseFormValue").Call(
+						tsg.NewStatement().Id(tsLocalVar("response")).Dot("headers").Dot("get").Call(tsg.NewStatement().Lit(headerName)),
+						tsg.NewStatement().Lit(kind),
+					),
+				).Semicolon())
+			} else {
+				cookieName := cookieMap[ret.Name]
+				mg.Add(tsg.NewStatement().Assign(
+					tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
+					tsg.NewStatement().Id("parseFormValue").Call(
+						tsg.NewStatement().Id("getResponseCookie").Call(tsg.NewStatement().Id(tsLocalVar("response")), tsg.NewStatement().Lit(cookieName)),
+						tsg.NewStatement().Lit(kind),
+					),
+				).Semicolon())
+			}
+		} else {
+			mg.Add(tsg.NewStatement().Assign(
+				tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
+				tsg.NewStatement().Id(tsLocalVar("responseData")).OptionalChain(tsSafeName(ret.Name)),
+			).Semicolon())
+		}
+	}
+	mg.Add(tsg.NewStatement().Assign(tsg.NewStatement().Id(tsLocalVar("responseData")), tsg.NewStatement().Id("mergedResult")).Semicolon())
+}
+
+func (r *ClientRenderer) resultHasJsonInline(method *model.Method, v *model.Variable) (ok bool) {
 
 	sub := method.Annotations.Sub(v.Name)
 	for key, value := range sub {
@@ -643,7 +784,7 @@ func (r *ClientRenderer) resultHasJsonInline(method *model.Method, v *model.Vari
 	return false
 }
 
-func (r *ClientRenderer) responseHasAnyInline(method *model.Method, results []*model.Variable) bool {
+func (r *ClientRenderer) responseHasAnyInline(method *model.Method, results []*model.Variable) (ok bool) {
 
 	for _, v := range results {
 		if r.resultHasJsonInline(method, v) {

@@ -8,14 +8,15 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"tgp/internal/helper"
 )
 
 func (l *AutonomousPackageLoader) HasVersionASTgConstant(pkgPath string) (hasVersionASTg bool) {
 
 	l.versionASTgCacheMu.RLock()
-	var cached bool
 	var ok bool
+	var cached bool
 	if cached, ok = l.versionASTgCache[pkgPath]; ok {
 		l.versionASTgCacheMu.RUnlock()
 		hasVersionASTg = cached
@@ -52,11 +53,7 @@ func (l *AutonomousPackageLoader) checkVersionASTgInDir(pkgDir string) (hasVersi
 	fset := token.NewFileSet()
 
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
-			continue
-		}
-
-		if strings.HasSuffix(entry.Name(), "_test.go") {
+		if entry.IsDir() || !helper.IsRelevantGoFile(entry.Name()) {
 			continue
 		}
 
@@ -67,8 +64,8 @@ func (l *AutonomousPackageLoader) checkVersionASTgInDir(pkgDir string) (hasVersi
 		}
 
 		for _, decl := range file.Decls {
-			var genDecl *ast.GenDecl
 			var ok bool
+			var genDecl *ast.GenDecl
 			if genDecl, ok = decl.(*ast.GenDecl); ok && genDecl.Tok == token.CONST {
 				for _, spec := range genDecl.Specs {
 					var valueSpec *ast.ValueSpec

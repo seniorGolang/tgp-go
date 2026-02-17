@@ -10,14 +10,15 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *contractRenderer) RenderMetrics() error {
+func (r *contractRenderer) RenderMetrics() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName("context", "context")
 	srcFile.ImportName(PackageStrconv, "strconv")
@@ -52,10 +53,11 @@ func (r *contractRenderer) RenderMetrics() error {
 			BlockFunc(r.metricFuncBody(method))
 	}
 
-	return srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-metrics.go"))
+	err = srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-metrics.go"))
+	return
 }
 
-func (r *contractRenderer) metricsMiddleware() Code {
+func (r *contractRenderer) metricsMiddleware() (c Code) {
 
 	return Func().Id("metricsMiddleware"+r.contract.Name).
 		Params(Id(VarNameNext).Qual(r.contract.PkgPath, r.contract.Name), Id("metrics").Op("*").Id("Metrics")).
@@ -71,7 +73,6 @@ func (r *contractRenderer) metricsMiddleware() Code {
 }
 
 func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) {
-
 	return func(bg *Group) {
 
 		errCodeAssignment := Id("errCode").Op("=")
@@ -138,7 +139,7 @@ func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) 
 	}
 }
 
-func (r *contractRenderer) methodIsHTTP(method *model.Method) bool {
+func (r *contractRenderer) methodIsHTTP(method *model.Method) (ok bool) {
 
 	contractHasHTTP := model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerHTTP)
 	if !contractHasHTTP {
@@ -149,7 +150,7 @@ func (r *contractRenderer) methodIsHTTP(method *model.Method) bool {
 	return !contractHasJsonRPC || methodHasExplicitHTTP
 }
 
-func (r *contractRenderer) paramNames(vars []*model.Variable) *Statement {
+func (r *contractRenderer) paramNames(vars []*model.Variable) (st *Statement) {
 
 	var list = make([]Code, 0, len(vars))
 	for _, v := range vars {

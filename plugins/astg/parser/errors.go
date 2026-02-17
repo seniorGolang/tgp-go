@@ -112,7 +112,7 @@ func extractErrorsFromAnnotations(methodTags tags.DocTags) (errors []*model.Erro
 		errors = append(errors, errInfo)
 	}
 
-	return errors
+	return
 }
 
 func extractErrorsFromImplementations(method *model.Method, contract *model.Contract, project *model.Project, loader *AutonomousPackageLoader, isErrorTypeCache map[string]bool) (errors []*model.ErrorInfo) {
@@ -166,8 +166,8 @@ func extractErrorsFromImplementations(method *model.Method, contract *model.Cont
 
 func isErrorType(pkgPath string, typeName string, loader *AutonomousPackageLoader) (isError bool) {
 
-	var pkgInfo *PackageInfo
 	var ok bool
+	var pkgInfo *PackageInfo
 	if pkgInfo, ok = loader.GetPackage(pkgPath); !ok {
 		var err error
 		if pkgInfo, err = loader.LoadPackageForErrorType(pkgPath, typeName); err != nil {
@@ -244,8 +244,7 @@ func createErrorInterface() (iface *types.Interface) {
 		),
 	)
 
-	iface = types.NewInterfaceType([]*types.Func{errorMethod}, nil).Complete()
-	return
+	return types.NewInterfaceType([]*types.Func{errorMethod}, nil).Complete()
 }
 
 func getHTTPStatusText(code int) (text string) {
@@ -268,8 +267,7 @@ func getHTTPStatusText(code int) (text string) {
 	if text, ok = statusTexts[code]; ok {
 		return
 	}
-	text = fmt.Sprintf("HTTP %d", code)
-	return
+	return fmt.Sprintf("HTTP %d", code)
 }
 
 func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoader, isErrorTypeCache map[string]bool) (errors []*model.ErrorInfo) {
@@ -280,8 +278,8 @@ func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoa
 
 	handlerPkgPath := method.Handler.PkgPath
 	handlerName := method.Handler.Name
-	var pkgInfo *PackageInfo
 	var ok bool
+	var pkgInfo *PackageInfo
 	var astFiles []*ast.File
 	if pkgInfo, ok = loader.GetPackage(handlerPkgPath); ok && pkgInfo != nil {
 		astFiles = pkgInfo.Files

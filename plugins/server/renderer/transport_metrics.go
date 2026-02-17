@@ -8,10 +8,11 @@ import (
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *transportRenderer) RenderTransportMetrics() error {
+func (r *transportRenderer) RenderTransportMetrics() (err error) {
 
 	metricsPath := path.Join(r.outDir, "metrics.go")
 
@@ -23,11 +24,11 @@ func (r *transportRenderer) RenderTransportMetrics() error {
 		}
 	}
 	if !hasMetrics {
-		return nil
+		return
 	}
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName("os", "os")
 	srcFile.ImportName(PackageSync, "sync")
@@ -62,10 +63,11 @@ func (r *transportRenderer) RenderTransportMetrics() error {
 	srcFile.Line().Add(r.newMetricsFunc())
 	srcFile.Add(r.serveMetricsFunc())
 
-	return srcFile.Save(metricsPath)
+	err = srcFile.Save(metricsPath)
+	return
 }
 
-func (r *transportRenderer) newMetricsFunc() Code {
+func (r *transportRenderer) newMetricsFunc() (c Code) {
 
 	return Func().Id("NewMetrics").
 		Params().
@@ -165,7 +167,7 @@ func (r *transportRenderer) newMetricsFunc() Code {
 		})
 }
 
-func (r *transportRenderer) serveMetricsFunc() Code {
+func (r *transportRenderer) serveMetricsFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("ServeMetrics").

@@ -52,13 +52,12 @@ func CollectClientStats(project *model.Project) (stats ClientStats) {
 	return
 }
 
-func (s ClientStats) ContractNamesString() (result string) {
+func (s ClientStats) ContractNamesString() (out string) {
 
-	result = strings.Join(s.ContractNames, ", ")
 	if len(s.ContractNames) == 0 {
-		result = "нет контрактов"
+		return "нет контрактов"
 	}
-	return
+	return strings.Join(s.ContractNames, ", ")
 }
 
 type DocOptionsProvider interface {
@@ -74,7 +73,6 @@ func StartGenerationAttrs(stats ClientStats, outDir string, docOpts DocOptionsPr
 		slog.String(i18n.Msg("output directory"), outDir),
 	}
 
-	// Добавляем информацию о типах серверов
 	if stats.JsonRPCCount > 0 {
 		attrs = append(attrs, slog.Int(i18n.Msg("jsonrpc contracts"), stats.JsonRPCCount))
 	}
@@ -82,7 +80,6 @@ func StartGenerationAttrs(stats ClientStats, outDir string, docOpts DocOptionsPr
 		attrs = append(attrs, slog.Int(i18n.Msg("http contracts"), stats.HTTPCount))
 	}
 
-	// Добавляем информацию о документации
 	if docOpts != nil && docOpts.IsEnabled() {
 		attrs = append(attrs,
 			slog.String(i18n.Msg("documentation"), i18n.Msg("documentation enabled")),
@@ -164,13 +161,12 @@ func CollectSwaggerStats(project *model.Project, filteredContracts []string) (st
 	return
 }
 
-func (s SwaggerStats) ContractNamesString() (result string) {
+func (s SwaggerStats) ContractNamesString() (out string) {
 
-	result = strings.Join(s.ContractNames, ", ")
 	if len(s.ContractNames) == 0 {
-		result = "нет контрактов"
+		return "нет контрактов"
 	}
-	return
+	return strings.Join(s.ContractNames, ", ")
 }
 
 func (s *SwaggerStats) SetTotalTypes(totalTypes int) {

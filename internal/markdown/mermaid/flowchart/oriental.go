@@ -18,6 +18,6 @@ const (
 	lr oriental = "LR"
 )
 
-func (o oriental) string() string {
+func (o oriental) string() (s string) {
 	return string(o)
 }

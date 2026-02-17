@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"go/types"
 	"log/slog"
+	"sort"
 
 	"tgp/core/i18n"
 	"tgp/internal/model"
 )
 
 func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Project, loader *AutonomousPackageLoader) {
+
 	if coreType.ImportPkgPath == "" || coreType.TypeName == "" {
 		return
 	}
@@ -58,6 +60,86 @@ func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Proje
 			project.Types[typeID] = coreType
 		}
 	}
+}
+
+func detectParseFromString(typ types.Type, coreType *model.Type, project *model.Project, loader *AutonomousPackageLoader) {
+
+	if coreType.ImportPkgPath == "" || coreType.TypeName == "" {
+		return
+	}
+	if coreType.ParseFromString != nil {
+		return
+	}
+
+	pkgInfo, ok := loader.GetPackage(coreType.ImportPkgPath)
+	if !ok || pkgInfo == nil || pkgInfo.Types == nil {
+		var err error
+		if pkgInfo, err = loader.LoadPackageLazy(coreType.ImportPkgPath); err != nil || pkgInfo == nil || pkgInfo.Types == nil {
+			return
+		}
+	}
+
+	scope := pkgInfo.Types.Scope()
+	names := scope.Names()
+	sort.Strings(names)
+
+	targetTypeID := fmt.Sprintf("%s:%s", coreType.ImportPkgPath, coreType.TypeName)
+	parseName := "Parse" + coreType.TypeName
+
+	for _, name := range names {
+		if name != "Parse" && name != parseName {
+			continue
+		}
+		obj := scope.Lookup(name)
+		fn, ok := obj.(*types.Func)
+		if !ok {
+			continue
+		}
+		sig, ok := fn.Type().(*types.Signature)
+		if !ok {
+			continue
+		}
+		if sig.Params().Len() != 1 {
+			continue
+		}
+		if !types.Identical(sig.Params().At(0).Type(), types.Typ[types.String]) {
+			continue
+		}
+		res := sig.Results()
+		if res.Len() != 1 && res.Len() != 2 {
+			continue
+		}
+		if res.Len() == 2 && !isBuiltinErrorType(res.At(1).Type()) {
+			continue
+		}
+		res0 := res.At(0).Type()
+		var returnsPointer bool
+		var res0ValueType types.Type
+		if ptr, ok := res0.(*types.Pointer); ok {
+			returnsPointer = true
+			res0ValueType = ptr.Elem()
+		} else {
+			res0ValueType = res0
+		}
+		if generateTypeIDFromGoTypes(res0ValueType) != targetTypeID {
+			continue
+		}
+
+		coreType.ParseFromString = &model.ParseFromStringInfo{
+			FuncName:       fn.Name(),
+			ReturnsError:   res.Len() == 2,
+			ReturnsPointer: returnsPointer,
+		}
+		typeID := fmt.Sprintf("%s:%s", coreType.ImportPkgPath, coreType.TypeName)
+		if _, exists := project.Types[typeID]; exists {
+			project.Types[typeID] = coreType
+		}
+		return
+	}
+}
+
+func isBuiltinErrorType(t types.Type) (ok bool) {
+	return types.Identical(t, types.Universe.Lookup("error").Type())
 }
 
 func getAllInterfacesFromLoader(loader *AutonomousPackageLoader) (interfaces map[string]*types.Interface) {

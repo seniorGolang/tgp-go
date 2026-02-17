@@ -13,17 +13,14 @@ import (
 )
 
 type Flowchart struct {
-	// body is flowchart body.
-	body []string
-	// dest is output destination for flowchart body.
-	dest io.Writer
-	// err manages errors that occur in all parts of the flowchart building.
-	err error
-	// config is the configuration for the flowchart.
+	err    error
+	body   []string
+	dest   io.Writer
 	config *config
 }
 
-func NewFlowchart(w io.Writer, opts ...Option) *Flowchart {
+func NewFlowchart(w io.Writer, opts ...Option) (f *Flowchart) {
+
 	c := newConfig()
 
 	for _, opt := range opts {
@@ -45,16 +42,17 @@ func NewFlowchart(w io.Writer, opts ...Option) *Flowchart {
 	}
 }
 
-func (f *Flowchart) String() string {
+func (f *Flowchart) String() (s string) {
 	return strings.Join(f.body, internal.LineFeed())
 }
 
-func (f *Flowchart) Build() error {
-	if _, err := fmt.Fprint(f.dest, f.String()); err != nil {
+func (f *Flowchart) Build() (err error) {
+
+	if _, writeErr := fmt.Fprint(f.dest, f.String()); writeErr != nil {
 		if f.err != nil {
-			return fmt.Errorf("failed to write: %w: %s", err, f.err.Error()) //nolint:wrapcheck
+			return fmt.Errorf("failed to write: %w: %s", writeErr, f.err.Error()) //nolint:wrapcheck
 		}
-		return fmt.Errorf("failed to write: %w", err)
+		return fmt.Errorf("failed to write: %w", writeErr)
 	}
-	return nil
+	return f.err
 }

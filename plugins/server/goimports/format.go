@@ -209,12 +209,12 @@ type importSpec struct {
 	original   []byte
 }
 
-func formatImports(src []byte, filename string, modulePath string) ([]byte, error) {
+func formatImports(src []byte, filename string, modulePath string) (out []byte, err error) {
 
 	fileSet := token.NewFileSet()
-	f, err := parser.ParseFile(fileSet, filename, src, parser.ParseComments)
-	if err != nil {
-		return nil, err
+	var f *ast.File
+	if f, err = parser.ParseFile(fileSet, filename, src, parser.ParseComments); err != nil {
+		return
 	}
 
 	if len(f.Imports) == 0 {
@@ -291,9 +291,8 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 	sortImports(local)
 	sortImports(external)
 
-	// Форматируем результат
 	// Предварительно выделяем память для body (примерная оценка)
-	estimatedBodySize := len(imports) * 50 // примерная оценка: 50 байт на импорт
+	estimatedBodySize := len(imports) * 50
 	body := make([]byte, 0, estimatedBodySize)
 	first := true
 
@@ -303,7 +302,6 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 			body = append(body, indent)
 		}
 		first = false
-		// Форматируем импорт правильно
 		body = append(body, formatImport(imp)...)
 		body = append(body, linebreak)
 	}
@@ -320,7 +318,6 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 			body = append(body, indent)
 		}
 		first = false
-		// Форматируем импорт правильно, убираем ненужные алиасы
 		body = append(body, formatImportWithoutAlias(imp)...)
 		body = append(body, linebreak)
 	}
@@ -337,12 +334,11 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 			body = append(body, indent)
 		}
 		first = false
-		// Форматируем импорт правильно, убираем ненужные алиасы
 		body = append(body, formatImportWithoutAlias(imp)...)
 		body = append(body, linebreak)
 	}
 
-	head := make([]byte, 0, headEnd+20) // предварительно выделяем память
+	head := make([]byte, 0, headEnd+20)
 	head = append(head, src[:headEnd]...)
 	tail := make([]byte, len(src)-tailStart)
 	copy(tail, src[tailStart:])
@@ -351,7 +347,6 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 	head = append(head, linebreak)
 	body = append(body, []byte{')', linebreak}...)
 
-	// Создаем result с нужной емкостью и копируем данные
 	result := make([]byte, 0, len(head)+len(body)+len(tail))
 	result = append(result, head...)
 	result = append(result, body...)
@@ -359,13 +354,11 @@ func formatImports(src []byte, filename string, modulePath string) ([]byte, erro
 
 	result = bytes.ReplaceAll(result, []byte{'\r', '\n'}, []byte{'\n'})
 
-	// Форматируем через go/format
-	result, err = format.Source(result)
-	if err != nil {
+	var formatted []byte
+	if formatted, err = format.Source(result); err != nil {
 		return nil, fmt.Errorf("format.Source: %w", err)
 	}
-
-	return result, nil
+	return formatted, nil
 }
 
 func getImportBounds(imp *ast.ImportSpec) (start, end int) {
@@ -388,10 +381,10 @@ func getImportBounds(imp *ast.ImportSpec) (start, end int) {
 	return
 }
 
-func isStandardPackage(path string) bool {
+func isStandardPackage(path string) (ok bool) {
 
-	_, ok := standardPackages[path]
-	return ok
+	_, ok = standardPackages[path]
+	return
 }
 
 func sortImports(imports []importSpec) {
@@ -404,7 +397,7 @@ func sortImports(imports []importSpec) {
 	})
 }
 
-func formatImport(imp importSpec) []byte {
+func formatImport(imp importSpec) (out []byte) {
 
 	if imp.name != "" {
 		return []byte(fmt.Sprintf(`%s "%s"`, imp.name, imp.path))
@@ -412,23 +405,15 @@ func formatImport(imp importSpec) []byte {
 	return []byte(fmt.Sprintf(`"%s"`, imp.path))
 }
 
-func formatImportWithoutAlias(imp importSpec) []byte {
+func formatImportWithoutAlias(imp importSpec) (out []byte) {
 
-	// ВАЖНО: для внешних пакетов всегда убираем псевдоним, если имя пакета установлено явно
-	// Имя пакета определяется из самого пакета (из go/types), а не из пути импорта
-	// Импорт должен быть без псевдонима: import "github.com/go-jose/go-jose/v4"
-	// Имя пакета используется в коде через Qual, но не должно быть в импорте
-
-	// ВАЖНО: для внешних пакетов всегда убираем псевдоним
-	// Имя пакета определяется из самого пакета (из go/types), а не из пути импорта
-	// Импорт должен быть без псевдонима: import "github.com/go-jose/go-jose/v4"
-	// Имя пакета используется в коде через Qual, но не должно быть в импорте
+	// ВАЖНО: для внешних пакетов всегда убираем псевдоним, если имя пакета установлено явно.
+	// Имя пакета определяется из самого пакета (go/types), а не из пути импорта.
 	return []byte(fmt.Sprintf(`"%s"`, imp.path))
 }
 
-func findLocalModule(filename string) string {
+func findLocalModule(filename string) (s string) {
 
-	// Ищем go.mod, начиная с директории файла
 	dir := filepath.Dir(filename)
 	for {
 		if dir == "" || dir == "/" {

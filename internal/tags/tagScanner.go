@@ -28,6 +28,14 @@ func TagScanner(tagString string) (tags map[string]string, err error) {
 	data := []byte(tagString)
 	tags = make(map[string]string)
 
+	setTag := func(k string, v string) {
+		if prev, ok := tags[k]; ok && prev != "" {
+			tags[k] = prev + "," + v
+		} else {
+			tags[k] = v
+		}
+	}
+
 garbage:
 	if i == len(data) {
 		return
@@ -49,7 +57,7 @@ key:
 	if i >= len(data) {
 		if m >= 0 {
 			key = data[m:i]
-			tags[string(key)] = ""
+			setTag(string(key), "")
 		}
 		return
 	}
@@ -66,7 +74,7 @@ key:
 	default:
 		key = data[m:i]
 		i++
-		tags[string(key)] = ""
+		setTag(string(key), "")
 		goto garbage
 	}
 
@@ -75,7 +83,7 @@ equal:
 		if m >= 0 {
 			i--
 			key = data[m:i]
-			tags[string(key)] = ""
+			setTag(string(key), "")
 		}
 		return
 	}
@@ -93,7 +101,7 @@ equal:
 		goto qvalue
 	default:
 		if key != nil {
-			tags[string(key)] = string(val)
+			setTag(string(key), string(val))
 		}
 		i++
 		goto garbage
@@ -103,7 +111,7 @@ ivalue:
 	if i >= len(data) {
 		if m >= 0 {
 			val = data[m:i]
-			tags[string(key)] = string(val)
+			setTag(string(key), string(val))
 		}
 		return
 	}
@@ -115,7 +123,7 @@ ivalue:
 		goto ivalue
 	default:
 		val = data[m:i]
-		tags[string(key)] = string(val)
+		setTag(string(key), string(val))
 		i++
 		goto garbage
 	}
@@ -146,7 +154,7 @@ qvalue:
 		} else {
 			val = val[1 : len(val)-1]
 		}
-		tags[string(key)] = string(val)
+		setTag(string(key), string(val))
 		goto garbage
 	default:
 		i++

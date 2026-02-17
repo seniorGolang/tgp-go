@@ -29,7 +29,6 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 
 	var astStructType *ast.StructType
 	if pkgInfo, ok := loader.GetPackage(pkgPath); ok && pkgInfo != nil {
-		// Ищем структуру в файлах пакета
 		for _, file := range pkgInfo.Files {
 			astStructType = findASTStructType(file, coreType.TypeName, pkgInfo.TypeInfo)
 			if astStructType != nil {
@@ -63,11 +62,11 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 			}
 		}
 
-		docs := []string{}
+		var docs, directives []string
 		if astStructType != nil {
-			astDocs := extractDocsFromASTStruct(astStructType, fieldName)
-			if len(astDocs) > 0 {
-				docs = astDocs
+			astLines := extractDocsFromASTStruct(astStructType, fieldName)
+			if len(astLines) > 0 {
+				docs, directives = splitDocsAndDirectives(astLines)
 			}
 		}
 
@@ -82,9 +81,10 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 				MapKey:           typeInfo.MapKey,
 				MapValue:         typeInfo.MapValue,
 			},
-			Name: fieldName,
-			Tags: tags,
-			Docs: docs,
+			Name:       fieldName,
+			Tags:       tags,
+			Docs:       docs,
+			Directives: directives,
 		}
 
 		coreType.StructFields = append(coreType.StructFields, structField)
@@ -111,7 +111,6 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 		processingSet = make(map[string]bool)
 	}
 
-	// Убираем указатели
 	for {
 		if ptr, ok := typ.(*types.Pointer); ok {
 			info.NumberOfPointers++
@@ -228,21 +227,19 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 				if alias.Obj() != nil && alias.Obj().Pkg() != nil {
 					typeID := fmt.Sprintf("%s:%s", alias.Obj().Pkg().Path(), alias.Obj().Name())
 					info.TypeID = typeID
-					// Сохраняем алиас в project.Types через convertTypeFromGoTypes
 					if _, exists := project.Types[typeID]; !exists {
 						pkgInfo, ok := loader.GetPackage(alias.Obj().Pkg().Path())
 						if ok && pkgInfo != nil {
 							coreType := convertTypeFromGoTypes(typ, alias.Obj().Pkg().Path(), pkgInfo.Imports, project, loader, processingSet)
 							if coreType != nil {
 								detectInterfaces(typ, coreType, project, loader)
-								// Обновляем тип в project.Types, чтобы сохранить интерфейсы
+								detectParseFromString(typ, coreType, project, loader)
 								project.Types[typeID] = coreType
 							}
 						}
 					}
 				}
 			} else {
-				// Сохраняем тип в project.Types, если это именованный тип
 				if named, ok := typ.(*types.Named); ok {
 					if named.Obj() != nil && named.Obj().Pkg() != nil {
 						importPkgPath := named.Obj().Pkg().Path()
@@ -251,15 +248,15 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 							coreType := convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet)
 							if coreType != nil {
 								detectInterfaces(typ, coreType, project, loader)
-								// Обновляем тип в project.Types, чтобы сохранить интерфейсы
+								detectParseFromString(typ, coreType, project, loader)
 								project.Types[typeID] = coreType
 							}
 						} else {
-							// Пакет не загружен - пытаемся загрузить
 							if pkgInfo, err := loader.LoadPackageForType(importPkgPath, named.Obj().Name()); err == nil {
 								coreType := convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet)
 								if coreType != nil {
 									detectInterfaces(typ, coreType, project, loader)
+									detectParseFromString(typ, coreType, project, loader)
 									project.Types[typeID] = coreType
 								}
 							}
@@ -279,7 +276,8 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 	return
 }
 
-func fieldTypeInfoToTypeRef(info fieldTypeInfo) *model.TypeRef {
+func fieldTypeInfoToTypeRef(info fieldTypeInfo) (ref *model.TypeRef) {
+
 	if info.TypeID == "" || info.TypeID == "invalid type" {
 		return nil
 	}
@@ -301,7 +299,6 @@ func findASTStructType(file *ast.File, typeName string, typeInfo *types.Info) (f
 		return
 	}
 
-	// Ищем объявление типа в AST
 	ast.Inspect(file, func(n ast.Node) bool {
 		if genDecl, ok := n.(*ast.GenDecl); ok {
 			if genDecl.Tok == token.TYPE {
@@ -310,7 +307,7 @@ func findASTStructType(file *ast.File, typeName string, typeInfo *types.Info) (f
 						if typeSpec.Name != nil && typeSpec.Name.Name == typeName {
 							if structType, ok := typeSpec.Type.(*ast.StructType); ok {
 								foundStruct = structType
-								return false // Найдено, прекращаем поиск
+								return false
 							}
 						}
 					}
@@ -319,6 +316,50 @@ func findASTStructType(file *ast.File, typeName string, typeInfo *types.Info) (f
 		}
 		return true
 	})
+
+	return
+}
+
+func findTypeSpecAndGenDecl(file *ast.File, typeName string) (typeSpec *ast.TypeSpec, genDecl *ast.GenDecl) {
+
+	if file == nil {
+		return
+	}
+
+	ast.Inspect(file, func(n ast.Node) bool {
+		if g, ok := n.(*ast.GenDecl); ok && g.Tok == token.TYPE {
+			for _, spec := range g.Specs {
+				if ts, ok := spec.(*ast.TypeSpec); ok && ts.Name != nil && ts.Name.Name == typeName {
+					typeSpec = ts
+					genDecl = g
+					return false
+				}
+			}
+		}
+		return true
+	})
+
+	return
+}
+
+func getTypeDocs(loader *AutonomousPackageLoader, pkgPath string, typeName string) (docs, directives []string) {
+
+	if loader == nil || pkgPath == "" || typeName == "" {
+		return
+	}
+
+	pkgInfo, ok := loader.GetPackage(pkgPath)
+	if !ok || pkgInfo == nil || len(pkgInfo.Files) == 0 {
+		return
+	}
+
+	for _, file := range pkgInfo.Files {
+		ts, g := findTypeSpecAndGenDecl(file, typeName)
+		if ts != nil && g != nil {
+			lines := extractComments(g.Doc, ts.Doc, ts.Comment)
+			return splitDocsAndDirectives(lines)
+		}
+	}
 
 	return
 }
@@ -334,7 +375,6 @@ func extractTagsFromASTStruct(structType *ast.StructType, fieldName string) (tag
 		for _, name := range field.Names {
 			if name.Name == fieldName {
 				if field.Tag != nil {
-					// Убираем обратные кавычки из тега
 					tagValue := field.Tag.Value
 					if len(tagValue) >= 2 && tagValue[0] == '`' && tagValue[len(tagValue)-1] == '`' {
 						tagValue = tagValue[1 : len(tagValue)-1]
@@ -386,7 +426,6 @@ func parseStructTag(tag string) (result map[string][]string) {
 			break
 		}
 
-		// Ищем ключ (до первого ':')
 		keyEnd := 0
 		for keyEnd < len(tag) && tag[keyEnd] != ':' {
 			keyEnd++
@@ -406,12 +445,11 @@ func parseStructTag(tag string) (result map[string][]string) {
 			break
 		}
 
-		// Ищем значение в кавычках
-		tag = tag[1:] // Пропускаем открывающую кавычку
+		tag = tag[1:]
 		valueEnd := 0
 		for valueEnd < len(tag) && tag[valueEnd] != '"' {
 			if tag[valueEnd] == '\\' && valueEnd+1 < len(tag) {
-				valueEnd += 2 // Пропускаем экранированный символ
+				valueEnd += 2
 			} else {
 				valueEnd++
 			}
@@ -420,9 +458,8 @@ func parseStructTag(tag string) (result map[string][]string) {
 			break
 		}
 		value := tag[:valueEnd]
-		tag = tag[valueEnd+1:] // Пропускаем закрывающую кавычку
+		tag = tag[valueEnd+1:]
 
-		// Разбиваем значение по запятым (для опций типа "name,omitempty")
 		values := strings.Split(value, ",")
 		result[key] = values
 	}

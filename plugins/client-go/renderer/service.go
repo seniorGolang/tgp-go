@@ -12,20 +12,22 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/content"
+	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
+func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err error) {
 
 	outDir := r.outDir
 	pkgName := filepath.Base(outDir)
 	srcFile := NewSrcFile(pkgName)
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	ctx := context.WithValue(context.Background(), keyCode, srcFile) // nolint
 	ctx = context.WithValue(ctx, keyPackage, pkgName)                // nolint
 
 	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		srcFile.ImportName(PackageContext, "context")
 		srcFile.ImportName(PackageUUID, "uuid")
 		srcFile.ImportName(PackageFiber, "fiber")
 		srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
@@ -81,8 +83,8 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) error {
 			}
 		}
 		if _, formUsed := kindsUsed[content.KindForm]; formUsed {
-			if err := r.copySchemaTo(outDir); err != nil {
-				return err
+			if err = r.pkgRenderTo("schema", outDir, newPkgTemplateData()); err != nil {
+				return
 			}
 			srcFile.ImportName(fmt.Sprintf("%s/schema", r.pkgPath(outDir)), "schema")
 		}

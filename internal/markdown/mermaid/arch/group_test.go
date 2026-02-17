@@ -12,6 +12,7 @@ import (
 )
 
 func TestArchitecture_GroupInParentGroup(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("set group in parent group", func(t *testing.T) {

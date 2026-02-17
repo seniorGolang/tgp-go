@@ -17,7 +17,6 @@ func runGoGenerateCMD(outDir string) (err error) {
 	return runCmdWithStdio(exec.Command("go", "generate", "./..."), outDir)
 }
 
-// runCmdWithStdio запускает команду и перенаправляет её stdout/stderr в os.Stdout/os.Stderr.
 // Для WASM exec: сначала Start(), затем StdoutPipe/StderrPipe (pipe'ы берутся из ответа запущенной команды).
 func runCmdWithStdio(cmd *exec.Cmd, outDir string) (err error) {
 

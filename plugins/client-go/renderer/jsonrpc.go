@@ -7,21 +7,23 @@ import (
 	"path"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/generated"
 )
 
 type jsonrpcGenerator struct {
 	jsonPkg string // Пакет для JSON операций (например, "encoding/json" или "github.com/goccy/go-json")
 }
 
-func (r *ClientRenderer) RenderJsonRPCPackage(outDir string) error {
+func (r *ClientRenderer) RenderJsonRPCPackage(outDir string) (err error) {
 
 	jsonPkg := r.getPackageJSON(nil)
 	gen := &jsonrpcGenerator{jsonPkg: jsonPkg}
 
 	jsonrpcDir := path.Join(outDir, "jsonrpc")
 
-	if err := os.MkdirAll(jsonrpcDir, 0700); err != nil {
-		return err
+	if err = os.MkdirAll(jsonrpcDir, 0700); err != nil {
+		return
 	}
 
 	files := []struct {
@@ -41,18 +43,18 @@ func (r *ClientRenderer) RenderJsonRPCPackage(outDir string) error {
 	}
 
 	for _, file := range files {
-		if err := file.generator(jsonPkg); err != nil {
-			return err
+		if err = file.generator(jsonPkg); err != nil {
+			return
 		}
 	}
 
-	return nil
+	return
 }
 
-func (gen *jsonrpcGenerator) renderClient(outDir, jsonPkg string) error {
+func (gen *jsonrpcGenerator) renderClient(outDir, jsonPkg string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageHttp, "http")
 	srcFile.ImportName(PackageTime, "time")
@@ -159,10 +161,10 @@ func (gen *jsonrpcGenerator) renderClient(outDir, jsonPkg string) error {
 	return srcFile.Save(path.Join(outDir, "client.go"))
 }
 
-func (gen *jsonrpcGenerator) renderError(outDir, jsonPkg string) error {
+func (gen *jsonrpcGenerator) renderError(outDir, jsonPkg string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(jsonPkg, "json")
 	srcFile.ImportName(PackageStrconv, "strconv")
@@ -191,13 +193,14 @@ func (gen *jsonrpcGenerator) renderError(outDir, jsonPkg string) error {
 		Return(Id("e").Dot("err").Dot("Error").Call()),
 	)
 
-	return srcFile.Save(path.Join(outDir, "error.go"))
+	err = srcFile.Save(path.Join(outDir, "error.go"))
+	return
 }
 
-func (gen *jsonrpcGenerator) renderRequest(outDir string) error {
+func (gen *jsonrpcGenerator) renderRequest(outDir string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.Line().Type().Id("RequestRPC").Struct(
 		Id("ID").Id("ID").Tag(map[string]string{"json": "id"}),
@@ -235,10 +238,10 @@ func (gen *jsonrpcGenerator) renderRequest(outDir string) error {
 	return srcFile.Save(path.Join(outDir, "request.go"))
 }
 
-func (gen *jsonrpcGenerator) renderResponse(outDir, jsonPkg string) error {
+func (gen *jsonrpcGenerator) renderResponse(outDir, jsonPkg string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(jsonPkg, "json")
 
@@ -315,10 +318,10 @@ func (gen *jsonrpcGenerator) renderResponse(outDir, jsonPkg string) error {
 	return srcFile.Save(path.Join(outDir, "response.go"))
 }
 
-func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) error {
+func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageBytes, "bytes")
 	srcFile.ImportName(PackageContext, "context")
@@ -540,10 +543,10 @@ func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) error {
 	return srcFile.Save(path.Join(outDir, "internal.go"))
 }
 
-func (gen *jsonrpcGenerator) renderOption(outDir string) error {
+func (gen *jsonrpcGenerator) renderOption(outDir string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(PackageTLS, "tls")
@@ -623,10 +626,10 @@ func (gen *jsonrpcGenerator) renderOption(outDir string) error {
 	return srcFile.Save(path.Join(outDir, "option.go"))
 }
 
-func (gen *jsonrpcGenerator) renderPublic(outDir string) error {
+func (gen *jsonrpcGenerator) renderPublic(outDir string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(PackageErrors, "errors")
@@ -683,13 +686,14 @@ func (gen *jsonrpcGenerator) renderPublic(outDir string) error {
 			bg.Return(Id("client").Dot("doBatchCall").Call(Id("ctx"), Id("requests")))
 		})
 
-	return srcFile.Save(path.Join(outDir, "public.go"))
+	err = srcFile.Save(path.Join(outDir, "public.go"))
+	return
 }
 
-func (gen *jsonrpcGenerator) renderParam(outDir string) error {
+func (gen *jsonrpcGenerator) renderParam(outDir string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.Line().Func().Id("ParamsOne").Params(Id("v").Any()).Params(Any()).Block(
 		Return(Id("v")),
@@ -716,13 +720,14 @@ func (gen *jsonrpcGenerator) renderParam(outDir string) error {
 			bg.Return(Id("finalParams"))
 		})
 
-	return srcFile.Save(path.Join(outDir, "param.go"))
+	err = srcFile.Save(path.Join(outDir, "param.go"))
+	return
 }
 
-func (gen *jsonrpcGenerator) renderString(outDir string) error {
+func (gen *jsonrpcGenerator) renderString(outDir string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageFmt, "fmt")
 
@@ -743,10 +748,10 @@ func (gen *jsonrpcGenerator) renderString(outDir string) error {
 	return srcFile.Save(path.Join(outDir, "string.go"))
 }
 
-func (gen *jsonrpcGenerator) renderHttp2Curl(outDir string) error {
+func (gen *jsonrpcGenerator) renderHttp2Curl(outDir string) (err error) {
 
 	srcFile := NewSrcFile("jsonrpc")
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageBytes, "bytes")
 	srcFile.ImportName(PackageFmt, "fmt")

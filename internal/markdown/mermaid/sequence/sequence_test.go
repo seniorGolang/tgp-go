@@ -16,6 +16,7 @@ import (
 )
 
 func TestString(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should return the sequence diagram body", func(t *testing.T) {
@@ -34,6 +35,7 @@ func TestString(t *testing.T) {
 }
 
 func TestDiagramRequestf(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add request to the sequence diagram", func(t *testing.T) {
@@ -52,6 +54,7 @@ func TestDiagramRequestf(t *testing.T) {
 }
 
 func TestDiagramResponsef(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add response to the sequence diagram", func(t *testing.T) {
@@ -70,6 +73,7 @@ func TestDiagramResponsef(t *testing.T) {
 }
 
 func TestDiagramRequestErrorf(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add request error to the sequence diagram", func(t *testing.T) {
@@ -88,6 +92,7 @@ func TestDiagramRequestErrorf(t *testing.T) {
 }
 
 func TestDiagramResponseErrorf(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add response error to the sequence diagram", func(t *testing.T) {
@@ -106,6 +111,7 @@ func TestDiagramResponseErrorf(t *testing.T) {
 }
 
 func TestDiagramAsyncRequestf(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add async request to the sequence diagram", func(t *testing.T) {
@@ -124,6 +130,7 @@ func TestDiagramAsyncRequestf(t *testing.T) {
 }
 
 func TestDiagramAsyncResponsef(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add async response to the sequence diagram", func(t *testing.T) {
@@ -142,6 +149,7 @@ func TestDiagramAsyncResponsef(t *testing.T) {
 }
 
 func TestDiagramError(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should return the error", func(t *testing.T) {
@@ -157,6 +165,7 @@ func TestDiagramError(t *testing.T) {
 }
 
 func TestNewDiagram(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("with all options", func(t *testing.T) {

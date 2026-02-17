@@ -11,6 +11,7 @@ import (
 )
 
 func TestDiagramLoopStartEnd(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add loop to the sequence diagram", func(t *testing.T) {
@@ -30,6 +31,7 @@ func TestDiagramLoopStartEnd(t *testing.T) {
 }
 
 func TestDiagramAltStartElseEnd(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add alt to the sequence diagram", func(t *testing.T) {
@@ -50,6 +52,7 @@ func TestDiagramAltStartElseEnd(t *testing.T) {
 }
 
 func TestDiagramOptStartEnd(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add opt to the sequence diagram", func(t *testing.T) {
@@ -69,6 +72,7 @@ func TestDiagramOptStartEnd(t *testing.T) {
 }
 
 func TestDiagramParallelStartAndEnd(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add parallel to the sequence diagram", func(t *testing.T) {
@@ -89,6 +93,7 @@ func TestDiagramParallelStartAndEnd(t *testing.T) {
 }
 
 func TestDiagramCriticalStartAndEnd(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add critical to the sequence diagram", func(t *testing.T) {
@@ -113,6 +118,7 @@ func TestDiagramCriticalStartAndEnd(t *testing.T) {
 }
 
 func TestDiagramBreakStartEnd(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add break to the sequence diagram", func(t *testing.T) {

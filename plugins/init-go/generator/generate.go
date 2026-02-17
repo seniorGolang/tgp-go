@@ -13,7 +13,6 @@ import (
 //go:embed templates
 var templates embed.FS
 
-// Generate создаёт базовый проект в outDir (уже разрешённый путь к директории вывода).
 func Generate(outDir string, moduleName string, jsonRPC string, rest string) (err error) {
 
 	if err = ensureEmptyOut(outDir); err != nil {

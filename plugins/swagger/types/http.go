@@ -7,6 +7,7 @@ import (
 )
 
 func CodeToText(code int) (result string) {
+
 	var found bool
 	if result, found = statusText[code]; found {
 		return
@@ -15,6 +16,7 @@ func CodeToText(code int) (result string) {
 }
 
 func IsValidHTTPCode(code int) (valid bool) {
+
 	_, valid = statusText[code]
 	return
 }

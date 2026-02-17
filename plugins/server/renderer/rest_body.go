@@ -9,7 +9,7 @@ import (
 	"tgp/internal/model"
 )
 
-func (r *contractRenderer) httpServeRequestBodyDecode(jsonPkg string, method *model.Method, reqKind string) Code {
+func (r *contractRenderer) httpServeRequestBodyDecode(bg *Group, jsonPkg string, method *model.Method, reqKind string) {
 
 	writeBadRequest := func(ig *Group) {
 		ig.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).Block(
@@ -22,47 +22,35 @@ func (r *contractRenderer) httpServeRequestBodyDecode(jsonPkg string, method *mo
 
 	switch reqKind {
 	case content.KindForm:
-		return BlockFunc(func(bg *Group) {
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-			bg.Var().Id("bodyBytes").Index().Byte()
-			bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual("io", "ReadAll").Call(Id("bodyStream")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
-			bg.Id(VarNameFtx).Dot("Context").Call().Dot("Request").Dot("SetBodyRaw").Call(Id("bodyBytes"))
-			bg.If(Err().Op("=").Id(VarNameFtx).Dot("BodyParser").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
-		})
+		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.Var().Id("bodyBytes").Index().Byte()
+		bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual("io", "ReadAll").Call(Id("bodyStream")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
+		bg.Id(VarNameFtx).Dot("Context").Call().Dot("Request").Dot("SetBodyRaw").Call(Id("bodyBytes"))
+		bg.If(Err().Op("=").Id(VarNameFtx).Dot("BodyParser").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindXML:
-		return BlockFunc(func(bg *Group) {
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-			bg.If(Err().Op("=").Qual(PackageXML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-				writeBadRequest(ig)
-			})
+		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.If(Err().Op("=").Qual(PackageXML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+			writeBadRequest(ig)
 		})
 	case content.KindMsgpack:
-		return BlockFunc(func(bg *Group) {
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-			bg.If(Err().Op("=").Qual(PackageMsgpack, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-				writeBadRequest(ig)
-			})
+		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.If(Err().Op("=").Qual(PackageMsgpack, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+			writeBadRequest(ig)
 		})
 	case content.KindCBOR:
-		return BlockFunc(func(bg *Group) {
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-			bg.If(Err().Op("=").Qual(PackageCBOR, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-				writeBadRequest(ig)
-			})
+		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.If(Err().Op("=").Qual(PackageCBOR, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+			writeBadRequest(ig)
 		})
 	case content.KindYAML:
-		return BlockFunc(func(bg *Group) {
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-			bg.If(Err().Op("=").Qual(PackageYAML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-				writeBadRequest(ig)
-			})
+		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.If(Err().Op("=").Qual(PackageYAML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+			writeBadRequest(ig)
 		})
 	default:
-		return BlockFunc(func(bg *Group) {
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-			bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-				writeBadRequest(ig)
-			})
+		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+			writeBadRequest(ig)
 		})
 	}
 }

@@ -6,21 +6,17 @@ package wasm
 
 import (
 	"github.com/goccy/go-json"
-
-	"tgp/core/data"
 )
 
 // executeRequest представляет запрос на выполнение плагина.
 type executeRequest struct {
-	RootDir string          `json:"rootDir"`
-	Path    []string        `json:"path"`
 	Request json.RawMessage `json:"request"`
 }
 
 // executeResponse представляет ответ на выполнение плагина.
 type executeResponse struct {
-	Error    string          `json:"error,omitempty"`
-	Response data.MapStorage `json:"response,omitempty"`
+	Error    string `json:"error,omitempty"`
+	Response any    `json:"response,omitempty"`
 }
 
 // infoResponse представляет ответ с информацией о плагине.

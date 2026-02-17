@@ -11,6 +11,7 @@ import (
 )
 
 func TestDiagramParticipant(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add participant to the sequence diagram", func(t *testing.T) {
@@ -29,6 +30,7 @@ func TestDiagramParticipant(t *testing.T) {
 }
 
 func TestDiagramCreateDeleteParticipant(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add create and delete participant to the sequence diagram", func(t *testing.T) {
@@ -48,6 +50,7 @@ func TestDiagramCreateDeleteParticipant(t *testing.T) {
 }
 
 func TestDiagramCreateDeleteActor(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add create and delete actor to the sequence diagram", func(t *testing.T) {
@@ -67,6 +70,7 @@ func TestDiagramCreateDeleteActor(t *testing.T) {
 }
 
 func TestDiagramActor(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add actor to the sequence diagram", func(t *testing.T) {
@@ -85,6 +89,7 @@ func TestDiagramActor(t *testing.T) {
 }
 
 func TestDiagramAutoNumber(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add autonumber to the sequence diagram", func(t *testing.T) {
@@ -103,6 +108,7 @@ func TestDiagramAutoNumber(t *testing.T) {
 }
 
 func TestDiagramBoxStartEnd(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add box to the sequence diagram", func(t *testing.T) {

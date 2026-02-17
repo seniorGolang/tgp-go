@@ -4,6 +4,7 @@ package parser
 
 import (
 	"go/types"
+	"strings"
 	"sync"
 )
 
@@ -46,6 +47,22 @@ func (i *FileSystemImporter) Import(path string) (pkg *types.Package, err error)
 			pkg = stubPkg
 			return
 		}
+	}
+
+	// Внешние пакеты загружаем из export data
+	if !i.loader.isLocalPackage(path) {
+		if pkg, err = i.loader.gcImporter.Import(path); err != nil {
+			name := path
+			if idx := strings.LastIndex(path, "/"); idx >= 0 {
+				name = path[idx+1:]
+			}
+			pkg = types.NewPackage(path, name)
+			err = nil
+		}
+		i.mu.Lock()
+		i.cache[path] = pkg
+		i.mu.Unlock()
+		return
 	}
 
 	var info *PackageInfo

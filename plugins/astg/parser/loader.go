@@ -3,18 +3,24 @@
 package parser
 
 import (
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/build"
+	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"golang.org/x/mod/modfile"
+
+	"tgp/core/exec"
+	"tgp/internal/helper"
 )
 
 type AutonomousPackageLoader struct {
@@ -26,6 +32,8 @@ type AutonomousPackageLoader struct {
 	versionASTgCacheMu sync.RWMutex
 	fset               *token.FileSet
 	mu                 sync.RWMutex
+	gcImporter         types.Importer
+	exportIndex        map[string]string
 }
 
 func NewAutonomousPackageLoader(modFile *modfile.File) (loader *AutonomousPackageLoader, err error) {
@@ -40,14 +48,18 @@ func NewAutonomousPackageLoader(modFile *modfile.File) (loader *AutonomousPackag
 		modulePath = modFile.Module.Mod.Path
 	}
 
+	fset := token.NewFileSet()
 	loader = &AutonomousPackageLoader{
 		modulePath:       modulePath,
 		modFile:          modFile,
 		resolver:         resolver,
 		cache:            make(map[string]*PackageInfo),
 		versionASTgCache: make(map[string]bool),
-		fset:             token.NewFileSet(),
+		fset:             fset,
+		exportIndex:      make(map[string]string),
 	}
+	_ = loader.buildExportIndex()
+	loader.gcImporter = importer.ForCompiler(fset, "gc", loader.exportLookup)
 	return
 }
 
@@ -74,8 +86,7 @@ func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *Package
 		l.mu.Lock()
 		delete(l.cache, pkgPath)
 		l.mu.Unlock()
-		err = fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
-		return
+		return nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
 	}
 
 	buildCtx := buildContext()
@@ -84,16 +95,14 @@ func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *Package
 		l.mu.Lock()
 		delete(l.cache, pkgPath)
 		l.mu.Unlock()
-		err = fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
-		return
+		return nil, fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
 	}
 
 	if len(files) == 0 {
 		l.mu.Lock()
 		delete(l.cache, pkgPath)
 		l.mu.Unlock()
-		err = fmt.Errorf("no Go files found in package %s", pkgPath)
-		return
+		return nil, fmt.Errorf("no Go files found in package %s", pkgPath)
 	}
 
 	requiredImports := extractImportsFromExportedAndAliases(files, l.resolver)
@@ -114,8 +123,7 @@ func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *Package
 	var pkg *types.Package
 	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
 		if pkg == nil {
-			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
-			return
+			return nil, fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 		}
 		err = nil
 	}
@@ -160,8 +168,7 @@ func (l *AutonomousPackageLoader) LoadPackageFromFiles(pkgPath string, pkgDir st
 		l.mu.Lock()
 		delete(l.cache, pkgPath)
 		l.mu.Unlock()
-		err = fmt.Errorf("no files provided for package %s", pkgPath)
-		return
+		return nil, fmt.Errorf("no files provided for package %s", pkgPath)
 	}
 
 	requiredImports := extractImportsFromExportedAndAliases(files, l.resolver)
@@ -185,8 +192,7 @@ func (l *AutonomousPackageLoader) LoadPackageFromFiles(pkgPath string, pkgDir st
 			l.mu.Lock()
 			delete(l.cache, pkgPath)
 			l.mu.Unlock()
-			err = fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
-			return
+			return nil, fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
 		}
 		err = nil
 	}
@@ -226,8 +232,7 @@ func buildContext() (buildCtx build.Context) {
 }
 
 func createTypeInfo() (typeInfo *types.Info) {
-
-	typeInfo = &types.Info{
+	return &types.Info{
 		Types:      make(map[ast.Expr]types.TypeAndValue),
 		Defs:       make(map[*ast.Ident]types.Object),
 		Uses:       make(map[*ast.Ident]types.Object),
@@ -235,22 +240,21 @@ func createTypeInfo() (typeInfo *types.Info) {
 		Selections: make(map[*ast.SelectorExpr]*types.Selection),
 		Scopes:     make(map[ast.Node]*types.Scope),
 	}
-	return
 }
 
 func getPackageNameFromPath(resolver *PackageResolver, pkgPath string) (pkgName string, err error) {
 
-	dir, err := resolver.Resolve(pkgPath)
-	if err != nil || dir == "" {
+	var dir string
+	if dir, err = resolver.Resolve(pkgPath); err != nil || dir == "" {
 		return
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	var entries []os.DirEntry
+	if entries, err = os.ReadDir(dir); err != nil {
 		return
 	}
 	fset := token.NewFileSet()
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+		if e.IsDir() || !helper.IsRelevantGoFile(e.Name()) {
 			continue
 		}
 		fpath := filepath.Join(dir, e.Name())
@@ -264,6 +268,51 @@ func getPackageNameFromPath(resolver *PackageResolver, pkgPath string) (pkgName 
 		}
 	}
 	return
+}
+
+func (l *AutonomousPackageLoader) buildExportIndex() (err error) {
+
+	cmd := exec.Command("go", "list", "-e", "-json=ImportPath,Export", "-export", "-deps", "./...")
+	cmd.Dir("/")
+	if err = cmd.Start(); err != nil {
+		return
+	}
+	var stdout io.ReadCloser
+	if stdout, err = cmd.StdoutPipe(); err != nil {
+		_ = cmd.Wait()
+		return
+	}
+	type listEntry struct {
+		ImportPath string `json:"ImportPath"`
+		Export     string `json:"Export"`
+	}
+	dec := json.NewDecoder(stdout)
+	for dec.More() {
+		var entry listEntry
+		if err = dec.Decode(&entry); err != nil {
+			break
+		}
+		if entry.Export != "" {
+			l.exportIndex[entry.ImportPath] = entry.Export
+		}
+	}
+	_ = stdout.Close()
+	_ = cmd.Wait()
+	return
+}
+
+func (l *AutonomousPackageLoader) exportLookup(path string) (rc io.ReadCloser, err error) {
+
+	exportPath, ok := l.exportIndex[path]
+	if !ok || exportPath == "" {
+		return nil, fmt.Errorf("no export data for %s", path)
+	}
+	return os.Open(exportPath)
+}
+
+func (l *AutonomousPackageLoader) isLocalPackage(pkgPath string) bool {
+
+	return l.modulePath != "" && (pkgPath == l.modulePath || strings.HasPrefix(pkgPath, l.modulePath+"/"))
 }
 
 func collectImports(files []*ast.File, resolver *PackageResolver) (imports map[string]string) {

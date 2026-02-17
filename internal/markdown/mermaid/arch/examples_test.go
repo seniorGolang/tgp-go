@@ -18,6 +18,7 @@ import (
 // the expected values are written are represented as '\n',
 // causing failures when testing on Windows.
 func ExampleArchitecture() {
+
 	diagram := arch.NewArchitecture(io.Discard).
 		Service("left_disk", arch.IconDisk, "Disk").
 		Service("top_disk", arch.IconDisk, "Disk").

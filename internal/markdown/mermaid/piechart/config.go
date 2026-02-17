@@ -4,35 +4,27 @@
 package piechart
 
 type config struct {
-	// The axial position of the pie slice labels,
-	// from 0.0 at the center to 1.0 at the outside edge of the circle.
+	title        string
+	showData     bool
 	textPosition float64
-	// showData is a flag to show the data in the pie chart.
-	showData bool
-	// title is the title of the pie chart.
-	title string
 }
 
-func newConfig() *config {
+func newConfig() (c *config) {
 	return &config{
 		textPosition: defaultTextPosition,
 	}
 }
 
 const (
-	// defaultTextPosition is the default axial position of the pie slice labels.
+	noTitle             string  = ""
+	minTextPosition     float64 = 0.0
+	maxTextPosition     float64 = 1.0
 	defaultTextPosition float64 = 0.75
-	// minTextPosition is the minimum axial position of the pie slice labels.
-	minTextPosition float64 = 0.0
-	// maxTextPosition is the maximum axial position of the pie slice labels.
-	maxTextPosition float64 = 1.0
-	// noTitle is a constant for no title.
-	noTitle string = ""
 )
 
 type Option func(*config)
 
-func WithTextPosition(pos float64) Option {
+func WithTextPosition(pos float64) (o Option) {
 	return func(c *config) {
 		if pos < minTextPosition || pos > maxTextPosition {
 			pos = defaultTextPosition
@@ -41,13 +33,13 @@ func WithTextPosition(pos float64) Option {
 	}
 }
 
-func WithShowData(showData bool) Option {
+func WithShowData(showData bool) (o Option) {
 	return func(c *config) {
 		c.showData = showData
 	}
 }
 
-func WithTitle(title string) Option {
+func WithTitle(title string) (o Option) {
 	return func(c *config) {
 		c.title = title
 	}

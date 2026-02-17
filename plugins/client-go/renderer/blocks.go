@@ -11,7 +11,7 @@ import (
 )
 
 // Логика метрик вынесена в хелпер, чтобы не дублировать код в каждом HTTP-методе.
-func (r *ClientRenderer) httpRecordHTTPMetricsHelper(contract *model.Contract) Code {
+func (r *ClientRenderer) httpRecordHTTPMetricsHelper(contract *model.Contract) (c Code) {
 
 	serviceLabel := r.contractNameToLowerCamel(contract)
 	return Line().
@@ -67,7 +67,7 @@ func (r *ClientRenderer) httpRecordHTTPMetricsHelper(contract *model.Contract) C
 		)
 }
 
-func (r *ClientRenderer) httpMetricsDefer(contract *model.Contract, method *model.Method) Code {
+func (r *ClientRenderer) httpMetricsDefer(contract *model.Contract, method *model.Method) (c Code) {
 
 	return Defer().Func().Params(Id("_begin").Qual(PackageTime, "Time")).Block(
 		Id("cli").Dot("recordHTTPMetrics").Call(
@@ -78,7 +78,7 @@ func (r *ClientRenderer) httpMetricsDefer(contract *model.Contract, method *mode
 	).Call(Qual(PackageTime, "Now").Call()).Line()
 }
 
-func (r *ClientRenderer) rpcRecordMetricsHelper(contract *model.Contract) Code {
+func (r *ClientRenderer) rpcRecordMetricsHelper(contract *model.Contract) (c Code) {
 
 	serviceLabel := r.contractNameToLowerCamel(contract)
 	return Line().
@@ -134,7 +134,7 @@ func (r *ClientRenderer) rpcRecordMetricsHelper(contract *model.Contract) Code {
 		)
 }
 
-func (r *ClientRenderer) rpcMetricsDefer(contract *model.Contract, method *model.Method) Code {
+func (r *ClientRenderer) rpcMetricsDefer(contract *model.Contract, method *model.Method) (c Code) {
 
 	return Defer().Func().Params(Id("_begin").Qual(PackageTime, "Time")).Block(
 		Id("cli").Dot("recordRPCMetrics").Call(
@@ -145,7 +145,7 @@ func (r *ClientRenderer) rpcMetricsDefer(contract *model.Contract, method *model
 	).Call(Qual(PackageTime, "Now").Call())
 }
 
-func (r *ClientRenderer) httpApplyHeadersFromCtxHelper(contract *model.Contract) Code {
+func (r *ClientRenderer) httpApplyHeadersFromCtxHelper(contract *model.Contract) (c Code) {
 
 	return Line().
 		Func().Params(Id("cli").Op("*").Id("Client"+contract.Name)).
@@ -181,7 +181,7 @@ func (r *ClientRenderer) httpApplyHeadersFromCtxHelper(contract *model.Contract)
 }
 
 // Вызывается из каждого HTTP-метода вместо дублирования Do/defer log/afterRequest/checkStatusCode.
-func (r *ClientRenderer) httpDoRoundTripHelper(contract *model.Contract, outDir string) Code {
+func (r *ClientRenderer) httpDoRoundTripHelper(contract *model.Contract, outDir string) (c Code) {
 
 	jsonrpcPkg := fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir))
 	return Line().
@@ -203,7 +203,7 @@ func (r *ClientRenderer) httpDoRoundTripHelper(contract *model.Contract, outDir 
 					Qual(PackageSlog, "DebugContext").Call(Id("ctx"), Lit("HTTP request"), Qual(PackageSlog, "String").Call(Lit("method"), Id("httpReq").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("cmd").Dot("String").Call())),
 				),
 			)
-			bg.List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("httpClient").Dot("Do").Call(Id("httpReq"))
+			bg.If(List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("httpClient").Dot("Do").Call(Id("httpReq")).Op(";").Err().Op("!=").Nil()).Block(Return(Nil(), Err()))
 			bg.Defer().Func().Params().Block(
 				If(Err().Op("!=").Nil().Op("&&").Id("cli").Dot("Client").Dot("logOnError").Op("&&").Id("httpReq").Op("!=").Nil()).Block(
 					If(List(Id("cmd"), Id("cmdErr")).Op(":=").Qual(jsonrpcPkg, "ToCurl").Call(Id("httpReq")).Op(";").Id("cmdErr").Op("==").Nil()).Block(
@@ -211,7 +211,6 @@ func (r *ClientRenderer) httpDoRoundTripHelper(contract *model.Contract, outDir 
 					),
 				),
 			).Call()
-			bg.If(Err().Op("!=").Nil()).Block(Return(Nil(), Err()))
 			bg.If(Id("cli").Dot("Client").Dot("afterRequest").Op("!=").Nil()).Block(
 				If(Err().Op("=").Id("cli").Dot("Client").Dot("afterRequest").Call(Id("ctx"), Id("httpResp")).Op(";").Err().Op("!=").Nil()).Block(
 					Id("_").Op("=").Id("httpResp").Dot("Body").Dot("Close").Call(),
@@ -220,9 +219,7 @@ func (r *ClientRenderer) httpDoRoundTripHelper(contract *model.Contract, outDir 
 			)
 			bg.If(Id("httpResp").Dot("StatusCode").Op("!=").Id("successCode")).BlockFunc(func(bgErr *Group) {
 				bgErr.Var().Id("respBodyBytes").Index().Byte()
-				bgErr.List(Id("respBodyBytes"), Err()).Op("=").Qual(PackageIO, "ReadAll").Call(Id("httpResp").Dot("Body"))
-				bgErr.Id("httpResp").Dot("Body").Dot("Close").Call()
-				bgErr.If(Err().Op("!=").Nil()).Block(
+				bgErr.If(List(Id("respBodyBytes"), Err()).Op("=").Qual(PackageIO, "ReadAll").Call(Id("httpResp").Dot("Body")).Op(";").Err().Op("!=").Nil()).Block(
 					Err().Op("=").Qual(PackageFmt, "Errorf").Call(
 						Lit("HTTP error: %d. URL: %s, Method: %s"),
 						Id("httpResp").Dot("StatusCode"),
@@ -232,13 +229,14 @@ func (r *ClientRenderer) httpDoRoundTripHelper(contract *model.Contract, outDir 
 				).Else().Block(
 					Err().Op("=").Id("cli").Dot("errorDecoder").Call(Id("respBodyBytes")),
 				)
+				bgErr.Id("httpResp").Dot("Body").Dot("Close").Call()
 				bgErr.Return(Nil(), Err())
 			})
 			bg.Return(Id("httpResp"), Nil())
 		})
 }
 
-func (r *ClientRenderer) httpDeferBodyClose() Code {
+func (r *ClientRenderer) httpDeferBodyClose() (c Code) {
 
 	return Defer().Id("httpResp").Dot("Body").Dot("Close").Call()
 }

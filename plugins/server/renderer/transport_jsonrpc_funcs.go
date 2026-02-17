@@ -12,7 +12,7 @@ import (
 	"tgp/internal/model"
 )
 
-func (r *transportRenderer) sendResponseJsonRPCFunc() Code {
+func (r *transportRenderer) sendResponseJsonRPCFunc() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
@@ -61,7 +61,7 @@ func (r *transportRenderer) sendResponseJsonRPCFunc() Code {
 		})
 }
 
-func (r *transportRenderer) initJsonRPCMethodMap() Code {
+func (r *transportRenderer) initJsonRPCMethodMap() (c Code) {
 
 	return Func().Id("initJsonRPCMethodMap").
 		Params(Id("srv").Op("*").Id("Server")).
@@ -94,7 +94,7 @@ func (r *transportRenderer) initJsonRPCMethodMap() Code {
 		})
 }
 
-func (r *transportRenderer) singleBatchFunc() Code {
+func (r *transportRenderer) singleBatchFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("doSingleBatch").
@@ -120,9 +120,8 @@ func (r *transportRenderer) singleBatchFunc() Code {
 		})
 }
 
-func (r *transportRenderer) batchFunc() Code {
+func (r *transportRenderer) batchFunc() (c Code) {
 
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("doBatch").
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requests").Op("[]").Id("baseJsonRPC")).
@@ -134,7 +133,7 @@ func (r *transportRenderer) batchFunc() Code {
 			bg.Var().Id("batchCtx").Qual(PackageContext, "Context")
 			bg.Var().Id("cancel").Qual(PackageContext, "CancelFunc")
 			bg.If(Id("batchTimeout").Op(">").Lit(0)).Block(
-				List(Id("batchCtx"), Id("cancel")).Op("=").Qual(srvctxPkgPath, "WithTimeout").Call(Id("userCtx"), Id("batchTimeout")),
+				List(Id("batchCtx"), Id("cancel")).Op("=").Qual(PackageContext, "WithTimeout").Call(Id("userCtx"), Id("batchTimeout")),
 				Defer().Id("cancel").Call(),
 			).Else().Block(
 				Id("batchCtx").Op("=").Id("userCtx"),
@@ -198,7 +197,7 @@ func (r *transportRenderer) batchFunc() Code {
 		})
 }
 
-func (r *transportRenderer) serveBatchFunc() Code {
+func (r *transportRenderer) serveBatchFunc() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
@@ -277,7 +276,7 @@ func (r *transportRenderer) serveBatchFunc() Code {
 				ig.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded")))
 			})
 			bg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-				Id("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("/"), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
+				Id("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit(r.generalBatchPath()), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
 			)
 			bg.If(Id("single")).BlockFunc(func(ig *Group) {
 				ig.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("requests").Op("[").Lit(0).Op("]")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(vg *Group) {
@@ -302,7 +301,7 @@ func (r *transportRenderer) serveBatchFunc() Code {
 		})
 }
 
-func (r *transportRenderer) toLowercaseMethodFunc() Code {
+func (r *transportRenderer) toLowercaseMethodFunc() (c Code) {
 
 	return Func().Id("toLowercaseMethod").
 		Params(Id("s").String()).
@@ -312,24 +311,7 @@ func (r *transportRenderer) toLowercaseMethodFunc() Code {
 		)
 }
 
-func (r *transportRenderer) sanitizeErrorMessageFunc() Code {
-
-	return Func().Id("sanitizeErrorMessage").
-		Params(Err().Error()).
-		Params(String()).
-		Block(
-			If(Err().Op("==").Nil()).Block(
-				Return(Lit("")),
-			),
-			Id("message").Op(":=").Err().Dot("Error").Call(),
-			If(Id("idx").Op(":=").Qual(PackageStrings, "IndexByte").Call(Id("message"), Add(Id("'\\n'"))).Op(";").Id("idx").Op(">=").Lit(0)).Block(
-				Return(Id("message").Index(Op(":").Id("idx"))),
-			),
-			Return(Id("message")),
-		)
-}
-
-func (r *transportRenderer) validateJsonRPCRequestFunc() Code {
+func (r *transportRenderer) validateJsonRPCRequestFunc() (c Code) {
 
 	return Func().Id("validateJsonRPCRequest").
 		Params(Id("requestBase").Id("baseJsonRPC")).
@@ -342,7 +324,7 @@ func (r *transportRenderer) validateJsonRPCRequestFunc() Code {
 		})
 }
 
-func (r *transportRenderer) makeErrorResponseJsonRPCFunc() Code {
+func (r *transportRenderer) makeErrorResponseJsonRPCFunc() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
 	return Func().Id("makeErrorResponseJsonRPC").
@@ -365,7 +347,7 @@ func (r *transportRenderer) makeErrorResponseJsonRPCFunc() Code {
 		})
 }
 
-func (r *transportRenderer) methodIsJsonRPCForContract(contract *model.Contract, method *model.Method) bool {
+func (r *transportRenderer) methodIsJsonRPCForContract(contract *model.Contract, method *model.Method) (ok bool) {
 
 	if method == nil {
 		return false
@@ -385,10 +367,10 @@ func (r *transportRenderer) jsonRPCUsedOverlayKeys() (headerNames []string, cook
 			if !r.methodIsJsonRPCForContract(contract, method) {
 				continue
 			}
-			for _, h := range usedHeaderNamesForMethod(r.project, contract, method) {
+			for _, h := range usedHeaderNamesForRequestOverlay(r.project, contract, method) {
 				headers[h] = struct{}{}
 			}
-			for _, c := range usedCookieNamesForMethod(r.project, contract, method) {
+			for _, c := range usedCookieNamesForRequestOverlay(r.project, contract, method) {
 				cookies[c] = struct{}{}
 			}
 		}
@@ -396,7 +378,7 @@ func (r *transportRenderer) jsonRPCUsedOverlayKeys() (headerNames []string, cook
 	return common.SortedKeys(headers), common.SortedKeys(cookies)
 }
 
-func overlayKeyToFieldName(key string) string {
+func overlayKeyToFieldName(key string) (s string) {
 
 	parts := strings.Split(key, "-")
 	for i, p := range parts {
@@ -408,7 +390,7 @@ func overlayKeyToFieldName(key string) string {
 	return strings.Join(parts, "")
 }
 
-func (r *transportRenderer) readUntilFirstNonWhitespaceFunc() Code {
+func (r *transportRenderer) readUntilFirstNonWhitespaceFunc() (c Code) {
 
 	return Func().Id("readUntilFirstNonWhitespace").
 		Params(Id("r").Qual("io", "Reader")).

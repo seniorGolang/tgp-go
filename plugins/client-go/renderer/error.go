@@ -7,13 +7,15 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/generated"
 )
 
-func (r *ClientRenderer) RenderClientError() error {
+func (r *ClientRenderer) RenderClientError() (err error) {
 
 	outDir := r.outDir
 	srcFile := NewSrcFile(filepath.Base(outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	jsonPkg := r.getPackageJSON(nil)
 	srcFile.ImportName(jsonPkg, "json")
@@ -39,7 +41,7 @@ func (r *ClientRenderer) RenderClientError() error {
 	return srcFile.Save(path.Join(outDir, "error.go"))
 }
 
-func (r *ClientRenderer) errorJsonRPC() Code {
+func (r *ClientRenderer) errorJsonRPC() (c Code) {
 
 	return Type().Id("errorJsonRPC").Struct(
 		Id("Code").Id("int").Tag(map[string]string{"json": "code"}),

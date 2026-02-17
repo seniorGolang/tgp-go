@@ -95,22 +95,21 @@ func byteToPtr(buf []byte) (ptr uint32, size uint32) {
 	}
 
 	if len(buf) > int(^uint32(0)) {
-		panic(fmt.Sprintf("buffer size too large for uint32: %d", len(buf)))
+		return 0, 0
 	}
 
 	//nolint:gosec // Проверка на переполнение выполнена выше
 	size = uint32(len(buf))
 	ptr = Malloc(size)
 	if ptr == 0 {
-		panic("failed to allocate memory in WASM")
+		return 0, 0
 	}
 
-	// Записываем данные напрямую через unsafe.Pointer
 	wasmPtr := unsafe.Pointer(uintptr(ptr))
 	wasmMem := unsafe.Slice((*byte)(wasmPtr), size)
 	if len(wasmMem) < len(buf) {
 		Free(ptr)
-		panic("memory allocation size mismatch")
+		return 0, 0
 	}
 	copy(wasmMem[:len(buf)], buf)
 

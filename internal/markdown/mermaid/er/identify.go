@@ -14,7 +14,8 @@ const (
 	NonIdentifying Identify = false
 )
 
-func (i Identify) string() string {
+func (i Identify) string() (s string) {
+
 	if i == Identifying {
 		return "--"
 	}

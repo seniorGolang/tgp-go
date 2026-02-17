@@ -64,8 +64,8 @@ func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeuti
 		return
 	}
 
-	var pkgInfo *PackageInfo
 	var ok bool
+	var pkgInfo *PackageInfo
 	if pkgInfo, ok = loader.GetPackage(typ.ImportPkgPath); !ok || pkgInfo == nil || pkgInfo.Types == nil {
 		return
 	}
@@ -104,6 +104,7 @@ func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeuti
 }
 
 func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeutil.Map, msets *typeutil.MethodSetCache, loader *AutonomousPackageLoader) {
+
 	var visit func(t types.Type, skip bool)
 	visit = func(t types.Type, skip bool) {
 		if !skip {
@@ -180,6 +181,7 @@ func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeu
 }
 
 func saveTypeFromGoTypes(t types.Type, project *model.Project, loader *AutonomousPackageLoader) {
+
 	typeID := generateTypeIDFromGoTypes(t)
 	if typeID == "" {
 		return
@@ -231,6 +233,7 @@ func saveTypeFromGoTypes(t types.Type, project *model.Project, loader *Autonomou
 	}
 
 	detectInterfaces(t, coreType, project, loader)
+	detectParseFromString(t, coreType, project, loader)
 	project.Types[typeID] = coreType
 }
 
@@ -295,6 +298,10 @@ func generateTypeIDFromGoTypes(t types.Type) (typeID string) {
 		return
 
 	case *types.Interface:
+		// Пустой интерфейс (interface{}) в Go 1.18+ — тип any; иначе тип не попадёт в MapValue и генератор выдаст "missing parameter type"
+		if t.NumMethods() == 0 {
+			typeID = "any"
+		}
 		return
 
 	default:
@@ -324,16 +331,14 @@ func ensureTypeLoaded(typeID string, project *model.Project, loader *AutonomousP
 		return
 	}
 
-	var pkgInfo *PackageInfo
 	var ok bool
+	var pkgInfo *PackageInfo
 	if pkgInfo, ok = loader.GetPackage(importPkgPath); !ok || pkgInfo == nil || pkgInfo.Types == nil {
 		if _, err = loader.LoadPackageForType(importPkgPath, typeName); err != nil {
-			err = fmt.Errorf("package %s not found: %w", importPkgPath, err)
-			return
+			return fmt.Errorf("package %s not found: %w", importPkgPath, err)
 		}
 		if pkgInfo, ok = loader.GetPackage(importPkgPath); !ok || pkgInfo == nil || pkgInfo.Types == nil {
-			err = fmt.Errorf("package %s not found after load", importPkgPath)
-			return
+			return fmt.Errorf("package %s not found after load", importPkgPath)
 		}
 	}
 
@@ -344,35 +349,31 @@ func ensureTypeLoaded(typeID string, project *model.Project, loader *AutonomousP
 		loader.mu.Unlock()
 
 		if _, err = loader.LoadPackageForType(importPkgPath, typeName); err != nil {
-			err = fmt.Errorf("package %s not found after reload for type %s: %w", importPkgPath, typeName, err)
-			return
+			return fmt.Errorf("package %s not found after reload for type %s: %w", importPkgPath, typeName, err)
 		}
 		if pkgInfo, ok = loader.GetPackage(importPkgPath); !ok || pkgInfo == nil || pkgInfo.Types == nil {
-			err = fmt.Errorf("package %s not found after reload", importPkgPath)
-			return
+			return fmt.Errorf("package %s not found after reload", importPkgPath)
 		}
 
 		if obj = pkgInfo.Types.Scope().Lookup(typeName); obj == nil {
 			allNames := pkgInfo.Types.Scope().Names()
-			err = fmt.Errorf("type %s not found in package %s after reload (available types: %v)", typeName, importPkgPath, allNames)
-			return
+			return fmt.Errorf("type %s not found in package %s after reload (available types: %v)", typeName, importPkgPath, allNames)
 		}
 	}
 
 	var typeNameObj *types.TypeName
 	if typeNameObj, ok = obj.(*types.TypeName); !ok {
-		err = fmt.Errorf("object %s is not a type name", typeName)
-		return
+		return fmt.Errorf("object %s is not a type name", typeName)
 	}
 
 	processingSet := make(map[string]bool)
 	var coreType *model.Type
 	if coreType = convertTypeFromGoTypes(typeNameObj.Type(), importPkgPath, pkgInfo.Imports, project, loader, processingSet); coreType == nil {
-		err = fmt.Errorf("failed to convert type %s", typeID)
-		return
+		return fmt.Errorf("failed to convert type %s", typeID)
 	}
 
 	detectInterfaces(typeNameObj.Type(), coreType, project, loader)
+	detectParseFromString(typeNameObj.Type(), coreType, project, loader)
 	project.Types[typeID] = coreType
 
 	if coreType.Kind == model.TypeKindAlias && coreType.AliasOf != "" {

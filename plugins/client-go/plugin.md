@@ -1,22 +1,55 @@
-# Client-Go Plugin - Генератор Go клиента
+# Плагин client-go
 
-## Описание
+## Назначение
 
-Плагин `client-go` генерирует Go клиент для взаимодействия с серверами, реализующими контракты с аннотациями `@tg`. Клиент поддерживает оба протокола: JSON-RPC 2.0 и HTTP REST API.
+Плагин генерирует **Go-клиент** для вызова вашего API. Клиент умеет ходить по **JSON-RPC 2.0** и по **HTTP REST** — в зависимости от того, как помечены контракты в проекте. Вы описываете контракты (интерфейсы) в коде, плагин по ним строит типобезопасные методы, обработку ошибок, при необходимости — метрики и логирование.
 
-Для получения общей информации о парсере и поддерживаемых аннотациях используйте команду `tg plugin doc astg`.
+Подробнее про контракты и аннотации — в документации плагина `astg`: `tg plugin doc astg`.
 
-## Основные возможности
+## Возможности клиента
 
-- **JSON-RPC 2.0 клиент** - полная поддержка JSON-RPC протокола с batch запросами
-- **HTTP REST клиент** - поддержка HTTP методов (GET, POST, PUT, PATCH, DELETE) с настраиваемыми путями
-- **Типобезопасность** - автоматическая генерация типизированных методов на основе Go интерфейсов
-- **Обработка ошибок** - встроенная обработка и декодирование ошибок
-- **Метрики** - опциональная поддержка метрик запросов
-- **Логирование** - опциональное логирование запросов и ответов
-- **Кастомизация** - гибкая настройка через опции клиента
+- **JSON-RPC 2.0** — вызовы методов и batch-запросы.
+- **HTTP REST** — GET, POST, PUT, PATCH, DELETE с настраиваемыми путями, заголовками и cookie.
+- **Типобезопасность** — методы генерируются по сигнатурам интерфейсов.
+- **Ошибки** — единая обработка и при желании свой декодер ошибок.
+- **Метрики** — опциональный сбор метрик запросов (Prometheus).
+- **Логирование** — опциональный вывод запросов/ответов или только ошибок.
+- **Гибкая настройка** — свой HTTP-клиент, TLS, заголовки из контекста, хуки до/после запроса.
 
-## Использование
+## Как запускать
+
+Команда генерации: `tg client go` (или через общий пайплайн с плагином astg).
+
+**Обязательный параметр:**
+
+- **`out`** — каталог, куда положить сгенерированный код (например, `./client`).
+
+**Необязательные параметры:**
+
+- **`contracts-dir`** — каталог с контрактами относительно корня проекта (по умолчанию `contracts`). Используется при разборе проекта (плагин astg).
+- **`contracts`** — список имён контрактов через запятую; генерируется клиент только по ним (например: `UserService,OrderService`). Если не указан — берутся все контракты.
+- **`doc-file`** — путь к файлу с документацией по клиенту. По умолчанию при включённой документации: `<out>/readme.md`.
+- **`no-doc`** — не генерировать документацию (по умолчанию документация создаётся).
+
+Перед каждой генерацией старые сгенерированные файлы в `out` удаляются; затем создаются новые. Файл документации (например, `readme.md`) при следующем запуске перезаписывается.
+
+## Что появляется в каталоге `out`
+
+В указанном каталоге создаются следующие файлы:
+
+- **client.go** — конструктор `New`, структура `Client`, методы вида `UserService()` для доступа к клиенту контракта;
+- **options.go** — тип `Option` и все опции (Name, Headers, LogRequest, WithMetrics и т.д.);
+- **error.go** — типы для обработки ошибок и декодер по умолчанию;
+- **version.go** — версия генератора;
+- **batch.go** — тип `RequestRPC` и метод `Batch()` (только при наличии JSON-RPC-контрактов);
+- **metrics.go** — метрики клиента (только при аннотации `@tg metrics` в контракте);
+- **jsonrpc/** — подпакет для JSON-RPC;
+- **dto/** — типы запросов и ответов и общие типы по контрактам;
+- **schema/** — появляется только при использовании HTTP с form/multipart;
+- **\<имя_контракта>-exchange.go** и **\<имя_контракта>-client.go** — структуры обмена и методы по каждому контракту (JSON-RPC и HTTP);
+- **readme.md** — документация по клиенту (если не отключена через `no-doc`).
+
+## Использование сгенерированного клиента
 
 ### Базовый пример
 
@@ -31,373 +64,185 @@ import (
 )
 
 func main() {
-    // Создаем клиент
     cli := client.New("https://api.example.com")
-
-    // Получаем клиент сервиса по имени контракта (один клиент содержит и HTTP, и JSON-RPC методы контракта)
     userService := cli.UserService()
 
-    // Вызываем метод
     user, err := userService.GetUser(context.Background(), "user-id-123")
     if err != nil {
         panic(err)
     }
-
     fmt.Printf("User: %+v\n", user)
 }
 ```
+
+Один клиент (`cli`) даёт доступ ко всем контрактам через методы вида `UserService()`, `OrderService()` и т.д. У каждого такого «сервиса» есть и JSON-RPC-, и HTTP-методы (если они заданы в контракте).
 
 ### Настройка клиента
 
 ```go
 cli := client.New("https://api.example.com",
-    client.LogRequest(),                    // Логировать все запросы
+    client.Name("my-service"),             // Имя клиента (по умолчанию: hostname_astg_go_<версия>; используется в X-Client-Id и в метриках)
+    client.LogRequest(),                   // Логировать все запросы
     client.LogOnError(),                   // Логировать только ошибки
-    client.Headers("X-Request-ID"),        // Динамические заголовки из контекста
+    client.Headers("X-Request-ID"),         // Подставлять заголовки из контекста
+    client.ConfigTLS(&tls.Config{...}),    // Настройка TLS
+    client.ClientHTTP(myHttpClient),       // Свой *http.Client
+    client.Transport(myRoundTripper),      // Свой http.RoundTripper
     client.BeforeRequest(func(ctx context.Context, req *http.Request) context.Context {
-        // Кастомная логика перед запросом
         return ctx
     }),
     client.AfterRequest(func(ctx context.Context, resp *http.Response) error {
-        // Кастомная логика после запроса
         return nil
     }),
-    client.DecodeError(customErrorDecoder), // Кастомный декодер ошибок
-    client.WithMetrics(),                  // Включить сбор метрик
+    client.DecodeError(customErrorDecoder), // Свой декодер ошибок
+    client.WithMetrics(),                   // Включить метрики (если в контракте есть @tg metrics)
 )
 ```
 
-### HTTP методы
+### HTTP-методы
 
-Для методов, помеченных как HTTP (с аннотацией `@tg http-method=GET` и т.д.), генерируются методы, которые:
+Для методов, помеченных в контракте как HTTP (`@tg http-method=GET` и т.д.), клиент:
 
-- Используют указанный HTTP метод (GET, POST, PUT, PATCH, DELETE)
-- Поддерживают параметры пути через `http-path` и `http-args`
-- Поддерживают заголовки через `http-headers`
-- Поддерживают cookies через `http-cookies`
-- Поддерживают кастомные типы контента через `requestContentType` и `responseContentType`
-- Поддерживают upload (аргумент `io.Reader` — тело запроса потоком) и download (возврат `io.ReadCloser` — тело ответа потоком); при нескольких таких аргументах/результатах или аннотации `http-multipart` используется `multipart/form-data` (имя и Content-Type части — аннотации `http-part-name`, `http-part-content`)
+- шлёт указанный HTTP-метод и путь (`http-path`, при необходимости с параметрами типа `:id`);
+- подставляет параметры пути через `http-args`, заголовки через `http-headers`, cookie через `http-cookies`;
+- поддерживает свой Content-Type запроса/ответа (`requestContentType`, `responseContentType`);
+- при одном аргументе `io.Reader` отправляет тело запроса потоком; при одном результате `io.ReadCloser` возвращает тело ответа потоком (его нужно закрыть). При нескольких таких аргументах/результатах или при `http-multipart` используется multipart/form-data (имена и типы частей задаются аннотациями).
 
-## Особенности генерации
+### JSON-RPC
 
-### JSON-RPC методы
+- Имя метода в JSON-RPC: `{имяКонтракта}.{имяМетода}` в camelCase (например, `userService.getUser`).
+- Параметры (кроме `context.Context`) попадают в `params`, все возвращаемые значения (кроме `error`) — в `result`.
+- Для нескольких запросов одним вызовом используется метод `Batch()` у основного клиента.
 
-1. **Именование методов**: Имя метода в JSON-RPC формируется как `{contractName}.{methodName}` в camelCase
-2. **Параметры**: Все параметры (кроме `context.Context`) передаются в поле `params` JSON-RPC запроса
-3. **Результаты**: Все возвращаемые значения (кроме `error`) упаковываются в поле `result` JSON-RPC ответа
-4. **Batch запросы**: Поддерживается выполнение нескольких запросов в одном batch через метод `Batch()` базового клиента
+### Inline-ответ для одного значения
 
-### HTTP методы
+Если у метода одно возвращаемое значение (кроме `error`) и в контракте указано `enableInlineSingle`, результат приходит без обёртки в объект — одним значением (например, строка статуса).
 
-1. **Пути**: Используется аннотация `http-path` для определения пути. Если не указана, используется путь по умолчанию: `/{prefix}/{contractName}/{methodName}`
-2. **Параметры пути**: Параметры пути (например, `:id`) маппятся на аргументы метода через аннотацию `http-args`
-3. **Query параметры**: Параметры, не являющиеся частью пути, передаются как query параметры
-4. **Тело запроса**: Для POST/PUT/PATCH методов тело запроса формируется из параметров (JSON); при аргументе типа `io.Reader` тело передаётся потоком; при нескольких `io.Reader` или аннотации `http-multipart` — как `multipart/form-data`
-5. **Заголовки и cookies**: Маппятся через аннотации `http-headers` и `http-cookies`
-6. **Upload/Download**: При одном аргументе `io.Reader` тело запроса отправляется потоком (Content-Type из `requestContentType` или `application/octet-stream`). При нескольких `io.Reader` или аннотации `http-multipart` запрос формируется как `multipart/form-data` (имя и Content-Type части — `http-part-name`, `http-part-content`). При возвращаемом `io.ReadCloser` ответ не декодируется в JSON — возвращается тело ответа; при нескольких `io.ReadCloser` или `http-multipart` ответ разбирается как multipart. Вызывающий обязан закрыть все возвращённые `ReadCloser`. Второй возврат типа `string` при download заполняется значением заголовка `Content-Type`
+### Примеры по сценариям
 
-### Inline ответы
-
-Для методов с единственным возвращаемым значением (кроме `error`) и аннотацией `enableInlineSingle` результат возвращается напрямую, без обертки в объект:
+**JSON-RPC:**
 
 ```go
-// Без enableInlineSingle
-result := struct {
-    Status string `json:"status"`
-}{}
-// result = {status: "ok"}
-
-// С enableInlineSingle
-status := "ok" // Возвращается напрямую
-```
-
-## Опции командной строки
-
-- `out` (string, обязательная) - путь к выходной директории
-- `contracts-dir` (string, опциональная) - путь к директории с контрактами (по умолчанию: "contracts")
-- `contracts` (string, опциональная) - список контрактов через запятую для фильтрации (например: "UserService,OrderService")
-- `doc-file` (string, опциональная) - путь к файлу документации (по умолчанию: `<out>/readme.md`)
-- `no-doc` (bool, опциональная) - отключить генерацию документации (по умолчанию: false)
-
-## Примеры использования
-
-### JSON-RPC вызов
-
-```go
-// Контракт
-// @tg jsonRPC-server
-type UserService interface {
-    GetUser(ctx context.Context, id string) (user User, err error)
-}
-
-// Использование
 cli := client.New("https://api.example.com")
 userService := cli.UserService()
 user, err := userService.GetUser(ctx, "123")
 ```
 
-### HTTP GET запрос
+**HTTP GET с параметром в пути:**
 
 ```go
-// Контракт
-// @tg http-server
-type UserService interface {
-    // @tg http-method=GET
-    // @tg http-path=/users/:id
-    // @tg http-args=id|userId
-    GetUser(ctx context.Context, userId string) (user User, err error)
-}
-
-// Использование
-cli := client.New("https://api.example.com")
-userService := cli.UserService()
-user, err := userService.GetUser(ctx, "123")
-// Выполнит GET /users/123
+// В контракте: @tg http-method=GET, @tg http-path=/users/:id, @tg http-args=id|userId
+user, err := userService.GetUser(ctx, "123")  // GET /users/123
 ```
 
-### Upload (тело запроса потоком)
+**Upload (тело запроса потоком):**
 
 ```go
-// Контракт с аргументом io.Reader — тело запроса передаётся потоком
-// @tg http-server
-type FileService interface {
-    // @tg http-method=POST
-    // @tg http-path=/files
-    Upload(ctx context.Context, filename string, body io.Reader) (id string, err error)
-}
-
-// Использование
-cli := client.New("https://api.example.com")
-fileService := cli.FileService()
 f, _ := os.Open("local.pdf")
 defer f.Close()
 id, err := fileService.Upload(ctx, "doc.pdf", f)
 ```
 
-### Download (тело ответа потоком)
+**Download (тело ответа потоком):**
 
 ```go
-// Контракт с возвращаемым io.ReadCloser — тело ответа возвращается потоком; вызывающий обязан закрыть ReadCloser
-// @tg http-server
-type FileService interface {
-    // @tg http-method=GET
-    // @tg http-path=/files/:id
-    Download(ctx context.Context, id string) (body io.ReadCloser, contentType string, err error)
-}
-
-// Использование
 body, contentType, err := fileService.Download(ctx, "file-id")
-if err != nil {
-    return err
-}
+if err != nil { return err }
 defer body.Close()
 // чтение из body...
 ```
 
-### HTTP POST запрос с телом
+**HTTP POST с телом:**
 
 ```go
-// Контракт
-// @tg http-server
-type UserService interface {
-    // @tg http-method=POST
-    // @tg http-path=/users
-    CreateUser(ctx context.Context, req CreateUserRequest) (id string, err error)
-}
-
-// Использование
-cli := client.New("https://api.example.com")
-userService := cli.UserService()
 id, err := userService.CreateUser(ctx, CreateUserRequest{
     Name:  "John",
     Email: "john@example.com",
 })
-// Выполнит POST /users с телом запроса
 ```
 
-### Batch JSON-RPC запросы
+**Batch JSON-RPC:**
 
 ```go
-cli := client.New("https://api.example.com")
-userService := cli.UserService()
-
-// Создаем batch запросы
-// Callback функция должна соответствовать сигнатуре метода (result, err)
 requests := []client.RequestRPC{
-    userService.ReqGetUser(nil, "1"), // Без callback
+    userService.ReqGetUser(nil, "1"),
     userService.ReqGetUser(func(user User, err error) {
-        // Callback будет вызван автоматически при получении ответа
-        if err != nil {
-            log.Printf("Error: %v", err)
-            return
-        }
+        if err != nil { log.Printf("Error: %v", err); return }
         log.Printf("User: %+v", user)
     }, "2"),
 }
-
-// Выполняем batch запрос (не возвращает ошибку)
 cli.Batch(context.Background(), requests...)
-
-// Callback функции будут вызваны автоматически при получении ответов
 ```
 
-### Заголовки из контекста
+**Заголовки из контекста:**
+
+Ключи контекста должны совпадать со строками, переданными в `Headers(...)` (например, имена заголовков):
 
 ```go
-// Настройка клиента
-cli := client.New("https://api.example.com",
-    client.Headers("X-Request-ID", "X-User-ID"),
-)
-
-// Использование
+cli := client.New("https://api.example.com", client.Headers("X-Request-ID", "X-User-ID"))
 ctx := context.WithValue(context.Background(), "X-Request-ID", "req-123")
 ctx = context.WithValue(ctx, "X-User-ID", "user-456")
-
-userService := cli.UserService()
 user, err := userService.GetUser(ctx, "123")
-// Заголовки X-Request-ID и X-User-ID будут автоматически добавлены из контекста
+// В запрос подставятся X-Request-ID и X-User-ID из контекста
 ```
 
 ## Обработка ошибок
 
-Клиент автоматически обрабатывает ошибки из JSON-RPC и HTTP ответов. Для кастомизации обработки ошибок можно использовать опцию `DecodeError`:
+Клиент обрабатывает ошибки из JSON-RPC и HTTP. Свой формат ошибок можно поддержать опцией `DecodeError`:
 
 ```go
-import "encoding/json"
-
-type ErrorDecoder func(errData json.RawMessage) error
-
 customDecoder := func(errData json.RawMessage) error {
-    // Кастомная логика обработки ошибок из JSON-RPC или HTTP
-    var errMsg struct {
-        Message string `json:"message"`
-        Code    int    `json:"code"`
-    }
+    var errMsg struct { Message string `json:"message"`; Code int `json:"code"` }
     if err := json.Unmarshal(errData, &errMsg); err != nil {
         return fmt.Errorf("failed to decode error: %w", err)
     }
     return fmt.Errorf("error %d: %s", errMsg.Code, errMsg.Message)
 }
-
-cli := client.New("https://api.example.com",
-    client.DecodeError(customDecoder),
-)
+cli := client.New("https://api.example.com", client.DecodeError(customDecoder))
 ```
 
 ## Метрики
 
-Если в контракте указана аннотация `@tg metrics`, клиент может собирать метрики запросов. Для этого используйте опцию `WithMetrics()`:
+Если в контракте указана аннотация `@tg metrics`, в клиенте можно включить сбор метрик опцией `WithMetrics()`. Метрики создаются в отдельном регистре Prometheus (не в глобальном). Собираются:
+
+- **client_versions_count** — версии компонентов (метки: part, version, hostname).
+- **client_requests_count** / **client_requests_all_count** — количество запросов (метки: service, method, success, errCode, client_id).
+- **client_requests_latency_seconds** — задержка запросов (те же метки).
+
+Экспорт через свой HTTP-эндпоинт:
 
 ```go
-cli := client.New("https://api.example.com",
-    client.WithMetrics(), // Автоматически создаст метрики
-)
-```
-
-Метрики создаются автоматически при использовании опции `WithMetrics()` и собираются в формате Prometheus.
-
-### Набор собираемых метрик
-
-Клиент собирает следующие метрики:
-
-#### `client_versions_count` (Gauge)
-
-Версии компонентов клиента.
-
-- **Метки:**
-    - `part` - название компонента (например, "tg")
-    - `version` - версия компонента
-    - `hostname` - имя хоста, на котором работает клиент
-
-#### `client_requests_count` (Counter)
-
-Количество отправленных запросов (успешных и неуспешных).
-
-- **Метки:**
-    - `service` - имя контракта в lowerCamel (совпадает с лейблом на сервере, например "userService")
-    - `method` - имя метода в camelCase (например, "getUser")
-    - `success` - результат запроса: "true" для успешных, "false" для ошибок
-    - `errCode` - код ошибки (число в виде строки, "0" для успешных запросов)
-    - `client_id` - идентификатор клиента (значение `Client.name`, то же уходит в заголовок X-Client-Id)
-
-#### `client_requests_all_count` (Counter)
-
-Общее количество всех отправленных запросов (дубликат `client_requests_count` для совместимости).
-
-- **Метки:** те же, что и у `client_requests_count`
-
-#### `client_requests_latency_seconds` (Histogram)
-
-Задержка выполнения запросов в секундах.
-
-- **Метки:** те же, что и у `client_requests_count`
-
-### Пример использования метрик
-
-```go
-import (
-    "net/http"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
-)
-
-cli := client.New("https://api.example.com",
-    client.WithMetrics(),
-)
-
-// Экспорт метрик через HTTP endpoint
-http.Handle("/metrics", promhttp.Handler())
+cli := client.New("https://api.example.com", client.WithMetrics())
+reg := cli.GetMetricsRegistry()
+if reg != nil {
+    http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+}
 http.ListenAndServe(":9090", nil)
 ```
 
-Метрики доступны по адресу `http://localhost:9090/metrics` в формате Prometheus.
+Для нескольких клиентов можно собрать их реестры в один `prometheus.Gatherers` и отдавать один общий `/metrics`.
 
 ## Логирование
 
-Клиент поддерживает логирование запросов и ответов:
-
-```go
-cli := client.New("https://api.example.com",
-    client.LogRequest(),  // Логировать все запросы
-    client.LogOnError(), // Логировать только ошибки
-)
-```
-
-Логирование использует стандартный `log/slog` пакет Go. При включении `LogRequest()` все запросы логируются в формате curl команды для удобства отладки.
+Опции `LogRequest()` и `LogOnError()` включают логирование через стандартный `log/slog`. В логах выводятся метод запроса и при необходимости команда curl. В production не рекомендуется включать полное логирование запросов без фильтрации чувствительных данных.
 
 ## Документация
 
-По умолчанию плагин генерирует документацию с полной информацией по всем методам и типам. Документация включает:
-
-- Описание клиента
-- Список всех контрактов и методов
-- Примеры использования для каждого метода
-- Описание всех типов данных
-- Примеры запросов и ответов
-
-Документацию можно отключить опцией `--no-doc` или указать другой файл через `--doc-file`.
+По умолчанию плагин генерирует в каталог `out` файл документации (по умолчанию `readme.md`) с описанием клиента, списком контрактов и методов, примерами и типами данных. Отключить — опцией `no-doc`, другой файл задать — опцией `doc-file`.
 
 ## Зависимости
 
-Плагин зависит от:
-
-- `astg` - для парсинга контрактов и аннотаций
-
-Генерируемый код использует стандартные библиотеки Go:
-
-- `context` - для контекстов
-- `net/http` - для HTTP клиента
-- `encoding/json` - для JSON сериализации
-- `log/slog` - для логирования (опционально)
+- Для разбора контрактов в пайплайне используется плагин **astg** (обычно подключается автоматически).
+- Сгенерированный код использует стандартную библиотеку Go; при опции `WithMetrics()` — пакет `github.com/prometheus/client_golang/prometheus`. При использовании form/multipart в HTTP добавляется подпакет **schema** в том же модуле.
 
 ## Ограничения
 
-1. Все методы должны принимать `context.Context` первым аргументом
-2. Все методы должны возвращать `error` последним значением
-3. Все параметры и возвращаемые значения (кроме `error`) должны быть именованными
-4. Поддерживаются только публичные интерфейсы (начинающиеся с заглавной буквы)
-5. Для HTTP методов требуется явное указание `http-method` и `http-path` аннотаций
-6. При download (возврат `io.ReadCloser`) вызывающий обязан закрыть возвращённый `ReadCloser`
+1. У каждого метода первым аргументом должен быть `context.Context`, последним возвращаемым значением — `error`.
+2. Все остальные параметры и возвращаемые значения должны быть именованными.
+3. Учитываются только экспортируемые интерфейсы (с заглавной буквы).
+4. Для HTTP-методов в контракте нужно явно указывать `http-method` и `http-path`.
+5. При возврате `io.ReadCloser` вызывающий код обязан закрыть поток после чтения.
 
 ## Совместимость
 
-Плагин полностью совместим с контрактами, сгенерированными плагином `server`. Все аннотации из плагина `astg` поддерживаются и учитываются при генерации клиента.
+Клиент совместим с серверами, сгенерированными плагином `server` по тем же контрактам. Аннотации, описанные в документации плагина `astg`, учитываются при генерации клиента.

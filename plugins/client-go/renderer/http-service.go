@@ -22,7 +22,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 	c.Line()
 	c.Func().Params(Id("cli").Op("*").Id("Client" + contract.Name)).
 		Id(method.Name).
-		Params(r.funcDefinitionParams(ctx, method.Args)).Params(r.funcDefinitionParams(ctx, method.Results)).
+		Params(r.clientMethodParams(ctx, contract, method)).Params(r.funcDefinitionParams(ctx, method.Results)).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
 			if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
@@ -30,12 +30,12 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			}
 			httpMethod := model.GetHTTPMethod(r.project, contract, method)
 			successStatusCode := model.GetAnnotationValueInt(r.project, contract, method, nil, model.TagHttpSuccess, http.StatusOK)
-			methodPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+ToLowerCamel(method.Name))
+			methodPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, r.defaultMethodHTTPPath(contract, method))
 			pathParams := r.argPathMap(contract, method)
 			svcPrefix := model.GetAnnotationValue(r.project, contract, nil, nil, model.TagHttpPrefix, "")
-			argsMappings := r.argParamMap(contract, method)
-			cookieMappings := r.varCookieMap(contract, method)
-			headerMappings := r.varHeaderMap(contract, method)
+			argsMappings := model.HTTPArgQueryMapForRequest(r.project, contract, method)
+			cookieMappings := model.HTTPCookieArgMapForRequest(r.project, contract, method)
+			headerMappings := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
 
 			fullURLPath := path.Join(svcPrefix, methodPath)
 			// Формирование URL через net/url: ведущий "/" гарантирует корректный путь при пустом baseURL.Path (url.JoinPath-подобное поведение).
@@ -60,6 +60,10 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			bg.Id("baseURL").Dot("Path").Op("=").Qual(PackagePath, "Join").Call(pathJoinArgs...)
 			bg.Line()
 
+			argsForClientSet := make(map[string]struct{})
+			for _, a := range r.argsForClient(contract, method) {
+				argsForClientSet[a.Name] = struct{}{}
+			}
 			hasQueryParams := false
 			for paramName := range common.SortedPairs(argsMappings) {
 				if _, inPath := pathParams[paramName]; inPath {
@@ -71,7 +75,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				if _, inCookie := cookieMappings[paramName]; inCookie {
 					continue
 				}
-				if r.argByName(method, paramName) != nil {
+				if _, inArgs := argsForClientSet[paramName]; inArgs {
 					hasQueryParams = true
 					break
 				}
@@ -86,6 +90,9 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 						continue
 					}
 					if _, inCookie := cookieMappings[paramName]; inCookie {
+						continue
+					}
+					if _, inArgs := argsForClientSet[paramName]; !inArgs {
 						continue
 					}
 					paramVar := r.argByName(method, paramName)
@@ -106,28 +113,8 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 
 			requestMultipart := r.methodRequestMultipart(contract, method)
 			bodyStreamArg := r.methodRequestBodyStreamArg(method)
-			hasBody := false
-			argsWithoutCtx := r.argsWithoutContext(method)
-			fieldsArg := r.fieldsArgument(method)
-			for _, arg := range argsWithoutCtx {
-				if arg.TypeID == TypeIDIOReader {
-					continue
-				}
-				if _, exists := argsMappings[arg.Name]; exists {
-					continue
-				}
-				if _, exists := cookieMappings[arg.Name]; exists {
-					continue
-				}
-				if _, exists := headerMappings[arg.Name]; exists {
-					continue
-				}
-				if _, exists := pathParams[arg.Name]; exists {
-					continue
-				}
-				hasBody = true
-				break
-			}
+			argsForBody := r.argsForRequestBody(contract, method)
+			hasBody := len(argsForBody) > 0
 			switch {
 			case requestMultipart:
 				bg.Add(r.httpMultipartRequestBody(contract, method))
@@ -139,36 +126,14 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				bg.Id("httpReq").Dot("Close").Op("=").True()
 			case hasBody:
 				bg.Var().Id("httpReq").Op("*").Qual(PackageHttp, "Request")
-				bg.Id("_request").Op(":=").Id(r.requestStructName(contract, method)).Values(DictFunc(func(dict Dict) {
-					for _, field := range fieldsArg {
-						var arg *model.Variable
-						for _, a := range argsWithoutCtx {
-							if a.Name == field.name {
-								arg = a
-								break
-							}
-						}
-						if arg == nil {
-							continue
-						}
-						if _, exists := argsMappings[arg.Name]; exists {
-							continue
-						}
-						if _, exists := cookieMappings[arg.Name]; exists {
-							continue
-						}
-						if _, exists := headerMappings[arg.Name]; exists {
-							continue
-						}
-						if _, exists := pathParams[arg.Name]; exists {
-							continue
-						}
-						dict[Id(ToCamel(field.name))] = Id(ToLowerCamel(arg.Name))
+				bg.Id("_request_").Op(":=").Id(r.requestBodyStructName(contract, method)).Values(DictFunc(func(dict Dict) {
+					for _, arg := range argsForBody {
+						dict[Id(ToCamel(arg.Name))] = Id(ToLowerCamel(arg.Name))
 					}
 				}))
 				jsonPkg := r.getPackageJSON(contract)
 				reqKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json"))
-				r.httpRequestBodyEncode(bg, contract, method, r.requestStructName(contract, method), "_request", jsonPkg, reqKind)
+				r.httpRequestBodyEncode(bg, contract, method, r.requestBodyStructName(contract, method), "_request_", jsonPkg, reqKind)
 			}
 
 			if !requestMultipart && bodyStreamArg == nil && !hasBody {
@@ -177,23 +142,23 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			}
 
 			if !requestMultipart && bodyStreamArg == nil {
-				resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
-				bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Accept"), Lit(content.CanonicalMIME(resKind)))
+				acceptType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json")
+				bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Accept"), Lit(acceptType))
 				if hasBody {
 					reqCT := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")
 					bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Content-Type"), Lit(reqCT))
 				}
 			}
-			for paramName, headerName := range common.SortedPairs(headerMappings) {
-				if paramVar := r.argByName(method, paramName); paramVar != nil {
-					bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit(headerName), r.varToString(ctx, paramVar))
+			for _, arg := range r.argsForClient(contract, method) {
+				if headerName, ok := headerMappings[arg.Name]; ok {
+					bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit(headerName), r.varToString(ctx, arg))
 				}
 			}
-			for paramName, cookieName := range common.SortedPairs(cookieMappings) {
-				if paramVar := r.argByName(method, paramName); paramVar != nil {
+			for _, arg := range r.argsForClient(contract, method) {
+				if cookieName, ok := cookieMappings[arg.Name]; ok {
 					bg.Id("httpReq").Dot("AddCookie").Call(Op("&").Qual(PackageHttp, "Cookie").Values(Dict{
 						Id("Name"):  Lit(cookieName),
-						Id("Value"): r.varToString(ctx, paramVar),
+						Id("Value"): r.varToString(ctx, arg),
 					}))
 				}
 			}
@@ -201,13 +166,12 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			responseStreamResult := r.methodResponseBodyStreamResult(method)
 			responseMultipart := r.methodResponseMultipart(contract, method)
 			bg.Var().Id("httpResp").Op("*").Qual(PackageHttp, "Response")
-			bg.List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("doRoundTrip").Call(
+			bg.If(List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("doRoundTrip").Call(
 				Id(_ctx_),
 				Lit(r.methodNameToLowerCamel(method)),
 				Id("httpReq"),
 				Lit(successStatusCode),
-			)
-			bg.If(Err().Op("!=").Nil()).Block(Return())
+			).Op(";").Err().Op("!=").Nil()).Block(Return())
 			if responseStreamResult == nil && !responseMultipart {
 				bg.Add(r.httpDeferBodyClose())
 			}
@@ -219,57 +183,117 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				bg.Add(r.httpMultipartResponseBody(contract, method))
 			case responseStreamResult != nil:
 				for _, ret := range resultsWithoutErr {
-					switch ret.TypeID {
-					case TypeIDIOReadCloser:
+					if ret.TypeID == TypeIDIOReadCloser {
 						bg.Id(ToLowerCamel(ret.Name)).Op("=").Id("httpResp").Dot("Body")
-					case "string":
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Id("httpResp").Dot("Header").Dot("Get").Call(Lit("Content-Type"))
 					}
 				}
+				r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
 				bg.Return()
 			case len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle):
-				bg.Var().Id("_response").Id(r.responseStructName(contract, method))
-				jsonPkg := r.getPackageJSON(contract)
-				resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
-				r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response")
-				for i, ret := range resultsWithoutErr {
-					if i >= len(fieldsResult) {
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(Id("_response").Dot(ToCamel(ret.Name)))
-						continue
+				excludeSingle := r.resultNamesExcludeFromBody(contract, method)
+				if len(excludeSingle) > 0 {
+					bg.Var().Id("_response_").Id(r.responseBodyStructName(contract, method))
+					jsonPkg := r.getPackageJSON(contract)
+					resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
+					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
+					fieldsResultBodySingle := r.fieldsResultBody(contract, method)
+					for _, ret := range resultsWithoutErr {
+						if _, excluded := excludeSingle[ret.Name]; excluded {
+							continue
+						}
+						fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
+						var field exchangeField
+						for i := range fieldsResultBodySingle {
+							if fieldsResultBodySingle[i].name == ret.Name {
+								field = fieldsResultBodySingle[i]
+								break
+							}
+						}
+						switch {
+						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
+						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
+						default:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
+						}
 					}
-					field := fieldsResult[i]
-					fieldValue := Id("_response").Dot(ToCamel(ret.Name))
-					// Согласование указатель/значение между полем структуры ответа и возвращаемым типом.
-					switch {
-					case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
-					case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
-					default:
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
+				} else {
+					bg.Var().Id("_response_").Id(r.responseStructName(contract, method))
+					jsonPkg := r.getPackageJSON(contract)
+					resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
+					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, false)
+					for i, ret := range resultsWithoutErr {
+						if i >= len(fieldsResult) {
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(Id("_response_").Dot(ToCamel(ret.Name)))
+							continue
+						}
+						field := fieldsResult[i]
+						fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
+						switch {
+						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
+						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
+						default:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
+						}
 					}
 				}
 				bg.Return()
 			default:
-				bg.Var().Id("_response").Id(r.responseStructName(contract, method))
-				jsonPkg := r.getPackageJSON(contract)
-				resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
-				r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response")
-				for i, ret := range resultsWithoutErr {
-					if i >= len(fieldsResult) {
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(Id("_response").Dot(ToCamel(ret.Name)))
-						continue
+				excludeDefault := r.resultNamesExcludeFromBody(contract, method)
+				if len(excludeDefault) > 0 {
+					bg.Var().Id("_response_").Id(r.responseBodyStructName(contract, method))
+					jsonPkg := r.getPackageJSON(contract)
+					resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
+					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
+					fieldsResultBody := r.fieldsResultBody(contract, method)
+					for _, ret := range resultsWithoutErr {
+						if _, excluded := excludeDefault[ret.Name]; excluded {
+							continue
+						}
+						fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
+						var field exchangeField
+						for i := range fieldsResultBody {
+							if fieldsResultBody[i].name == ret.Name {
+								field = fieldsResultBody[i]
+								break
+							}
+						}
+						switch {
+						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
+						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
+						default:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
+						}
 					}
-					field := fieldsResult[i]
-					fieldValue := Id("_response").Dot(ToCamel(ret.Name))
-					// Согласование указатель/значение между полем структуры ответа и возвращаемым типом.
-					switch {
-					case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
-					case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
-					default:
-						bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
+				} else {
+					bg.Var().Id("_response_").Id(r.responseStructName(contract, method))
+					jsonPkg := r.getPackageJSON(contract)
+					resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
+					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, false)
+					for i, ret := range resultsWithoutErr {
+						if i >= len(fieldsResult) {
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(Id("_response_").Dot(ToCamel(ret.Name)))
+							continue
+						}
+						field := fieldsResult[i]
+						fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
+						switch {
+						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
+						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
+						default:
+							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
+						}
 					}
 				}
 				bg.Return()

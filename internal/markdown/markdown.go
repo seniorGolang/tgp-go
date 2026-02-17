@@ -101,7 +101,7 @@ type Markdown struct {
 	tocInserted bool
 }
 
-func NewMarkdown(w io.Writer) *Markdown {
+func NewMarkdown(w io.Writer) (m *Markdown) {
 	return &Markdown{
 		body:    []string{},
 		dest:    w,
@@ -109,7 +109,8 @@ func NewMarkdown(w io.Writer) *Markdown {
 	}
 }
 
-func (m *Markdown) String() string {
+func (m *Markdown) String() (s string) {
+
 	content := strings.Join(m.body, internal.LineFeed())
 
 	if m.tocInserted && m.tocOptions != nil {
@@ -125,11 +126,12 @@ func (m *Markdown) String() string {
 	return content
 }
 
-func (m *Markdown) Error() error {
+func (m *Markdown) Error() (err error) {
 	return m.err
 }
 
 func (m *Markdown) PlainText(text string) *Markdown {
+
 	m.body = append(m.body, text)
 	return m
 }
@@ -138,17 +140,19 @@ func (m *Markdown) PlainTextf(format string, args ...any) *Markdown {
 	return m.PlainText(fmt.Sprintf(format, args...))
 }
 
-func (m *Markdown) Build() error {
-	if _, err := fmt.Fprint(m.dest, m.String()); err != nil {
+func (m *Markdown) Build() (err error) {
+
+	if _, writeErr := fmt.Fprint(m.dest, m.String()); writeErr != nil {
 		if m.err != nil {
-			return fmt.Errorf("failed to write markdown text: %w: %s", err, m.err.Error()) //nolint:wrapcheck
+			return fmt.Errorf("failed to write markdown text: %w: %s", writeErr, m.err.Error()) //nolint:wrapcheck
 		}
-		return fmt.Errorf("failed to write markdown text: %w", err)
+		return fmt.Errorf("failed to write markdown text: %w", writeErr)
 	}
 	return m.err
 }
 
 func (m *Markdown) H1(text string) *Markdown {
+
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH1, text: text})
 	m.body = append(m.body, fmt.Sprintf("# %s", text))
 	return m
@@ -159,6 +163,7 @@ func (m *Markdown) H1f(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) H2(text string) *Markdown {
+
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH2, text: text})
 	m.body = append(m.body, fmt.Sprintf("## %s", text))
 	return m
@@ -169,6 +174,7 @@ func (m *Markdown) H2f(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) H3(text string) *Markdown {
+
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH3, text: text})
 	m.body = append(m.body, fmt.Sprintf("### %s", text))
 	return m
@@ -179,6 +185,7 @@ func (m *Markdown) H3f(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) H4(text string) *Markdown {
+
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH4, text: text})
 	m.body = append(m.body, fmt.Sprintf("#### %s", text))
 	return m
@@ -189,6 +196,7 @@ func (m *Markdown) H4f(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) H5(text string) *Markdown {
+
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH5, text: text})
 	m.body = append(m.body, fmt.Sprintf("##### %s", text))
 	return m
@@ -199,6 +207,7 @@ func (m *Markdown) H5f(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) H6(text string) *Markdown {
+
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH6, text: text})
 	m.body = append(m.body, fmt.Sprintf("###### %s", text))
 	return m
@@ -220,6 +229,7 @@ func (m *Markdown) TableOfContents(maxDepth TableOfContentsDepth) *Markdown {
 //
 //	markdown.NewMarkdown(os.Stdout).
 func (m *Markdown) TableOfContentsWithRange(minDepth, maxDepth TableOfContentsDepth) *Markdown {
+
 	if m.tocInserted {
 		if m.err == nil {
 			m.err = errors.New("table of contents has already been generated")
@@ -262,6 +272,7 @@ func (m *Markdown) TableOfContentsWithRange(minDepth, maxDepth TableOfContentsDe
 }
 
 func (m *Markdown) generateTableOfContents() []string {
+
 	if m.tocOptions == nil || len(m.headers) == 0 {
 		return []string{}
 	}
@@ -291,6 +302,7 @@ func (m *Markdown) generateTableOfContents() []string {
 }
 
 func (m *Markdown) Details(summary, text string) *Markdown {
+
 	m.body = append(
 		m.body,
 		fmt.Sprintf("<details><summary>%s</summary>%s%s%s</details>",
@@ -303,6 +315,7 @@ func (m *Markdown) Detailsf(summary, format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) BulletList(text ...string) *Markdown {
+
 	for _, v := range text {
 		m.body = append(m.body, fmt.Sprintf("- %s", v))
 	}
@@ -310,6 +323,7 @@ func (m *Markdown) BulletList(text ...string) *Markdown {
 }
 
 func (m *Markdown) OrderedList(text ...string) *Markdown {
+
 	for i, v := range text {
 		m.body = append(m.body, fmt.Sprintf("%d. %s", i+1, v))
 	}
@@ -322,6 +336,7 @@ type CheckBoxSet struct {
 }
 
 func (m *Markdown) CheckBox(set []CheckBoxSet) *Markdown {
+
 	for _, v := range set {
 		if v.Checked {
 			m.body = append(m.body, fmt.Sprintf("- [x] %s", v.Text))
@@ -333,6 +348,7 @@ func (m *Markdown) CheckBox(set []CheckBoxSet) *Markdown {
 }
 
 func (m *Markdown) Blockquote(text string) *Markdown {
+
 	lines := strings.Split(text, internal.LineFeed())
 	for _, line := range lines {
 		m.body = append(m.body, fmt.Sprintf("> %s", line))
@@ -341,12 +357,14 @@ func (m *Markdown) Blockquote(text string) *Markdown {
 }
 
 func (m *Markdown) CodeBlocks(lang SyntaxHighlight, text string) *Markdown {
+
 	m.body = append(m.body,
 		fmt.Sprintf("```%s%s%s%s```", lang, internal.LineFeed(), text, internal.LineFeed()))
 	return m
 }
 
 func (m *Markdown) HorizontalRule() *Markdown {
+
 	m.body = append(m.body, "---")
 	return m
 }
@@ -366,17 +384,19 @@ type TableSet struct {
 	Alignment []TableAlignment
 }
 
-func (t *TableSet) ValidateColumns() error {
+func (t *TableSet) ValidateColumns() (err error) {
+
 	headerColumns := len(t.Header)
 	for _, record := range t.Rows {
 		if len(record) != headerColumns {
 			return ErrMismatchColumn
 		}
 	}
-	return nil
+	return
 }
 
 func (m *Markdown) Table(t TableSet) *Markdown {
+
 	if err := t.ValidateColumns(); err != nil {
 		if m.err != nil {
 			m.err = fmt.Errorf("failed to validate columns: %w: %s", err, m.err.Error()) //nolint:wrapcheck
@@ -435,15 +455,13 @@ func (m *Markdown) Table(t TableSet) *Markdown {
 }
 
 type TableOptions struct {
-	// AutoWrapText is whether to wrap the text automatically.
-	AutoWrapText bool
-	// AutoFormatHeaders is whether to format the header automatically.
+	AutoWrapText      bool
 	AutoFormatHeaders bool
 }
 
 func (m *Markdown) CustomTable(t TableSet, options TableOptions) *Markdown {
+
 	if err := t.ValidateColumns(); err != nil {
-		// NOTE: If go version is 1.20, use errors.Join
 		if m.err != nil {
 			m.err = fmt.Errorf("failed to validate columns: %w: %s", err, m.err.Error()) //nolint:wrapcheck
 		} else {
@@ -510,7 +528,6 @@ func (m *Markdown) CustomTable(t TableSet, options TableOptions) *Markdown {
 		m.err = errors.Join(m.err, fmt.Errorf("failed to add rows to table: %w", err))
 		return m
 	}
-	// This is so if the user wants to change the table settings they can
 	if err := table.Render(); err != nil {
 		m.err = errors.Join(m.err, fmt.Errorf("failed to render table: %w", err))
 		return m

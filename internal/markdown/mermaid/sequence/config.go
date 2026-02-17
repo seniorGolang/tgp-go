@@ -44,7 +44,7 @@ type config struct {
 	messageFontWeight string
 }
 
-func newConfig() *config {
+func newConfig() (c *config) {
 	return &config{
 		mirrorActors:            false,
 		bottomMariginAdjustment: 1,
@@ -63,73 +63,73 @@ func newConfig() *config {
 
 type Option func(*config)
 
-func WithMirrorActors(mirrorActors bool) Option {
+func WithMirrorActors(mirrorActors bool) (o Option) {
 	return func(c *config) {
 		c.mirrorActors = mirrorActors
 	}
 }
 
-func WithBottomMariginAdjustment(bottomMariginAdjustment uint) Option {
+func WithBottomMariginAdjustment(bottomMariginAdjustment uint) (o Option) {
 	return func(c *config) {
 		c.bottomMariginAdjustment = bottomMariginAdjustment
 	}
 }
 
-func WithActorFontSize(actorFontSize uint) Option {
+func WithActorFontSize(actorFontSize uint) (o Option) {
 	return func(c *config) {
 		c.actorFontSize = actorFontSize
 	}
 }
 
-func WithActorFontFamily(actorFontFamily string) Option {
+func WithActorFontFamily(actorFontFamily string) (o Option) {
 	return func(c *config) {
 		c.actorFontFamily = actorFontFamily
 	}
 }
 
-func WithActorFontWeight(actorFontWeight string) Option {
+func WithActorFontWeight(actorFontWeight string) (o Option) {
 	return func(c *config) {
 		c.actorFontWeight = actorFontWeight
 	}
 }
 
-func WithNoteFontSize(noteFontSize uint) Option {
+func WithNoteFontSize(noteFontSize uint) (o Option) {
 	return func(c *config) {
 		c.noteFontSize = noteFontSize
 	}
 }
 
-func WithNoteFontFamily(noteFontFamily string) Option {
+func WithNoteFontFamily(noteFontFamily string) (o Option) {
 	return func(c *config) {
 		c.noteFontFamily = noteFontFamily
 	}
 }
 
-func WithNoteFontWeight(noteFontWeight string) Option {
+func WithNoteFontWeight(noteFontWeight string) (o Option) {
 	return func(c *config) {
 		c.noteFontWeight = noteFontWeight
 	}
 }
 
-func WithNoteAlign(noteAlign string) Option {
+func WithNoteAlign(noteAlign string) (o Option) {
 	return func(c *config) {
 		c.noteAlign = noteAlign
 	}
 }
 
-func WithMessageFontSize(messageFontSize uint) Option {
+func WithMessageFontSize(messageFontSize uint) (o Option) {
 	return func(c *config) {
 		c.messageFontSize = messageFontSize
 	}
 }
 
-func WithMessageFontFamily(messageFontFamily string) Option {
+func WithMessageFontFamily(messageFontFamily string) (o Option) {
 	return func(c *config) {
 		c.messageFontFamily = messageFontFamily
 	}
 }
 
-func WithMessageFontWeight(messageFontWeight string) Option {
+func WithMessageFontWeight(messageFontWeight string) (o Option) {
 	return func(c *config) {
 		c.messageFontWeight = messageFontWeight
 	}

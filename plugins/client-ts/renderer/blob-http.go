@@ -8,7 +8,7 @@ import (
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) methodRequestBodyStreamArg(method *model.Method) *model.Variable {
+func (r *ClientRenderer) methodRequestBodyStreamArg(method *model.Method) (v *model.Variable) {
 
 	for _, arg := range r.argsWithoutContext(method) {
 		if arg.TypeID == TypeIDIOReader {
@@ -18,7 +18,7 @@ func (r *ClientRenderer) methodRequestBodyStreamArg(method *model.Method) *model
 	return nil
 }
 
-func (r *ClientRenderer) methodResponseBodyStreamResult(method *model.Method) *model.Variable {
+func (r *ClientRenderer) methodResponseBodyStreamResult(method *model.Method) (v *model.Variable) {
 
 	for _, res := range r.resultsWithoutError(method) {
 		if res.TypeID == TypeIDIOReadCloser {
@@ -35,7 +35,7 @@ func (r *ClientRenderer) methodRequestBodyStreamArgs(method *model.Method) (args
 			args = append(args, arg)
 		}
 	}
-	return args
+	return
 }
 
 func (r *ClientRenderer) methodResponseBodyStreamResults(method *model.Method) (results []*model.Variable) {
@@ -45,10 +45,10 @@ func (r *ClientRenderer) methodResponseBodyStreamResults(method *model.Method) (
 			results = append(results, res)
 		}
 	}
-	return results
+	return
 }
 
-func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method *model.Method) bool {
+func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method *model.Method) (ok bool) {
 
 	readerArgs := r.methodRequestBodyStreamArgs(method)
 	if len(readerArgs) > 1 {
@@ -60,7 +60,7 @@ func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method
 	return false
 }
 
-func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, method *model.Method) bool {
+func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, method *model.Method) (ok bool) {
 
 	readCloserResults := r.methodResponseBodyStreamResults(method)
 	if len(readCloserResults) > 1 {
@@ -72,7 +72,7 @@ func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, metho
 	return false
 }
 
-func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) string {
+func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) (s string) {
 
 	if v != nil && v.Annotations != nil {
 		if val, found := v.Annotations[model.TagHttpPartName]; found && val != "" {
@@ -94,7 +94,7 @@ func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.
 	return ""
 }
 
-func (r *ClientRenderer) varValueFromMethodMap(annotationValue string, varName string) string {
+func (r *ClientRenderer) varValueFromMethodMap(annotationValue string, varName string) (s string) {
 
 	for _, pair := range strings.Split(annotationValue, ",") {
 		if pairTokens := strings.Split(strings.TrimSpace(pair), "|"); len(pairTokens) == 2 {

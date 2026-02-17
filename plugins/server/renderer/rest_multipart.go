@@ -8,7 +8,7 @@ import (
 	"tgp/internal/model"
 )
 
-func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code {
+func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Code) {
 
 	streamArgs := r.methodRequestBodyStreamArgs(method)
 	if len(streamArgs) == 0 {
@@ -16,8 +16,8 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code 
 	}
 
 	st := Line()
-	st.List(Id("_"), Id("params"), Err()).Op(":=").Qual(PackageMime, "ParseMediaType").Call(Id(VarNameFtx).Dot("Get").Call(Lit("Content-Type")))
-	st.Line().If(Err().Op("!=").Nil()).Block(
+	st.Var().Id("params").Map(String()).String()
+	st.Line().If(List(Id("_"), Id("params"), Err()).Op("=").Qual(PackageMime, "ParseMediaType").Call(Id(VarNameFtx).Dot("Get").Call(Lit("Content-Type"))).Op(";").Err().Op("!=").Nil()).Block(
 		Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 		Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("invalid or missing Content-Type"))),
 	)
@@ -72,7 +72,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code 
 			}
 			cases = append(cases, Case(Lit(partName)).Block(caseBlock...))
 		}
-		fg.Switch(Id("partName")).Block(append(cases, Default().Block(Qual("io", "Copy").Call(Qual("io", "Discard"), Id("p"))))...)
+		fg.Switch(Id("partName")).Block(append(cases, Default().Block(List(Id("_"), Id("_")).Op("=").Qual("io", "Copy").Call(Qual("io", "Discard"), Id("p"))))...)
 		if len(streamArgs) == 1 {
 			fg.If(Id("found")).Block(Break())
 		}
@@ -103,9 +103,8 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) Code 
 	return st
 }
 
-// httpServeMultipartResponseDefers возвращает отложенное закрытие всех stream-частей ответа.
 // Вызывается в начале блока err == nil до проверки редиректа, чтобы при return по редиректу ресурсы освобождались.
-func (r *contractRenderer) httpServeMultipartResponseDefers(method *model.Method) Code {
+func (r *contractRenderer) httpServeMultipartResponseDefers(method *model.Method) (c Code) {
 
 	streamResults := r.methodResponseBodyStreamResults(method)
 	if len(streamResults) == 0 {
@@ -120,7 +119,7 @@ func (r *contractRenderer) httpServeMultipartResponseDefers(method *model.Method
 	return st
 }
 
-func (r *contractRenderer) httpServeMultipartResponse(method *model.Method) Code {
+func (r *contractRenderer) httpServeMultipartResponse(method *model.Method) (c Code) {
 
 	streamResults := r.methodResponseBodyStreamResults(method)
 	if len(streamResults) == 0 {

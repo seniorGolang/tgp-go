@@ -7,14 +7,16 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/generated"
 )
 
-func (r *transportRenderer) RenderTransportErrors() error {
+func (r *transportRenderer) RenderTransportErrors() (err error) {
 
 	errorsPath := path.Join(r.outDir, "errors.go")
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageSlog, "slog")
 
@@ -27,7 +29,7 @@ func (r *transportRenderer) RenderTransportErrors() error {
 	return srcFile.Save(errorsPath)
 }
 
-func (r *transportRenderer) errValidationType() Code {
+func (r *transportRenderer) errValidationType() (c Code) {
 
 	return Line().
 		Type().Id("errValidation").Struct(
@@ -43,7 +45,7 @@ func (r *transportRenderer) errValidationType() Code {
 		Block(Return(Id("e").Dot("code")))
 }
 
-func (r *transportRenderer) errBadRequestDataFunc() Code {
+func (r *transportRenderer) errBadRequestDataFunc() (c Code) {
 
 	return Func().Id("errBadRequestData").Params(Id("data").String()).Op("*").Id("errValidation").
 		Block(
@@ -55,21 +57,21 @@ func (r *transportRenderer) errBadRequestDataFunc() Code {
 		)
 }
 
-func (r *transportRenderer) withErrorCodeInterface() Code {
+func (r *transportRenderer) withErrorCodeInterface() (c Code) {
 
 	return Type().Id("withErrorCode").Interface(
 		Id("Code").Params().Int(),
 	)
 }
 
-func (r *transportRenderer) withRedirectInterface() Code {
+func (r *transportRenderer) withRedirectInterface() (c Code) {
 
 	return Type().Id("withRedirect").Interface(
 		Id("RedirectTo").Params().String(),
 	)
 }
 
-func (r *transportRenderer) exitOnErrorFunc() Code {
+func (r *transportRenderer) exitOnErrorFunc() (c Code) {
 
 	return Func().Id("ExitOnError").
 		Params(Id("log").Op("*").Qual(PackageSlog, "Logger"), Id("err").Error(), Id("msg").String()).

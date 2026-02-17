@@ -11,9 +11,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"tgp/core/i18n"
+	"tgp/internal/helper"
 )
 
 func (l *AutonomousPackageLoader) parsePackageFiles(pkgDir string, buildCtx *build.Context) (files []*ast.File, err error) {
@@ -26,11 +26,7 @@ func (l *AutonomousPackageLoader) parsePackageFiles(pkgDir string, buildCtx *bui
 	files = make([]*ast.File, 0, len(entries))
 
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
-			continue
-		}
-
-		if strings.HasSuffix(entry.Name(), "_test.go") {
+		if entry.IsDir() || !helper.IsRelevantGoFile(entry.Name()) {
 			continue
 		}
 
@@ -60,19 +56,16 @@ func (l *AutonomousPackageLoader) ParsePackageFilesOnly(pkgPath string) (files [
 
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
-		err = fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
-		return
+		return nil, nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
 	}
 
 	buildCtx := buildContext()
 	if files, err = l.parsePackageFiles(pkgDir, &buildCtx); err != nil {
-		err = fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
-		return
+		return nil, nil, fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
 	}
 
 	if len(files) == 0 {
-		err = fmt.Errorf("no Go files found in package %s", pkgPath)
-		return
+		return nil, nil, fmt.Errorf("no Go files found in package %s", pkgPath)
 	}
 
 	fset = l.fset

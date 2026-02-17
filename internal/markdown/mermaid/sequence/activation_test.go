@@ -11,6 +11,7 @@ import (
 )
 
 func TestDiagramActivateDeactivate(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add activate and deactivate to the sequence diagram", func(t *testing.T) {
@@ -30,6 +31,7 @@ func TestDiagramActivateDeactivate(t *testing.T) {
 }
 
 func TestDiagramRequestfWithActivation(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add request to the sequence diagram with activation", func(t *testing.T) {
@@ -48,6 +50,7 @@ func TestDiagramRequestfWithActivation(t *testing.T) {
 }
 
 func TestDiagramResponsefWithActivation(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add response to the sequence diagram with activation", func(t *testing.T) {
@@ -66,6 +69,7 @@ func TestDiagramResponsefWithActivation(t *testing.T) {
 }
 
 func TestDiagramAsyncRequestfWithActivation(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add async request to the sequence diagram with activation", func(t *testing.T) {
@@ -84,6 +88,7 @@ func TestDiagramAsyncRequestfWithActivation(t *testing.T) {
 }
 
 func TestDiagramAsyncResponsefWithActivation(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add async response to the sequence diagram with activation", func(t *testing.T) {

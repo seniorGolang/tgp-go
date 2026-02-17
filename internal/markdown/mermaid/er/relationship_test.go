@@ -6,6 +6,7 @@ package er
 import "testing"
 
 func TestRelationship_string(t *testing.T) {
+
 	t.Parallel()
 
 	type args struct {

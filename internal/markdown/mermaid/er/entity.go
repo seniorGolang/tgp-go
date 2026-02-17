@@ -11,13 +11,12 @@ import (
 )
 
 type Entity struct {
-	// Name is the name of the entity.
-	Name string
-	// Attributes is the attributes of the entity.
+	Name       string
 	Attributes []*Attribute
 }
 
 func (e *Entity) string() string {
+
 	attrs := make([]string, 0, len(e.Attributes))
 	for _, a := range e.Attributes {
 		attrs = append(attrs, a.string())
@@ -34,7 +33,7 @@ func (e *Entity) string() string {
 	)
 }
 
-func NewEntity(name string, attrs []*Attribute) Entity {
+func NewEntity(name string, attrs []*Attribute) (e Entity) {
 	return Entity{
 		Name:       name,
 		Attributes: attrs,
@@ -42,21 +41,16 @@ func NewEntity(name string, attrs []*Attribute) Entity {
 }
 
 type Attribute struct {
-	// Type is the type of the attribute.
-	Type string
-	// Name is the name of the attribute.
-	Name string
-	// IsPrimaryKey is the flag that indicates whether the attribute is a primary key.
-	IsPrimaryKey bool
-	// IsForeignKey is the flag that indicates whether the attribute is a foreign key.
+	Type         string
+	Name         string
+	Comment      string
+	IsUniqueKey  bool
 	IsForeignKey bool
-	// IsUniqueKey is the flag that indicates whether the attribute is a unique key.
-	IsUniqueKey bool
-	// Comment is the comment of the attribute.
-	Comment string
+	IsPrimaryKey bool
 }
 
 func (a *Attribute) string() string {
+
 	var keys []string
 	if a.IsPrimaryKey {
 		keys = append(keys, "PK")
@@ -74,6 +68,7 @@ func (a *Attribute) string() string {
 }
 
 func (d *Diagram) Relationship(leftE, rightE Entity, leftR, rightR Relationship, identidy Identify, comment string) *Diagram {
+
 	d.body = append(
 		d.body,
 		fmt.Sprintf("    %s %s%s%s %s : \"%s\"",
@@ -93,6 +88,7 @@ func (d *Diagram) Relationship(leftE, rightE Entity, leftR, rightR Relationship,
 }
 
 func (d *Diagram) NoRelationship(e Entity) *Diagram {
+
 	d.entities.Store(e.Name, e)
 	return d
 }

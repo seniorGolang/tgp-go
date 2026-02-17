@@ -10,6 +10,8 @@ const (
 	tagAppVersion            = "version"
 	tagDesc                  = "desc"
 	tagSummary               = "summary"
+	tagRequestBodyDesc       = "requestBodyDesc"
+	tagTagDesc               = "tagDesc"
 	tagSecurity              = "security"
 	tagServers               = "servers"
 	tagSwaggerTags           = "swaggerTags"

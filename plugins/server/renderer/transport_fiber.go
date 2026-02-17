@@ -8,15 +8,17 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/generated"
 )
 
-func (r *transportRenderer) RenderTransportFiber() error {
+func (r *transportRenderer) RenderTransportFiber() (err error) {
 
 	fiberPath := path.Join(r.outDir, "fiber.go")
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(PackageErrors, "errors")

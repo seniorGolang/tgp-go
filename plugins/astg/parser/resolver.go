@@ -43,12 +43,11 @@ func NewPackageResolver(modFile *modfile.File) (resolver *PackageResolver, err e
 func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 
 	r.resolveCacheMu.RLock()
-	var cached string
 	var ok bool
+	var cached string
 	if cached, ok = r.resolveCache[pkgPath]; ok {
 		r.resolveCacheMu.RUnlock()
-		result = cached
-		return
+		return cached, nil
 	}
 	r.resolveCacheMu.RUnlock()
 
@@ -61,18 +60,14 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 		if info, err = os.Stat(dir); err == nil && info.IsDir() {
 			result = dir
 		} else if err != nil {
-			// Логируем ошибку для отладки
 			_ = fmt.Errorf("failed to stat directory %s: %w (pkgPath=%s, modulePath=%s, relPath=%s)",
 				dir, err, pkgPath, r.modulePath, relPath)
 		} else if relPath == "" {
-			// Если директория не найдена, пробуем без префикса модуля (для корневых пакетов)
-			// Корневой пакет модуля
 			if info, err = os.Stat(internal.ProjectRoot); err == nil && info.IsDir() {
 				result = internal.ProjectRoot
 			}
 		}
 		if err == nil {
-			// Кэшируем успешный результат
 			r.resolveCacheMu.Lock()
 			r.resolveCache[pkgPath] = result
 			r.resolveCacheMu.Unlock()
@@ -83,9 +78,9 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 	var goroot string
 	if goroot = os.Getenv("GOROOT"); goroot != "" {
 		stdPath := filepath.Join(goroot, "src", filepath.FromSlash(pkgPath))
+		//nolint:gosec // G703 — путь из GOROOT и pkgPath (импорт), не пользовательский ввод
 		if _, statErr := os.Stat(stdPath); statErr == nil {
 			result = stdPath
-			// Кэшируем успешный результат
 			r.resolveCacheMu.Lock()
 			r.resolveCache[pkgPath] = result
 			r.resolveCacheMu.Unlock()
@@ -95,7 +90,6 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 
 	// 3. Внешняя зависимость через go.mod (прямые и транзитивные)
 	if r.modFile != nil {
-		// Сначала проверяем Require (прямые зависимости)
 		for _, req := range r.modFile.Require {
 			if strings.HasPrefix(pkgPath, req.Mod.Path) {
 				var modDir string
@@ -104,8 +98,7 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 					relPath = strings.TrimPrefix(relPath, "/")
 					dir := filepath.Join(modDir, filepath.FromSlash(relPath))
 					if _, statErr := os.Stat(dir); statErr == nil {
-						result = dir
-						return
+						return dir, err
 					}
 				}
 			}
@@ -114,7 +107,6 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 		var modDir string
 		if modDir, err = r.findModuleByPackagePath(pkgPath); err == nil {
 			result = modDir
-			// Кэшируем успешный результат
 			r.resolveCacheMu.Lock()
 			r.resolveCache[pkgPath] = result
 			r.resolveCacheMu.Unlock()
@@ -122,8 +114,7 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 		}
 	}
 
-	err = fmt.Errorf("package not found: %s", pkgPath)
-	return
+	return "", fmt.Errorf("package not found: %s", pkgPath)
 }
 
 func (r *PackageResolver) findModuleDir(modulePath string, version string) (modDir string, err error) {
@@ -137,6 +128,7 @@ func (r *PackageResolver) findModuleDir(modulePath string, version string) (modD
 		}
 		modDir = filepath.Join(gomodcache, fmt.Sprintf("%s@%s", escapedPath, version))
 		var info os.FileInfo
+		//nolint:gosec // G703 — modDir из GOMODCACHE и module.EscapePath, не пользовательский ввод
 		if info, err = os.Stat(modDir); err == nil && info.IsDir() {
 			return
 		}
@@ -151,24 +143,23 @@ func (r *PackageResolver) findModuleDir(modulePath string, version string) (modD
 		}
 		modDir = filepath.Join(gopath, "pkg", "mod", fmt.Sprintf("%s@%s", escapedPath, version))
 		var info os.FileInfo
+		//nolint:gosec // G703 — modDir из GOPATH и module.EscapePath
 		if info, err = os.Stat(modDir); err == nil && info.IsDir() {
 			return
 		}
 	}
 
-	err = fmt.Errorf("module directory not found: %s@%s", modulePath, version)
-	return
+	return "", fmt.Errorf("module directory not found: %s@%s", modulePath, version)
 }
 
 func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string, err error) {
 
 	r.modulePathCacheMu.RLock()
-	var cached string
 	var ok bool
+	var cached string
 	if cached, ok = r.modulePathCache[pkgPath]; ok {
 		r.modulePathCacheMu.RUnlock()
-		result = cached
-		return
+		return cached, nil
 	}
 	r.modulePathCacheMu.RUnlock()
 
@@ -204,7 +195,6 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 		}
 
 		for _, modCacheDir := range modCacheDirs {
-			// Ищем директории модуля с паттерном escapedPath@*
 			pattern := filepath.Join(modCacheDir, escapedPath+"@*")
 			var matches []string
 			if matches, err = filepath.Glob(pattern); err != nil || len(matches) == 0 {
@@ -214,6 +204,7 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 			var bestModDir string
 			for _, match := range matches {
 				var info os.FileInfo
+				//nolint:gosec // G703 — match из filepath.Glob по go.mod, не пользовательский ввод
 				if info, err = os.Stat(match); err == nil && info.IsDir() {
 					if bestModDir == "" || match > bestModDir {
 						bestModDir = match
@@ -226,27 +217,26 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 				if relPath != "" {
 					pkgDir := filepath.Join(bestModDir, filepath.FromSlash(relPath))
 					var info os.FileInfo
+					//nolint:gosec // G703 — pkgDir из go.mod и relPath (импорт)
 					if info, err = os.Stat(pkgDir); err == nil && info.IsDir() {
 						resultDir = pkgDir
 					}
 				} else {
 					var info os.FileInfo
+					//nolint:gosec // G703 — bestModDir из filepath.Glob
 					if info, err = os.Stat(bestModDir); err == nil && info.IsDir() {
 						resultDir = bestModDir
 					}
 				}
 				if resultDir != "" {
-					// Кэшируем успешный результат
 					r.modulePathCacheMu.Lock()
 					r.modulePathCache[pkgPath] = resultDir
 					r.modulePathCacheMu.Unlock()
-					result = resultDir
-					return
+					return resultDir, nil
 				}
 			}
 		}
 	}
 
-	err = fmt.Errorf("module not found for package: %s", pkgPath)
-	return
+	return "", fmt.Errorf("module not found for package: %s", pkgPath)
 }

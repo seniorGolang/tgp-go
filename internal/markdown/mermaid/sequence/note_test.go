@@ -10,6 +10,7 @@ import (
 )
 
 func TestDiagramNoteOver(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add note over to the sequence diagram", func(t *testing.T) {
@@ -28,6 +29,7 @@ func TestDiagramNoteOver(t *testing.T) {
 }
 
 func TestDiagramNoteRightOf(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add note right of to the sequence diagram", func(t *testing.T) {
@@ -46,6 +48,7 @@ func TestDiagramNoteRightOf(t *testing.T) {
 }
 
 func TestDiagramNoteLeftOf(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should add note left of to the sequence diagram", func(t *testing.T) {

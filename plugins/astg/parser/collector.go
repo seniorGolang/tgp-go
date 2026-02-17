@@ -22,7 +22,7 @@ import (
 	"tgp/internal/tags"
 )
 
-func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string, ifaces ...string) (project *model.Project, err error) {
+func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string) (project *model.Project, err error) {
 
 	project = &model.Project{
 		Version:      version,
@@ -35,16 +35,13 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 
 	var modPath string
 	if modPath, err = findGoModPath(); err != nil {
-		err = fmt.Errorf("failed to get go.mod path: %w", err)
-		project = nil
-		return
+		return nil, fmt.Errorf("failed to get go.mod path: %w", err)
 	}
 
 	modBytes, err := os.ReadFile(modPath)
 	var modFile *modfile.File
 	if err == nil {
-		modFile, err = modfile.Parse(modPath, modBytes, nil)
-		if err != nil {
+		if modFile, err = modfile.Parse(modPath, modBytes, nil); err != nil {
 			modFile = nil
 		}
 	}
@@ -61,18 +58,14 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 
 	var loader *AutonomousPackageLoader
 	if loader, err = NewAutonomousPackageLoader(modFile); err != nil {
-		err = fmt.Errorf("failed to create package loader: %w", err)
-		project = nil
-		return
+		return nil, fmt.Errorf("failed to create package loader: %w", err)
 	}
 
 	svcDirAbs := filepath.Join(internal.ProjectRoot, svcDir)
 
 	var files []os.DirEntry
 	if files, err = os.ReadDir(svcDirAbs); err != nil {
-		err = fmt.Errorf("failed to read service directory: %w", err)
-		project = nil
-		return
+		return nil, fmt.Errorf("failed to read service directory: %w", err)
 	}
 
 	contractsMap := make(map[string]*model.Contract)
@@ -97,9 +90,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 			var astFile *ast.File
 			var parseErr error
 			if astFile, parseErr = parser.ParseFile(fset, filePathAbs, nil, parser.ParseComments); parseErr != nil {
-				err = fmt.Errorf("failed to parse file %s: %w", filePathAbs, parseErr)
-				project = nil
-				return
+				return nil, fmt.Errorf("failed to parse file %s: %w", filePathAbs, parseErr)
 			}
 			relPath, relErr := filepath.Rel(internal.ProjectRoot, filepath.Dir(filePathAbs))
 			if relErr == nil {
@@ -115,8 +106,8 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 			}
 		}
 
-		pkgInfo, err := loader.LoadPackageLazy(pkgPath)
-		if err != nil {
+		var pkgInfo *PackageInfo
+		if pkgInfo, err = loader.LoadPackageLazy(pkgPath); err != nil {
 			slog.Debug(i18n.Msg("Package not found, skipping file"),
 				slog.String("package", pkgPath),
 				slog.String("file", filePathAbs),
@@ -127,12 +118,12 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 		var astFile *ast.File
 		fileName := filepath.Base(filePathAbs)
 		found := false
-		for _, file := range pkgInfo.Files {
-			if file != nil {
-				if file.Package.IsValid() {
-					pos := pkgInfo.Fset.Position(file.Package)
+		for _, pkgFile := range pkgInfo.Files {
+			if pkgFile != nil {
+				if pkgFile.Package.IsValid() {
+					pos := pkgInfo.Fset.Position(pkgFile.Package)
 					if pos.Filename == filePathAbs || filepath.Base(pos.Filename) == fileName {
-						astFile = file
+						astFile = pkgFile
 						found = true
 						break
 					}
@@ -141,9 +132,9 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 		}
 
 		if !found && len(pkgInfo.Files) > 0 {
-			for _, file := range pkgInfo.Files {
-				if file != nil {
-					astFile = file
+			for _, pkgFile := range pkgInfo.Files {
+				if pkgFile != nil {
+					astFile = pkgFile
 					found = true
 					break
 				}
@@ -152,8 +143,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 
 		if !found {
 			fset := token.NewFileSet()
-			astFile, err = parser.ParseFile(fset, filePathAbs, nil, parser.ParseComments)
-			if err != nil {
+			if astFile, err = parser.ParseFile(fset, filePathAbs, nil, parser.ParseComments); err != nil {
 				slog.Debug(i18n.Msg("Failed to parse file"), slog.String("file", filePathAbs), slog.String("error", err.Error()))
 				continue
 			}
@@ -161,9 +151,14 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 
 		imports := collectImports([]*ast.File{astFile}, loader.resolver)
 
-		if astFile.Doc != nil && len(project.Annotations) == 0 {
-			packageDocs := extractComments(astFile.Doc)
-			project.Annotations = project.Annotations.Merge(tags.ParseTags(packageDocs))
+		if astFile.Doc != nil {
+			packageLines := extractComments(astFile.Doc)
+			if len(project.Docs) == 0 {
+				project.Docs, project.Directives = splitDocsAndDirectives(packageLines)
+			}
+			if len(project.Annotations) == 0 {
+				project.Annotations = project.Annotations.Merge(tags.ParseTags(packageLines))
+			}
 		}
 
 		filePathRel := makeRelativePath(filePathAbs)
@@ -193,12 +188,14 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string,
 				}
 
 				contractID := fmt.Sprintf("%s:%s", pkgPath, interfaceName)
+				interfaceDocsOut, interfaceDirectives := splitDocsAndDirectives(interfaceDocs)
 				contract := &model.Contract{
 					ID:          contractID,
 					Name:        interfaceName,
 					PkgPath:     pkgPath,
 					FilePath:    filePathRel,
-					Docs:        removeAnnotationsFromDocs(interfaceDocs),
+					Docs:        interfaceDocsOut,
+					Directives:  interfaceDirectives,
 					Annotations: ifaceAnnotations,
 					Methods:     make([]*model.Method, 0),
 				}
@@ -283,8 +280,7 @@ func getPkgPathFromDir(dir string, modulePath string) (pkgPath string, err error
 		if strings.HasPrefix(dir, "/") {
 			relPath = strings.TrimPrefix(dir, "/")
 		} else {
-			err = fmt.Errorf("failed to compute relative path from %s to %s: %w", internal.ProjectRoot, dir, err)
-			return
+			return "", fmt.Errorf("failed to compute relative path from %s to %s: %w", internal.ProjectRoot, dir, err)
 		}
 	}
 	pkgRelPath := filepath.ToSlash(relPath)
@@ -297,6 +293,27 @@ func getPkgPathFromDir(dir string, modulePath string) (pkgPath string, err error
 	return
 }
 
+// normalizeCommentLine убирает префикс комментария (//, /*, */, * ) и лишние пробелы.
+// Пустая строка после нормализации возвращается как "".
+func normalizeCommentLine(line string) (out string) {
+
+	s := strings.TrimSpace(line)
+	if s == "" {
+		return ""
+	}
+	if strings.HasPrefix(s, "//") {
+		return strings.TrimSpace(s[2:])
+	}
+	if strings.HasPrefix(s, "/*") {
+		s = strings.TrimSpace(strings.TrimSuffix(s[2:], "*/"))
+		return strings.TrimSpace(s)
+	}
+	if strings.HasPrefix(s, "*") {
+		return strings.TrimSpace(s[1:])
+	}
+	return s
+}
+
 func extractComments(commentGroups ...*ast.CommentGroup) (comments []string) {
 
 	for _, group := range commentGroups {
@@ -304,7 +321,10 @@ func extractComments(commentGroups ...*ast.CommentGroup) (comments []string) {
 			continue
 		}
 		for _, comment := range group.List {
-			comments = append(comments, comment.Text)
+			normalized := normalizeCommentLine(comment.Text)
+			if normalized != "" {
+				comments = append(comments, normalized)
+			}
 		}
 	}
 	return
@@ -321,20 +341,21 @@ func makeRelativePath(absPath string) (relPath string) {
 	return
 }
 
-func removeAnnotationsFromDocs(docs []string) (filtered []string) {
+func isDirective(line string) (ok bool) {
+	return strings.HasPrefix(line, "go:") || strings.HasPrefix(line, "+")
+}
 
-	if len(docs) == 0 {
-		filtered = docs
-		return
-	}
+func splitDocsAndDirectives(lines []string) (docs, directives []string) {
 
-	filtered = make([]string, 0, len(docs))
-	for _, doc := range docs {
-		trimmed := strings.TrimSpace(strings.TrimPrefix(doc, "//"))
-		if strings.HasPrefix(trimmed, "@tg") {
+	for _, line := range lines {
+		if isDirective(line) {
+			directives = append(directives, line)
 			continue
 		}
-		filtered = append(filtered, doc)
+		if strings.Contains(line, "@tg") {
+			continue
+		}
+		docs = append(docs, line)
 	}
 	return
 }

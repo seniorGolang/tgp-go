@@ -8,13 +8,15 @@ import (
 	"path/filepath"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+
+	"tgp/internal/generated"
 )
 
-func (r *ClientRenderer) RenderClientOptions() error {
+func (r *ClientRenderer) RenderClientOptions() (err error) {
 
 	outDir := r.outDir
 	srcFile := NewSrcFile(filepath.Base(outDir))
-	srcFile.PackageComment(DoNotEdit)
+	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
 	if r.HasJsonRPC() || r.HasHTTP() {

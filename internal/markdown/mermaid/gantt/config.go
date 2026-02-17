@@ -4,21 +4,15 @@
 package gantt
 
 type config struct {
-	// title is the title of the Gantt chart.
-	title string
-	// dateFormat is the date format for the Gantt chart.
-	dateFormat string
-	// axisFormat is the axis format for the Gantt chart.
-	axisFormat string
-	// tickInterval is the tick interval for the Gantt chart.
+	title        string
+	excludes     []string
+	axisFormat   string
+	dateFormat   string
 	tickInterval string
-	// excludes specifies days to exclude (e.g., "weekends", "2024-01-01").
-	excludes []string
-	// todayMarker specifies the today marker style (e.g., "off" or CSS style).
-	todayMarker string
+	todayMarker  string
 }
 
-func newConfig() *config {
+func newConfig() (c *config) {
 	return &config{
 		title:      noTitle,
 		dateFormat: "", // Mermaid default: YYYY-MM-DD
@@ -27,43 +21,42 @@ func newConfig() *config {
 }
 
 const (
-	// noTitle is a constant for no title.
 	noTitle string = ""
 )
 
 type Option func(*config)
 
-func WithTitle(title string) Option {
+func WithTitle(title string) (o Option) {
 	return func(c *config) {
 		c.title = title
 	}
 }
 
-func WithDateFormat(format string) Option {
+func WithDateFormat(format string) (o Option) {
 	return func(c *config) {
 		c.dateFormat = format
 	}
 }
 
-func WithAxisFormat(format string) Option {
+func WithAxisFormat(format string) (o Option) {
 	return func(c *config) {
 		c.axisFormat = format
 	}
 }
 
-func WithTickInterval(interval string) Option {
+func WithTickInterval(interval string) (o Option) {
 	return func(c *config) {
 		c.tickInterval = interval
 	}
 }
 
-func WithExcludes(excludes ...string) Option {
+func WithExcludes(excludes ...string) (o Option) {
 	return func(c *config) {
 		c.excludes = excludes
 	}
 }
 
-func WithTodayMarker(marker string) Option {
+func WithTodayMarker(marker string) (o Option) {
 	return func(c *config) {
 		c.todayMarker = marker
 	}

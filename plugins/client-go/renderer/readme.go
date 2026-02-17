@@ -27,8 +27,8 @@ type DocOptions struct {
 	FilePath string // Полный путь к файлу документации (пусто = outDir/readme.md)
 }
 
-func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
-	var err error
+func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
+
 	outDir := r.outDir
 
 	opts := DocOptions{Enabled: true}
@@ -88,7 +88,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(contract, method) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+ToLowerCamel(method.Name))
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, r.defaultMethodHTTPPath(contract, method))
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					_ = append(tocItems, tocItem{
@@ -140,7 +140,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(contract, method) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+ToLowerCamel(method.Name))
+					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, r.defaultMethodHTTPPath(contract, method))
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
@@ -204,22 +204,24 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) error {
 	}
 
 	if err = md.Build(); err != nil {
-		return err
+		return
 	}
 
 	outFilename := path.Join(outDir, "readme.md")
 	if opts.FilePath != "" {
 		outFilename = opts.FilePath
 		readmeDir := path.Dir(outFilename)
-		if err = os.MkdirAll(readmeDir, 0777); err != nil {
-			return err
+		if err = os.MkdirAll(readmeDir, 0700); err != nil {
+			return
 		}
 	}
 
-	return os.WriteFile(outFilename, buf.Bytes(), 0600)
+	err = os.WriteFile(outFilename, buf.Bytes(), 0600)
+	return
 }
 
 func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
+
 	md.H2("Описание клиента")
 	md.PlainText("Go клиент для работы с API. Клиент поддерживает JSON-RPC и HTTP методы.")
 	md.LF()
@@ -239,8 +241,8 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 	md.BulletList(capabilities...)
 	md.LF()
 
-	var exampleContract *model.Contract
 	var exampleMethod *model.Method
+	var exampleContract *model.Contract
 
 	for _, contractName := range r.ContractKeys() {
 		contract := r.FindContract(contractName)
@@ -318,12 +320,13 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			codeExample, err = r.renderTemplate("templates/simple_init_with_result.tmpl", templateData)
+			if codeExample, err = r.renderTemplate("templates/simple_init_with_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		} else {
-			codeExample, err = r.renderTemplate("templates/simple_init_no_result.tmpl", templateData)
-		}
-		if err != nil {
-			codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			if codeExample, err = r.renderTemplate("templates/simple_init_no_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		}
 		md.CodeBlocks(markdown.SyntaxHighlightGo, codeExample)
 	}
@@ -367,12 +370,13 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			codeExample, err = r.renderTemplate("templates/init_with_options_with_result.tmpl", templateData)
+			if codeExample, err = r.renderTemplate("templates/init_with_options_with_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		} else {
-			codeExample, err = r.renderTemplate("templates/init_with_options_no_result.tmpl", templateData)
-		}
-		if err != nil {
-			codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			if codeExample, err = r.renderTemplate("templates/init_with_options_no_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		}
 		md.CodeBlocks(markdown.SyntaxHighlightGo, codeExample)
 	}
@@ -418,12 +422,13 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			codeExample, err = r.renderTemplate("templates/init_with_headers_with_result.tmpl", templateData)
+			if codeExample, err = r.renderTemplate("templates/init_with_headers_with_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		} else {
-			codeExample, err = r.renderTemplate("templates/init_with_headers_no_result.tmpl", templateData)
-		}
-		if err != nil {
-			codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			if codeExample, err = r.renderTemplate("templates/init_with_headers_no_result.tmpl", templateData); err != nil {
+				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
+			}
 		}
 		md.CodeBlocks(markdown.SyntaxHighlightGo, codeExample)
 	}
@@ -435,6 +440,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 }
 
 func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.Contract, outDir string, typeUsages map[string]*typeUsage) {
+
 	contractAnchor := contractAnchorID(contract.Name)
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", contractAnchor))
 	md.LF()
@@ -467,7 +473,8 @@ func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.C
 	md.HorizontalRule()
 }
 
-func generateAnchor(title string) string {
+func generateAnchor(title string) (s string) {
+
 	anchor := strings.ToLower(title)
 
 	anchor = strings.ReplaceAll(anchor, " ", "-")
@@ -490,22 +497,23 @@ func generateAnchor(title string) string {
 	return anchor
 }
 
-func contractAnchorID(contractName string) string {
+func contractAnchorID(contractName string) (s string) {
 
 	return "contract-" + generateAnchor(contractName)
 }
 
-func methodAnchorID(contractName string, methodNameOrTitle string) string {
+func methodAnchorID(contractName string, methodNameOrTitle string) (s string) {
 
 	return contractAnchorID(contractName) + "-" + generateAnchor(methodNameOrTitle)
 }
 
-func typeAnchorID(typeName string) string {
+func typeAnchorID(typeName string) (s string) {
 
 	return "type-" + generateAnchor(typeName)
 }
 
 func (r *ClientRenderer) renderClientOptions(md *markdown.Markdown, pkgPath, pkgName string) {
+
 	md.PlainText(markdown.Bold("Поддерживаемые опции клиента:"))
 	md.LF()
 
@@ -646,6 +654,7 @@ client := %s.New("http://localhost:9000",
 }
 
 func (r *ClientRenderer) renderMetricsSection(md *markdown.Markdown, outDir string) {
+
 	metricsAnchor := generateAnchor("Метрики")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", metricsAnchor))
 	md.LF()
@@ -739,7 +748,8 @@ if len(gatherers) > 0 {
 	md.HorizontalRule()
 }
 
-func filterDocsComments(docs []string) []string {
+func filterDocsComments(docs []string) (out []string) {
+
 	if len(docs) == 0 {
 		return docs
 	}
@@ -752,7 +762,8 @@ func filterDocsComments(docs []string) []string {
 	return filtered
 }
 
-func (r *ClientRenderer) renderTemplate(templatePath string, data any) (string, error) {
+func (r *ClientRenderer) renderTemplate(templatePath string, data any) (s string, err error) {
+
 	contentBytes, err := templatesFS.ReadFile(templatePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read template %s: %w", templatePath, err)
@@ -768,7 +779,7 @@ func (r *ClientRenderer) renderTemplate(templatePath string, data any) (string, 
 	}
 
 	var buf strings.Builder
-	if err := tmpl.Execute(&buf, data); err != nil {
+	if err = tmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("failed to execute template %s: %w", templatePath, err)
 	}
 
@@ -776,6 +787,7 @@ func (r *ClientRenderer) renderTemplate(templatePath string, data any) (string, 
 }
 
 func (r *ClientRenderer) renderLoggingSection(md *markdown.Markdown, outDir string) {
+
 	loggingAnchor := generateAnchor("Логирование")
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", loggingAnchor))
 	md.LF()

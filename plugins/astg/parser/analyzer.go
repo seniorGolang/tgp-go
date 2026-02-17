@@ -11,23 +11,19 @@ import (
 func analyzeProject(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
 	if err = findServices(project, loader); err != nil {
-		err = fmt.Errorf("failed to find services: %w", err)
-		return
+		return fmt.Errorf("failed to find services: %w", err)
 	}
 
 	if err = findImplementations(project, loader); err != nil {
-		err = fmt.Errorf("failed to find implementations: %w", err)
-		return
+		return fmt.Errorf("failed to find implementations: %w", err)
 	}
 
 	if err = analyzeMethodErrors(project, loader); err != nil {
-		err = fmt.Errorf("failed to analyze method errors: %w", err)
-		return
+		return fmt.Errorf("failed to analyze method errors: %w", err)
 	}
 
 	if err = expandTypesRecursively(project, loader); err != nil {
-		err = fmt.Errorf("failed to expand types recursively: %w", err)
-		return
+		return fmt.Errorf("failed to expand types recursively: %w", err)
 	}
 
 	return

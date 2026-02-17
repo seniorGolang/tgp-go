@@ -17,6 +17,7 @@ import (
 // the expected values are written are represented as '\n',
 // causing failures when testing on Windows.
 func ExampleChart() {
+
 	chart := gantt.NewChart(
 		os.Stdout,
 		gantt.WithTitle("Project Schedule"),

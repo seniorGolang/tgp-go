@@ -18,6 +18,7 @@ type typeUsage struct {
 }
 
 func (r *ClientRenderer) collectStructTypes() map[string]*typeUsage {
+
 	typeUsages := make(map[string]*typeUsage)
 
 	for _, contractName := range r.ContractKeys() {
@@ -97,6 +98,7 @@ func (r *ClientRenderer) collectStructTypes() map[string]*typeUsage {
 }
 
 func (r *ClientRenderer) getStructType(typeID, pkgPath string) (structType *model.Type, typeName string, pkg string) {
+
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		return nil, "", ""
@@ -115,15 +117,16 @@ func (r *ClientRenderer) getStructType(typeID, pkgPath string) (structType *mode
 	return typ, typeName, pkg
 }
 
-func (r *ClientRenderer) goTypeStringFromVariable(variable *model.Variable, pkgPath string) string {
+func (r *ClientRenderer) goTypeStringFromVariable(variable *model.Variable, pkgPath string) (s string) {
 	return r.variableToGoTypeString(variable, pkgPath)
 }
 
-func (r *ClientRenderer) goTypeStringFromStructField(field *model.StructField, pkgPath string) string {
+func (r *ClientRenderer) goTypeStringFromStructField(field *model.StructField, pkgPath string) (s string) {
 	return r.typeRefToGoTypeString(&field.TypeRef, pkgPath)
 }
 
-func (r *ClientRenderer) goTypeString(typeID, pkgPath string) string {
+func (r *ClientRenderer) goTypeString(typeID, pkgPath string) (s string) {
+
 	typ, ok := r.project.Types[typeID]
 	if !ok {
 		// Тип не найден - возможно, это встроенный тип
@@ -249,6 +252,7 @@ func (r *ClientRenderer) goTypeString(typeID, pkgPath string) string {
 }
 
 func (r *ClientRenderer) jsonName(field *model.StructField) (value string, inline bool) {
+
 	if tagValues, ok := field.Tags["json"]; ok {
 		for _, val := range tagValues {
 			if val == "inline" {

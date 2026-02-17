@@ -106,8 +106,8 @@ func GetModulePath(goModPath string) (pkgPath string) {
 		pkgPathFromGoModCache[goModPath] = pkgPath
 	}()
 
-	var data []byte
 	var err error
+	var data []byte
 	if data, err = os.ReadFile(goModPath); err != nil {
 		return
 	}
@@ -137,7 +137,6 @@ func GetModulePath(goModPath string) (pkgPath string) {
 
 	line = line[len("module "):]
 
-	// If quoted, unquote.
 	pkgPath = strings.TrimSpace(string(line))
 
 	if pkgPath != "" && pkgPath[0] == '"' {
@@ -197,6 +196,5 @@ func GetDefaultGoPath() (gopath string, err error) {
 		return
 	}
 
-	err = fmt.Errorf("GOPATH not found")
-	return
+	return "", fmt.Errorf("GOPATH not found")
 }

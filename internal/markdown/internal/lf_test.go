@@ -10,6 +10,7 @@ import (
 )
 
 func TestLineFeed(t *testing.T) {
+
 	t.Parallel()
 
 	t.Run("should return line feed for current OS", func(t *testing.T) {

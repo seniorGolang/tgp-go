@@ -16,8 +16,8 @@ import (
 
 	"tgp/core/i18n"
 	"tgp/internal"
-	"tgp/internal/model"
 	"tgp/internal/helper"
+	"tgp/internal/model"
 	"tgp/plugins/astg/parser/utils"
 )
 

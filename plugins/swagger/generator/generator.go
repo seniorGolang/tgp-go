@@ -65,22 +65,9 @@ func GenerateDoc(project *model.Project, ifaces ...string) (swaggerDoc types.Obj
 		}
 	}
 
-	var security string
-	if security = model.GetAnnotationValue(project, nil, nil, nil, tagSecurity, ""); security != "" {
-		securityList := strings.Split(security, "|")
-		for _, sec := range securityList {
-			if strings.EqualFold(sec, bearerSecuritySchema) {
-				swaggerDoc.Security = append(swaggerDoc.Security, types.Security{
-					BearerAuth: []any{},
-				})
-				swaggerDoc.Components.SecuritySchemes = &types.SecuritySchemes{
-					BearerAuth: types.BearerAuth{
-						Type:   "http",
-						Scheme: sec,
-					},
-				}
-			}
-		}
+	securityValue := model.GetAnnotationValue(project, nil, nil, nil, tagSecurity, "")
+	if securityValue != "" {
+		swaggerDoc.Security, swaggerDoc.Components.SecuritySchemes = parseSecurityAnnotations(securityValue)
 	}
 
 	paths := gen.generatePaths(project.Contracts, ifaces)
@@ -96,6 +83,253 @@ func GenerateDoc(project *model.Project, ifaces ...string) (swaggerDoc types.Obj
 	swaggerDoc.Components.Schemas = gen.schemas
 
 	return
+}
+
+func parseSecurityAnnotations(raw string) (security []types.Security, schemes types.SecuritySchemes) {
+
+	schemes = make(types.SecuritySchemes)
+
+	for _, token := range splitSecurityTokens(raw) {
+		name, scheme := buildSecurityScheme(token)
+		if name == "" {
+			continue
+		}
+
+		schemes[name] = scheme
+		security = append(security, types.Security{name: {}})
+	}
+
+	return
+}
+
+func splitSecurityTokens(raw string) (tokens []string) {
+
+	var current string
+
+	for _, part := range strings.Split(raw, ",") {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+
+		isNew := false
+		if index := strings.Index(trimmed, ":"); index > 0 {
+			kind := strings.ToLower(strings.TrimSpace(trimmed[:index]))
+			switch kind {
+			case "http", "apikey", "openid", "oauth2":
+				isNew = true
+			}
+		}
+
+		switch {
+		case isNew:
+			if current != "" {
+				tokens = append(tokens, current)
+			}
+			current = trimmed
+		case current == "":
+			current = trimmed
+		default:
+			current += "," + trimmed
+		}
+	}
+
+	if current != "" {
+		tokens = append(tokens, current)
+	}
+
+	return
+}
+
+func buildSecurityScheme(token string) (name string, scheme types.SecurityScheme) {
+
+	parts := strings.Split(token, ":")
+	if len(parts) == 0 {
+		return "", types.SecurityScheme{}
+	}
+
+	kind := strings.ToLower(strings.TrimSpace(parts[0]))
+
+	switch kind {
+	case "http":
+		if len(parts) != 2 {
+			return "", types.SecurityScheme{}
+		}
+		schemeName := strings.ToLower(strings.TrimSpace(parts[1]))
+		if schemeName == "" {
+			return "", types.SecurityScheme{}
+		}
+
+		return "http_" + schemeName, types.SecurityScheme{
+			Type:   "http",
+			Scheme: schemeName,
+		}
+
+	case "apikey":
+		if len(parts) != 3 {
+			return "", types.SecurityScheme{}
+		}
+
+		in := strings.ToLower(strings.TrimSpace(parts[1]))
+		paramName := strings.TrimSpace(parts[2])
+		if in != "header" && in != "query" && in != "cookie" {
+			return "", types.SecurityScheme{}
+		}
+		if paramName == "" {
+			return "", types.SecurityScheme{}
+		}
+
+		schemeName := "apiKey_" + in + "_" + paramName
+
+		return schemeName, types.SecurityScheme{
+			Type: "apiKey",
+			Name: paramName,
+			In:   in,
+		}
+
+	case "openid":
+		if len(parts) < 2 {
+			return "", types.SecurityScheme{}
+		}
+		url := strings.TrimSpace(strings.Join(parts[1:], ":"))
+		if url == "" {
+			return "", types.SecurityScheme{}
+		}
+
+		return "openId", types.SecurityScheme{
+			Type:             "openIdConnect",
+			OpenIDConnectURL: url,
+		}
+
+	case "oauth2":
+		return buildOAuth2Scheme(parts)
+
+	default:
+		return "", types.SecurityScheme{}
+	}
+}
+
+func buildOAuth2Scheme(parts []string) (name string, scheme types.SecurityScheme) {
+
+	if len(parts) < 3 {
+		return "", types.SecurityScheme{}
+	}
+
+	flowKind := strings.ToLower(strings.TrimSpace(parts[1]))
+	rawScopesIndex := 0
+
+	oauthFlows := &types.OAuthFlows{}
+
+	switch flowKind {
+	case "clientcredentials":
+		tokenURL, scopes, grantType := parseSingleURLFlow(parts)
+		if tokenURL == "" {
+			return "", types.SecurityScheme{}
+		}
+		rawScopesIndex = 0
+
+		oauthFlows.ClientCredentials = buildOAuthFlow("", tokenURL, scopes)
+		scheme.GrantType = grantType
+
+	case "authorizationcode":
+		if len(parts) != 5 {
+			return "", types.SecurityScheme{}
+		}
+		authURL := strings.TrimSpace(parts[2])
+		tokenURL := strings.TrimSpace(parts[3])
+		if authURL == "" || tokenURL == "" {
+			return "", types.SecurityScheme{}
+		}
+		rawScopesIndex = 4
+
+		oauthFlows.AuthorizationCode = buildOAuthFlow(authURL, tokenURL, parts[rawScopesIndex])
+
+	case "password":
+		tokenURL, scopes, grantType := parseSingleURLFlow(parts)
+		if tokenURL == "" {
+			return "", types.SecurityScheme{}
+		}
+		rawScopesIndex = 0
+
+		oauthFlows.Password = buildOAuthFlow("", tokenURL, scopes)
+		scheme.GrantType = grantType
+
+	case "implicit":
+		authURL, scopes, grantType := parseSingleURLFlow(parts)
+		if authURL == "" {
+			return "", types.SecurityScheme{}
+		}
+		rawScopesIndex = 0
+
+		oauthFlows.Implicit = buildOAuthFlow(authURL, "", scopes)
+		scheme.GrantType = grantType
+
+	default:
+		return "", types.SecurityScheme{}
+	}
+
+	schemeName := "oauth2_" + flowKind
+
+	scheme.Type = "oauth2"
+	scheme.Flows = oauthFlows
+
+	return schemeName, scheme
+}
+
+func parseSingleURLFlow(parts []string) (url string, scopes string, grantType string) {
+
+	if len(parts) < 4 {
+		return "", "", ""
+	}
+
+	lastIndex := len(parts) - 1
+	scopesIndex := lastIndex
+
+	possibleGrant := strings.TrimSpace(parts[lastIndex])
+	if strings.EqualFold(possibleGrant, "jwt-bearer") {
+		grantType = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+		scopesIndex--
+	}
+
+	if scopesIndex <= 2 {
+		return "", "", ""
+	}
+
+	urlParts := parts[2:scopesIndex]
+	url = strings.TrimSpace(strings.Join(urlParts, ":"))
+	if url == "" {
+		return "", "", ""
+	}
+
+	scopes = strings.TrimSpace(parts[scopesIndex])
+	if scopes == "" {
+		return "", "", ""
+	}
+
+	return url, scopes, grantType
+}
+
+func buildOAuthFlow(authURL string, tokenURL string, rawScopes string) (flow *types.OAuthFlow) {
+
+	scopes := make(map[string]string)
+
+	for _, scope := range strings.Split(rawScopes, ",") {
+		trimmed := strings.TrimSpace(scope)
+		if trimmed == "" {
+			continue
+		}
+		scopes[trimmed] = trimmed
+	}
+
+	if authURL == "" && tokenURL == "" && len(scopes) == 0 {
+		return nil
+	}
+
+	return &types.OAuthFlow{
+		AuthorizationURL: authURL,
+		TokenURL:         tokenURL,
+		Scopes:           scopes,
+	}
 }
 
 func collectTagOrder(paths map[string]types.Path) (order []string) {
@@ -120,9 +354,16 @@ func collectTagOrder(paths map[string]types.Path) (order []string) {
 
 func contractHasTag(c *model.Contract, tag string) (has bool) {
 
+	var hasExplicitTags bool
+
 	if c.Annotations != nil {
 		for _, t := range strings.Split(c.Annotations.Value(tagSwaggerTags, ""), ",") {
-			if strings.TrimSpace(t) == tag {
+			trimmed := strings.TrimSpace(t)
+			if trimmed == "" {
+				continue
+			}
+			hasExplicitTags = true
+			if trimmed == tag {
 				return true
 			}
 		}
@@ -130,11 +371,19 @@ func contractHasTag(c *model.Contract, tag string) (has bool) {
 	for _, m := range c.Methods {
 		if m.Annotations != nil {
 			for _, t := range strings.Split(m.Annotations.Value(tagSwaggerTags, ""), ",") {
-				if strings.TrimSpace(t) == tag {
+				trimmed := strings.TrimSpace(t)
+				if trimmed == "" {
+					continue
+				}
+				hasExplicitTags = true
+				if trimmed == tag {
 					return true
 				}
 			}
 		}
+	}
+	if !hasExplicitTags && strings.TrimSpace(c.Name) == strings.TrimSpace(tag) {
+		return true
 	}
 	return false
 }

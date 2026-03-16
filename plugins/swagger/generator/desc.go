@@ -68,8 +68,7 @@ func descriptionFromStructField(field *model.StructField) (out string) {
 	if field == nil {
 		return ""
 	}
-	parsed := tags.ParseTags(field.Docs)
-	return descriptionFromDocsAndTags(field.Docs, parsed)
+	return descriptionFromDocsAndTags(field.Docs, field.Annotations)
 }
 
 func descriptionFromProject(project *model.Project) (out string) {

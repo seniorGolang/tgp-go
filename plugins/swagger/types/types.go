@@ -101,8 +101,8 @@ type Schemas map[string]Schema
 type Properties map[string]Schema
 
 type Components struct {
-	Schemas         Schemas          `json:"schemas,omitempty" yaml:"schemas,omitempty"`
-	SecuritySchemes *SecuritySchemes `json:"securitySchemes,omitempty" yaml:"securitySchemes,omitempty"`
+	Schemas         Schemas         `json:"schemas,omitempty" yaml:"schemas,omitempty"`
+	SecuritySchemes SecuritySchemes `json:"securitySchemes,omitempty" yaml:"securitySchemes,omitempty"`
 }
 
 type Schema struct {
@@ -189,15 +189,30 @@ type RequestBody struct {
 	Content     Content `json:"content,omitempty" yaml:"content,omitempty"`
 }
 
-type Security struct {
-	BearerAuth []any `json:"bearerAuth" yaml:"bearerAuth"`
+type Security map[string][]string
+
+type SecuritySchemes map[string]SecurityScheme
+
+type SecurityScheme struct {
+	Type             string      `json:"type,omitempty" yaml:"type,omitempty"`
+	Scheme           string      `json:"scheme,omitempty" yaml:"scheme,omitempty"`
+	Name             string      `json:"name,omitempty" yaml:"name,omitempty"`
+	In               string      `json:"in,omitempty" yaml:"in,omitempty"`
+	OpenIDConnectURL string      `json:"openIdConnectUrl,omitempty" yaml:"openIdConnectUrl,omitempty"`
+	Flows            *OAuthFlows `json:"flows,omitempty" yaml:"flows,omitempty"`
+	GrantType        string      `json:"x-grant-type,omitempty" yaml:"x-grant-type,omitempty"`
 }
 
-type SecuritySchemes struct {
-	BearerAuth BearerAuth `json:"bearerAuth,omitempty" yaml:"bearerAuth,omitempty"`
+type OAuthFlows struct {
+	Implicit          *OAuthFlow `json:"implicit,omitempty" yaml:"implicit,omitempty"`
+	Password          *OAuthFlow `json:"password,omitempty" yaml:"password,omitempty"`
+	ClientCredentials *OAuthFlow `json:"clientCredentials,omitempty" yaml:"clientCredentials,omitempty"`
+	AuthorizationCode *OAuthFlow `json:"authorizationCode,omitempty" yaml:"authorizationCode,omitempty"`
 }
 
-type BearerAuth struct {
-	Type   string `json:"type,omitempty" yaml:"type,omitempty"`
-	Scheme string `json:"scheme,omitempty" yaml:"scheme,omitempty"`
+type OAuthFlow struct {
+	AuthorizationURL string            `json:"authorizationUrl,omitempty" yaml:"authorizationUrl,omitempty"`
+	TokenURL         string            `json:"tokenUrl,omitempty" yaml:"tokenUrl,omitempty"`
+	RefreshURL       string            `json:"refreshUrl,omitempty" yaml:"refreshUrl,omitempty"`
+	Scopes           map[string]string `json:"scopes,omitempty" yaml:"scopes,omitempty"`
 }

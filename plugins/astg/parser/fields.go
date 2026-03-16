@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"tgp/internal/model"
+	"tgp/internal/tags"
 )
 
 func fillStructFields(structType *types.Struct, pkgPath string, imports map[string]string, project *model.Project, coreType *model.Type, loader *AutonomousPackageLoader, processingTypes ...map[string]bool) {
@@ -48,25 +49,26 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 
 		typeInfo := convertFieldType(fieldType, pkgPath, imports, project, loader, processingSet)
 
-		tags := make(map[string][]string)
+		fieldTags := make(map[string][]string)
 		// Сначала пробуем получить из go/types
 		if fieldTag := structType.Tag(i); fieldTag != "" {
 			// Парсим теги в формате `json:"name,omitempty" xml:"name"`
-			parsedTags := parseStructTag(fieldTag)
-			tags = parsedTags
+			fieldTags = parseStructTag(fieldTag)
 		} else if astStructType != nil {
 			// Если в go/types нет тегов, пытаемся получить из AST
 			astTags := extractTagsFromASTStruct(astStructType, fieldName)
 			if len(astTags) > 0 {
-				tags = astTags
+				fieldTags = astTags
 			}
 		}
 
 		var docs, directives []string
+		var annotations tags.DocTags
 		if astStructType != nil {
 			astLines := extractDocsFromASTStruct(astStructType, fieldName)
 			if len(astLines) > 0 {
 				docs, directives = splitDocsAndDirectives(astLines)
+				annotations = tags.ParseTags(astLines)
 			}
 		}
 
@@ -81,10 +83,11 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 				MapKey:           typeInfo.MapKey,
 				MapValue:         typeInfo.MapValue,
 			},
-			Name:       fieldName,
-			Tags:       tags,
-			Docs:       docs,
-			Directives: directives,
+			Name:        fieldName,
+			Tags:        fieldTags,
+			Docs:        docs,
+			Directives:  directives,
+			Annotations: annotations,
 		}
 
 		coreType.StructFields = append(coreType.StructFields, structField)

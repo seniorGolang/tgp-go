@@ -425,7 +425,9 @@ func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTag
 		fieldVar := &model.Variable{
 			TypeRef:     field.TypeRef,
 			Name:        field.Name,
-			Annotations: tags.ParseTags(field.Docs),
+			Docs:        field.Docs,
+			Directives:  field.Directives,
+			Annotations: field.Annotations,
 		}
 
 		fieldSchema := g.variableToSchema(fieldVar, typeInfo.ImportPkgPath, true)

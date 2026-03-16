@@ -5,7 +5,6 @@ package generator
 const (
 	contentJSON              = "application/json"
 	contentForm              = "application/x-www-form-urlencoded"
-	bearerSecuritySchema     = "bearer"
 	tagTitle                 = "title"
 	tagAppVersion            = "version"
 	tagDesc                  = "desc"

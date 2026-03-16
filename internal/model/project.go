@@ -197,13 +197,13 @@ type ParseFromStringInfo struct {
 	ReturnsPointer bool   `json:"returnsPointer"`
 }
 
-// StructField — поле структуры. Содержит TypeRef + имя поля, теги и документацию.
 type StructField struct {
-	TypeRef    `json:",inline"`
-	Name       string              `json:"name"`
-	Tags       map[string][]string `json:"tags,omitempty"`
-	Docs       []string            `json:"docs,omitempty"`
-	Directives []string            `json:"directives,omitempty"`
+	TypeRef     `json:",inline"`
+	Name        string              `json:"name"`
+	Tags        map[string][]string `json:"tags,omitempty"`
+	Docs        []string            `json:"docs,omitempty"`
+	Directives  []string            `json:"directives,omitempty"`
+	Annotations tags.DocTags        `json:"annotations,omitempty"`
 }
 
 type Function struct {

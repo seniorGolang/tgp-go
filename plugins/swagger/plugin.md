@@ -262,16 +262,20 @@ type UserService interface {
         - остальные аргументы (которые не являются `context.Context`, не попали в path/header/cookie) формируют тело запроса.
 
 - **http-headers** — привязка аргументов или результатов метода к заголовкам запроса/ответа.
-    - **Формат**: `// @tg http-headers=token|X-Auth-Token,locale|X-Locale`
+    - **Формат**: `// @tg http-headers=token|X-Auth-Token,locale|X-Locale` или с режимом `// @tg http-headers=token|X-Auth-Token|explicit`
     - **Область действия**: метод.
     - **Влияние**:
         - соответствующие аргументы становятся `parameters` с `in: header`;
         - соответствующие результаты попадают в `responses[].headers`.
 
 - **http-cookies** — привязка аргументов к cookies.
-    - **Формат**: `// @tg http-cookies=session|session_id`
+    - **Формат**: `// @tg http-cookies=session|session_id` или с режимом `// @tg http-cookies=session|session_id|implicit`
     - **Область действия**: метод.
     - **Влияние**: формирует `parameters` с `in: cookie`.
+
+Для `http-headers`, `http-cookies` и `http-args` поддерживается формат `arg|key` или `arg|key|mode`, где `mode` — один из `explicit`, `implicit`, `body` (по умолчанию `body`).  
+- **`explicit`** и **`implicit`** — соответствующие аргументы/результаты явно попадают в OpenAPI в виде `parameters` (`in: header`/`cookie`/`query`) и/или `responses[].headers`.  
+- **`body`** — значение считается полем тела запроса/ответа; такой маппинг может использоваться сервером, но не превращается в отдельный параметр `in: header`/`cookie`/`query` в спецификации.
 
 - **http-success** — код успешного ответа (по умолчанию 200).
     - **Формат**: `// @tg http-success=201`

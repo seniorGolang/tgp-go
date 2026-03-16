@@ -152,6 +152,14 @@ await client.batch([
 - поддерживает заголовки и cookie через аннотации;
 - при одном аргументе типа Blob отправляет тело как Blob (или application/octet-stream); при нескольких Blob или `http-multipart` — как FormData. Ответ с одним Blob возвращается как Blob, с несколькими или multipart — как части FormData по именам.
 
+#### Режимы маппинга `http-headers` / `http-cookies` / `http-args`
+
+Аннотации маппинга поддерживают формат `arg|key` или `arg|key|mode`, где `mode` — один из `explicit`, `implicit`, `body`. Если режим не указан, используется `body`.
+
+- **`explicit`**: аргумент присутствует в сигнатуре HTTP‑методов (`userServiceHTTP()` и т.п.) и отправляется в указанный заголовок/cookie/query‑параметр. Такой параметр также отражается в сгенерированной OpenAPI‑спецификации.
+- **`implicit`**: параметр описан в контракте и спецификации, но может не попадать в явную сигнатуру методов клиента; значение типично берётся из общих настроек (headers в `ClientOptions`) или внешнего кода.
+- **`body`**: значение остаётся частью тела запроса/ответа; маппинг может использоваться сервером как дополнительный источник/override, но TypeScript‑клиент не делает из него отдельный HTTP‑параметр.
+
 ```typescript
 const client = newClient('https://api.example.com');
 const userServiceHTTP = client.userServiceHTTP();

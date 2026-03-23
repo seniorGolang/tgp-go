@@ -83,7 +83,7 @@
 | `packageJSON=<пакет>` | Другой JSON-кодек (по умолчанию `encoding/json`) | `// @tg packageJSON=...` |
 | `uuidPackage=<пакет>` | Пакет для UUID (по умолчанию `github.com/google/uuid`) | `// @tg uuidPackage=...` |
 | `swaggerTags=<тег1,тег2>` | Теги в OpenAPI | `// @tg swaggerTags=users,api` |
-| `security=bearer` | Тип авторизации в OpenAPI | `// @tg security=bearer` |
+| `security=<схемы>` | Глобальные схемы авторизации в OpenAPI (`http`, `apiKey`, `oauth2`, `openId`) | `// @tg security=\`http:bearer\`` |
 | `servers=<адрес>;<имя>` | Серверы в OpenAPI | `// @tg servers=https://api.example.com;Production` |
 | `version=<версия>` | Версия в документации | `// @tg version=1.0.0` |
 | `title=<заголовок>` | Заголовок OpenAPI | `// @tg title=My API` |

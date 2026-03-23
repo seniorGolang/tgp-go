@@ -168,9 +168,15 @@ tg plugin swagger --out api-docs/openapi.yaml --contracts '!OrderService'
     - **Влияние**: формирует массив `servers` в спецификации (URL + описание).
 
 - **security** — глобальные схемы авторизации.
-    - **Формат**: ``// @tg security=`openId:https://id.example.com/.well-known/openid-configuration,oauth2:clientCredentials:https://auth.example.com/oauth2/token:api.read,api.write:jwt-bearer````
+    - **Формат**: ``// @tg security=`http:bearer,apiKey:header:Authorization,openId:https://id.example.com/.well-known/openid-configuration,oauth2:clientCredentials:https://auth.example.com/oauth2/token:api.read,api.write:jwt-bearer````
     - **Область действия**: пакет.
-    - **Влияние**: добавляет схемы авторизации в `components.securitySchemes` и глобальный блок `security`. Поддерживаются типы `http`, `apiKey`, `oauth2`, `openId`. В scopes для `oauth2` нельзя использовать двоеточие (`:`), рекомендуется формат вида `api.read,api.write`.
+    - **Влияние**: добавляет схемы авторизации в `components.securitySchemes` и глобальный блок `security`.
+    - **Поддерживаемые схемы**:
+        - `http:<scheme>` (пример: `http:bearer`);
+        - `apiKey:<in>:<name>` (пример: `apiKey:header:Authorization`, где `<in>`: `header`, `query`, `cookie`);
+        - `openId:<well-known-url>`;
+        - `oauth2:<flow>:...` (flows: `clientCredentials`, `authorizationCode`, `password`, `implicit`).
+    - **Важно**: для `oauth2` в scopes нельзя использовать двоеточие (`:`), используйте формат вида `api.read,api.write`.
 
 Пример блока пакета:
 
@@ -471,7 +477,7 @@ tg plugin swagger
 ## Ограничения
 
 - Поддерживается только **OpenAPI 3.0** (не Swagger 2.0).
-- В глобальной безопасности на уровне аннотаций поддерживается только схема **Bearer** (`@tg security=\`bearer\``).
+- В глобальной безопасности используйте формат схем OpenAPI, например `@tg security=\`http:bearer\`` для Bearer.
 - JSON-RPC методы в документации описываются как POST на один путь (по контракту); тело запроса/ответа — в формате JSON-RPC 2.0.
 - Не все Go-типы имеют однозначное представление в OpenAPI (например, интерфейсы).
 - Типы с кастомной сериализацией (json.Marshaler/Unmarshaler и т.п.) в спецификации описываются как объект с `additionalProperties` без полной структуры полей.

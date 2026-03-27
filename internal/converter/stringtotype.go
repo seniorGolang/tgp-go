@@ -60,7 +60,64 @@ func BuildStringToType(cfg StringToTypeConfig) (st *Statement) {
 	if typ.ParseFromString != nil {
 		return buildStringToTypeParseFromString(cfg, typ)
 	}
+	var builtinBaseTypeID string
+	var hasBuiltinBase bool
+	if builtinBaseTypeID, hasBuiltinBase = resolveBuiltinBaseTypeID(cfg.Project, cfg.Arg.TypeID); hasBuiltinBase && !IsBuiltinTypeID(cfg.Arg.TypeID) {
+		return buildStringToTypeNamedBuiltinLenient(cfg, builtinBaseTypeID)
+	}
 	return buildStringToTypeJSON(cfg)
+}
+
+func resolveBuiltinBaseTypeID(project *model.Project, typeID string) (baseTypeID string, ok bool) {
+
+	visited := make(map[string]struct{})
+	return resolveBuiltinBaseTypeIDRecursive(project, typeID, visited)
+}
+
+func HasBuiltinScalarBase(project *model.Project, typeID string) (ok bool) {
+
+	_, ok = resolveBuiltinBaseTypeID(project, typeID)
+	return
+}
+
+func resolveBuiltinBaseTypeIDRecursive(project *model.Project, typeID string, visited map[string]struct{}) (baseTypeID string, ok bool) {
+
+	if IsBuiltinTypeID(typeID) {
+		baseTypeID = typeID
+		ok = true
+		return
+	}
+	if project == nil {
+		return
+	}
+	if _, exists := visited[typeID]; exists {
+		return
+	}
+	visited[typeID] = struct{}{}
+	var typ *model.Type
+	var exists bool
+	if typ, exists = project.Types[typeID]; !exists || typ == nil {
+		return
+	}
+	if typ.UnderlyingTypeID != "" && IsBuiltinTypeID(typ.UnderlyingTypeID) {
+		baseTypeID = typ.UnderlyingTypeID
+		ok = true
+		return
+	}
+	if typ.UnderlyingKind != "" && IsBuiltinTypeID(string(typ.UnderlyingKind)) {
+		baseTypeID = string(typ.UnderlyingKind)
+		ok = true
+		return
+	}
+	if typ.Kind != "" && IsBuiltinTypeID(string(typ.Kind)) {
+		baseTypeID = string(typ.Kind)
+		ok = true
+		return
+	}
+	if typ.AliasOf != "" {
+		return resolveBuiltinBaseTypeIDRecursive(project, typ.AliasOf, visited)
+	}
+	return
 }
 
 func buildStringToTypeSlice(cfg StringToTypeConfig) (st *Statement) {
@@ -373,6 +430,87 @@ func buildStringToTypeJSON(cfg StringToTypeConfig) (st *Statement) {
 
 	cfg.AddImport(cfg.JSONPkg, "json")
 	return Op("_").Op("=").Qual(cfg.JSONPkg, "Unmarshal").Call(Op("[]").Byte().Call(Op("`\"`").Op("+").Add(cfg.From).Op("+").Op("`\"`")), Op("&").Add(cfg.Id))
+}
+
+func buildStringToTypeNamedBuiltinLenient(cfg StringToTypeConfig, builtinBaseTypeID string) (st *Statement) {
+
+	cfg.AddImport(pkgStrconv, "strconv")
+	targetType := cfg.FieldType(cfg.Arg.TypeID, 0, false)
+	needsCast := namedBuiltinNeedsCast(cfg.Project, cfg.Arg.TypeID, builtinBaseTypeID)
+	switch builtinBaseTypeID {
+	case "string":
+		return assignNamedBuiltinParsedValueInline(cfg, targetType, cfg.From, needsCast)
+	case "bool":
+		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "ParseBool").Call(cfg.From))
+	case "int":
+		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "Atoi").Call(cfg.From))
+	case "int64":
+		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "ParseInt").Call(cfg.From, Lit(10), Lit(64)))
+	case "int32":
+		return buildNamedBuiltinParseNarrowIf(cfg, targetType, needsCast, "_parsed64", "_parsed", Qual(pkgStrconv, "ParseInt").Call(cfg.From, Lit(10), Lit(32)), Int32())
+	case "uint":
+		return buildNamedBuiltinParseNarrowIf(cfg, targetType, needsCast, "_parsed64", "_parsed", Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(64)), Uint())
+	case "uint64":
+		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(64)))
+	case "uint32":
+		return buildNamedBuiltinParseNarrowIf(cfg, targetType, needsCast, "_parsed64", "_parsed", Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(32)), Uint32())
+	case "float64":
+		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "ParseFloat").Call(cfg.From, Lit(64)))
+	case "float32":
+		return buildNamedBuiltinParseNarrowIf(cfg, targetType, needsCast, "_parsed64", "_parsed", Qual(pkgStrconv, "ParseFloat").Call(cfg.From, Lit(32)), Float32())
+	default:
+		return buildStringToTypeJSON(cfg)
+	}
+}
+
+func buildNamedBuiltinParseIf(cfg StringToTypeConfig, targetType *Statement, needsCast bool, parsedVarName string, parseCall *Statement) (st *Statement) {
+
+	body := []Code{
+		assignNamedBuiltinParsedValueInline(cfg, targetType, Id(parsedVarName), needsCast),
+	}
+	return If(List(Id(parsedVarName), Id("_err")).Op(":=").Add(parseCall).Op(";").Id("_err").Op("==").Nil()).Block(body...)
+}
+
+func buildNamedBuiltinParseNarrowIf(cfg StringToTypeConfig, targetType *Statement, needsCast bool, parsedWideVarName string, parsedNarrowVarName string, parseCall *Statement, narrowType *Statement) (st *Statement) {
+
+	body := []Code{
+		Id(parsedNarrowVarName).Op(":=").Add(narrowType).Call(Id(parsedWideVarName)),
+		assignNamedBuiltinParsedValueInline(cfg, targetType, Id(parsedNarrowVarName), needsCast),
+	}
+	return If(List(Id(parsedWideVarName), Id("_err")).Op(":=").Add(parseCall).Op(";").Id("_err").Op("==").Nil()).Block(body...)
+}
+
+func namedBuiltinNeedsCast(project *model.Project, typeID string, builtinBaseTypeID string) (needsCast bool) {
+
+	needsCast = true
+	if project == nil || builtinBaseTypeID == "" {
+		return
+	}
+	var typ *model.Type
+	var ok bool
+	if typ, ok = project.Types[typeID]; !ok || typ == nil {
+		return
+	}
+	if typ.UnderlyingTypeID == builtinBaseTypeID {
+		needsCast = false
+		return
+	}
+	return
+}
+
+func assignNamedBuiltinParsedValueInline(cfg StringToTypeConfig, targetType *Statement, parsedValue Code, needsCast bool) (st *Statement) {
+
+	valueExpr := parsedValue
+	if needsCast {
+		valueExpr = Add(targetType).Call(parsedValue)
+	}
+	if cfg.Arg.NumberOfPointers > 0 {
+		return Block(
+			Id("_value").Op(":=").Add(valueExpr),
+			Add(cfg.Id).Op("=").Op("&").Id("_value"),
+		)
+	}
+	return Add(cfg.Id).Op("=").Add(valueExpr)
 }
 
 func IsBuiltinTypeID(typeID string) (ok bool) {

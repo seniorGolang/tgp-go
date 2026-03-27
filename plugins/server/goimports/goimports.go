@@ -5,6 +5,7 @@ package goimports
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -68,7 +69,7 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 	}
 
 	if file.Out == nil {
-		err = os.WriteFile(file.Name, res, 0)
+		err = writeFormattedFile(file.Name, res)
 		return
 	}
 
@@ -134,4 +135,25 @@ func GetModulePath(filePath string) (s string) {
 		dir = parentDir
 	}
 	return ""
+}
+
+func writeFormattedFile(path string, data []byte) (err error) {
+
+	if err = ensureSafeGoFilePath(path); err != nil {
+		return
+	}
+	//nolint:gosec // путь валидируется в ensureSafeGoFilePath
+	return os.WriteFile(path, data, 0)
+}
+
+func ensureSafeGoFilePath(path string) (err error) {
+
+	cleanedPath := filepath.Clean(path)
+	if strings.Contains(cleanedPath, "..") {
+		return fmt.Errorf("unsafe file path: %s", path)
+	}
+	if filepath.Ext(cleanedPath) != ".go" {
+		return fmt.Errorf("unexpected file extension: %s", path)
+	}
+	return
 }

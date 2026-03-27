@@ -101,9 +101,8 @@ func findGitDir(startDir string) (gitDir string, err error) {
 func getGitCommit(gitDir string) (commit string, err error) {
 
 	// Читаем HEAD
-	headPath := filepath.Join(gitDir, "HEAD")
 	var headContent []byte
-	if headContent, err = os.ReadFile(headPath); err != nil {
+	if headContent, err = readGitFile(gitDir, "HEAD"); err != nil {
 		return
 	}
 
@@ -113,9 +112,8 @@ func getGitCommit(gitDir string) (commit string, err error) {
 	if strings.HasPrefix(headStr, "ref: ") {
 		refPath := strings.TrimPrefix(headStr, "ref: ")
 		refPath = strings.TrimSpace(refPath)
-		commitPath := filepath.Join(gitDir, refPath)
 		var commitBytes []byte
-		if commitBytes, err = os.ReadFile(commitPath); err != nil {
+		if commitBytes, err = readGitFile(gitDir, filepath.FromSlash(refPath)); err != nil {
 			return
 		}
 		commit = strings.TrimSpace(string(commitBytes))
@@ -170,9 +168,8 @@ func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 			continue
 		}
 
-		tagPath := filepath.Join(tagsDir, entry.Name())
 		var tagContent []byte
-		if tagContent, err = os.ReadFile(tagPath); err != nil {
+		if tagContent, err = readGitFile(gitDir, "refs", "tags", entry.Name()); err != nil {
 			continue
 		}
 
@@ -190,9 +187,12 @@ func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 			continue
 		}
 
-		tagObjPath := filepath.Join(gitDir, "objects", tagHash[:2], tagHash[2:])
+		if len(tagHash) < 3 || !isHexHash(tagHash) {
+			continue
+		}
+
 		var tagObjContent []byte
-		if tagObjContent, err = os.ReadFile(tagObjPath); err == nil {
+		if tagObjContent, err = readGitFile(gitDir, "objects", tagHash[:2], tagHash[2:]); err == nil {
 			// Парсим объект тега (формат: object <hash>\ntype tag\n...)
 			content := string(tagObjContent)
 			lines := strings.Split(content, "\n")
@@ -210,6 +210,40 @@ func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 	}
 
 	return
+}
+
+func readGitFile(gitDir string, pathParts ...string) (content []byte, err error) {
+
+	var basePath string
+	if basePath, err = filepath.Abs(filepath.Clean(gitDir)); err != nil {
+		return
+	}
+	targetPath := filepath.Join(append([]string{basePath}, pathParts...)...)
+	var targetAbsPath string
+	if targetAbsPath, err = filepath.Abs(filepath.Clean(targetPath)); err != nil {
+		return
+	}
+	basePrefix := basePath + string(os.PathSeparator)
+	if targetAbsPath != basePath && !strings.HasPrefix(targetAbsPath, basePrefix) {
+		return nil, errors.New("unsafe git path")
+	}
+	return os.ReadFile(targetAbsPath)
+}
+
+func isHexHash(value string) (ok bool) {
+
+	if value == "" {
+		return
+	}
+	for _, char := range value {
+		isDigit := char >= '0' && char <= '9'
+		isLowerHex := char >= 'a' && char <= 'f'
+		isUpperHex := char >= 'A' && char <= 'F'
+		if !isDigit && !isLowerHex && !isUpperHex {
+			return
+		}
+	}
+	return true
 }
 
 func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {

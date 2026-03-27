@@ -101,19 +101,18 @@ func getGitBranchForCache(rootDir string) (branch string) {
 
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return ""
+			return
 		}
 		dir = parent
 	}
 
 	if gitDir == "" {
-		return ""
+		return
 	}
 
-	headPath := filepath.Join(gitDir, "HEAD")
 	var headContent []byte
-	if headContent, err = os.ReadFile(headPath); err != nil {
-		return ""
+	if headContent, err = readGitFile(gitDir, "HEAD"); err != nil {
+		return
 	}
 
 	headStr := strings.TrimSpace(string(headContent))
@@ -127,7 +126,24 @@ func getGitBranchForCache(rootDir string) (branch string) {
 		}
 	}
 
-	return ""
+	return
+}
+
+func readGitFile(gitDir string, fileName string) (content []byte, err error) {
+
+	var baseDir string
+	if baseDir, err = filepath.Abs(filepath.Clean(gitDir)); err != nil {
+		return
+	}
+	targetPath := filepath.Join(baseDir, fileName)
+	var targetAbsPath string
+	if targetAbsPath, err = filepath.Abs(filepath.Clean(targetPath)); err != nil {
+		return
+	}
+	if !strings.HasPrefix(targetAbsPath, baseDir+string(os.PathSeparator)) {
+		return nil, fmt.Errorf("unsafe git path: %s", targetAbsPath)
+	}
+	return os.ReadFile(targetAbsPath)
 }
 
 func loadEntry(rootDir string, cacheFile string, projectID string) (project *model.Project, valid bool) {

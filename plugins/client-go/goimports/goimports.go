@@ -5,6 +5,7 @@ package goimports
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -74,7 +75,7 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 	}
 
 	if file.Out == nil {
-		err = os.WriteFile(file.Name, res, 0)
+		err = writeFormattedFile(file.Name, res)
 		return
 	}
 
@@ -94,6 +95,7 @@ func isGoFile(f os.FileInfo) (ok bool) {
 func buildFiles(paths ...string) (files []File, err error) {
 
 	for _, root := range paths {
+		var goFiles []string
 		err = filepath.Walk(root, func(path string, info os.FileInfo, _ error) (err error) {
 			if info == nil {
 				return nil
@@ -104,18 +106,21 @@ func buildFiles(paths ...string) (files []File, err error) {
 			if !isGoFile(info) {
 				return nil
 			}
-			b, err := os.ReadFile(path)
-			if err != nil {
-				return
-			}
-			files = append(files, File{
-				Name: path,
-				In:   bytes.NewReader(b),
-			})
+			goFiles = append(goFiles, path)
 			return
 		})
 		if err != nil {
 			return
+		}
+		for _, goFilePath := range goFiles {
+			var b []byte
+			if b, err = readGoFile(goFilePath); err != nil {
+				return
+			}
+			files = append(files, File{
+				Name: goFilePath,
+				In:   bytes.NewReader(b),
+			})
 		}
 	}
 	return
@@ -174,4 +179,33 @@ func GetModuleInfo(path string) (modulePath string, moduleRoot string) {
 		}
 		dir = parentDir
 	}
+}
+
+func readGoFile(path string) (data []byte, err error) {
+
+	if err = ensureSafeGoFilePath(path); err != nil {
+		return
+	}
+	return os.ReadFile(path)
+}
+
+func writeFormattedFile(path string, data []byte) (err error) {
+
+	if err = ensureSafeGoFilePath(path); err != nil {
+		return
+	}
+	//nolint:gosec // путь валидируется в ensureSafeGoFilePath
+	return os.WriteFile(path, data, 0)
+}
+
+func ensureSafeGoFilePath(path string) (err error) {
+
+	cleanedPath := filepath.Clean(path)
+	if strings.Contains(cleanedPath, "..") {
+		return fmt.Errorf("unsafe file path: %s", path)
+	}
+	if filepath.Ext(cleanedPath) != ".go" {
+		return fmt.Errorf("unexpected file extension: %s", path)
+	}
+	return
 }

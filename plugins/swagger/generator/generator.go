@@ -216,7 +216,6 @@ func buildOAuth2Scheme(parts []string) (name string, scheme types.SecurityScheme
 	}
 
 	flowKind := strings.ToLower(strings.TrimSpace(parts[1]))
-	rawScopesIndex := 0
 
 	oauthFlows := &types.OAuthFlows{}
 
@@ -226,7 +225,6 @@ func buildOAuth2Scheme(parts []string) (name string, scheme types.SecurityScheme
 		if tokenURL == "" {
 			return "", types.SecurityScheme{}
 		}
-		rawScopesIndex = 0
 
 		oauthFlows.ClientCredentials = buildOAuthFlow("", tokenURL, scopes)
 		scheme.GrantType = grantType
@@ -240,16 +238,14 @@ func buildOAuth2Scheme(parts []string) (name string, scheme types.SecurityScheme
 		if authURL == "" || tokenURL == "" {
 			return "", types.SecurityScheme{}
 		}
-		rawScopesIndex = 4
 
-		oauthFlows.AuthorizationCode = buildOAuthFlow(authURL, tokenURL, parts[rawScopesIndex])
+		oauthFlows.AuthorizationCode = buildOAuthFlow(authURL, tokenURL, parts[4])
 
 	case "password":
 		tokenURL, scopes, grantType := parseSingleURLFlow(parts)
 		if tokenURL == "" {
 			return "", types.SecurityScheme{}
 		}
-		rawScopesIndex = 0
 
 		oauthFlows.Password = buildOAuthFlow("", tokenURL, scopes)
 		scheme.GrantType = grantType
@@ -259,7 +255,6 @@ func buildOAuth2Scheme(parts []string) (name string, scheme types.SecurityScheme
 		if authURL == "" {
 			return "", types.SecurityScheme{}
 		}
-		rawScopesIndex = 0
 
 		oauthFlows.Implicit = buildOAuthFlow(authURL, "", scopes)
 		scheme.GrantType = grantType

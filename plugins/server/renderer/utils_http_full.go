@@ -471,7 +471,7 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 			}
 
 			typeForArg, ok := r.project.Types[arg.TypeID]
-			useConverterTarget := ok && typeForArg != nil && typeForArg.ParseFromString != nil
+			useConverterTarget := ok && typeForArg != nil && (typeForArg.ParseFromString != nil || converter.HasBuiltinScalarBase(r.project, arg.TypeID))
 
 			block.If(Id(rawVarName).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarName).Op("!=").Lit("")).
 				BlockFunc(func(bg *Group) {
@@ -672,7 +672,7 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 			}
 
 			typeForArgOrdered, ok := r.project.Types[arg.TypeID]
-			useConverterTargetOrdered := ok && typeForArgOrdered != nil && typeForArgOrdered.ParseFromString != nil
+			useConverterTargetOrdered := ok && typeForArgOrdered != nil && (typeForArgOrdered.ParseFromString != nil || converter.HasBuiltinScalarBase(r.project, arg.TypeID))
 
 			block.If(Id(rawVarNameOrdered).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarNameOrdered).Op("!=").Lit("")).
 				BlockFunc(func(bg *Group) {

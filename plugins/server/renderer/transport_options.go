@@ -111,7 +111,9 @@ func (r *transportRenderer) renderOptionsConfig(srcFile *GoFile) {
 		Block(
 			Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
 				Id("srv").Dot("config").Op("=").Id("cfg"),
+				Id("srv").Dot("config").Dot("StreamRequestBody").Op("=").True(),
 				Id("srv").Dot("config").Dot("DisableStartupMessage").Op("=").True(),
+				Id("srv").Dot("config").Dot("DisablePreParseMultipartForm").Op("=").True(),
 			)),
 		)
 	srcFile.Line().Func().Id("SetReadBufferSize").

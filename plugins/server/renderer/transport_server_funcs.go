@@ -118,6 +118,7 @@ func (r *transportRenderer) serverNewFunc() (c Code) {
 				dict[Id("config")] = Qual(PackageFiber, "Config").Values(Dict{
 					Id("StreamRequestBody"):     True(),
 					Id("DisableStartupMessage"): True(),
+					Id("DisablePreParseMultipartForm"): True(),
 					Id("BodyLimit"):             Id("defaultBodyLimit"),
 					Id("Concurrency"):           Id("defaultConcurrency"),
 					Id("IdleTimeout"):           Id("defaultIdleTimeout"),
@@ -199,6 +200,7 @@ func (r *transportRenderer) serveHealthFunc() (c Code) {
 			)
 			bg.Id("srv").Op(":=").Qual(PackageFiber, "New").Call(Qual(PackageFiber, "Config").Values(Dict{
 				Id("DisableStartupMessage"): True(),
+				Id("DisablePreParseMultipartForm"): True(),
 				Id("IdleTimeout"):           Id("defaultIdleTimeout"),
 				Id("ReadTimeout"):           Id("defaultReadTimeout"),
 				Id("WriteTimeout"):          Id("defaultWriteTimeout"),

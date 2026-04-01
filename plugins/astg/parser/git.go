@@ -13,6 +13,8 @@ import (
 	"tgp/internal/model"
 )
 
+var errNewFileFound = errors.New("new file found")
+
 func collectGitInfo(project *model.Project) (err error) {
 
 	var gitDir string
@@ -306,14 +308,14 @@ func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {
 		if !indexFiles[relPath] {
 			if !strings.HasPrefix(relPath, ".git/") && !strings.HasPrefix(relPath, ".git") {
 				// Это новый файл - репозиторий dirty
-				return errors.New("new file found")
+				return errNewFileFound
 			}
 		}
 
 		return nil
 	})
 
-	if err != nil && err.Error() == "new file found" {
+	if errors.Is(err, errNewFileFound) {
 		isDirty = true
 		err = nil
 		return

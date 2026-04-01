@@ -3,6 +3,10 @@
 package renderer
 
 import (
+	"fmt"
+	"sort"
+	"strings"
+
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/model"
@@ -14,6 +18,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Co
 	if len(streamArgs) == 0 {
 		return nil
 	}
+	r.validatePartContentMapping(method, streamArgs, "request")
 
 	st := Line()
 	st.Var().Id("params").Map(String()).String()
@@ -39,7 +44,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Co
 	st.Line().Var().Id("p").Op("*").Qual(PackageMimeMultipart, "Part")
 	st.Line().For().BlockFunc(func(fg *Group) {
 		fg.List(Id("p"), Err()).Op("=").Id("mr").Dot("NextPart").Call()
-		fg.If(Err().Op("==").Qual("io", "EOF")).Block(Break())
+		fg.If(Qual("errors", "Is").Call(Err(), Qual("io", "EOF"))).Block(Break())
 		fg.If(Err().Op("!=").Nil()).Block(
 			Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 			Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("multipart read error"))),
@@ -125,6 +130,7 @@ func (r *contractRenderer) httpServeMultipartResponse(method *model.Method) (c C
 	if len(streamResults) == 0 {
 		return nil
 	}
+	r.validatePartContentMapping(method, streamResults, "response")
 
 	st := Line()
 	st.Line().Id("mw").Op(":=").Qual(PackageMimeMultipart, "NewWriter").Call(Id(VarNameFtx).Dot("Response").Call().Dot("BodyWriter").Call())
@@ -151,4 +157,50 @@ func (r *contractRenderer) httpServeMultipartResponse(method *model.Method) (c C
 		st.Line().If(Err().Op("!=").Nil()).Block(Return())
 	}
 	return st
+}
+
+func (r *contractRenderer) validatePartContentMapping(method *model.Method, vars []*model.Variable, direction string) {
+
+	if method == nil || method.Annotations == nil {
+		return
+	}
+	annotationValue, found := method.Annotations[model.TagHttpPartContent]
+	if !found || strings.TrimSpace(annotationValue) == "" {
+		return
+	}
+	allowedByName := make(map[string]struct{}, len(vars))
+	for _, v := range vars {
+		if v != nil {
+			allowedByName[v.Name] = struct{}{}
+		}
+	}
+	allowedNames := make([]string, 0, len(allowedByName))
+	for name := range allowedByName {
+		allowedNames = append(allowedNames, name)
+	}
+	sort.Strings(allowedNames)
+
+	pairs := strings.Split(annotationValue, ",")
+	for _, rawPair := range pairs {
+		pair := strings.TrimSpace(rawPair)
+		if pair == "" {
+			continue
+		}
+		tokens := strings.Split(pair, "|")
+		if len(tokens) != 2 {
+			panic(fmt.Sprintf("invalid @tg %s for %s.%s: expected '<arg>|<mime>', got %q", model.TagHttpPartContent, r.contract.Name, method.Name, pair))
+		}
+		argName := strings.TrimSpace(tokens[0])
+		if _, ok := allowedByName[argName]; !ok {
+			panic(fmt.Sprintf(
+				"invalid @tg %s for %s.%s (%s): unknown argument %q; allowed: %s",
+				model.TagHttpPartContent,
+				r.contract.Name,
+				method.Name,
+				direction,
+				argName,
+				strings.Join(allowedNames, ", "),
+			))
+		}
+	}
 }

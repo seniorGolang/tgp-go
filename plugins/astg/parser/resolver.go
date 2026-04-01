@@ -55,12 +55,8 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 	if r.modulePath != "" && strings.HasPrefix(pkgPath, r.modulePath) {
 		relPath := strings.TrimPrefix(pkgPath, r.modulePath)
 		relPath = strings.TrimPrefix(relPath, "/")
-		var dir string
-		if dir, err = resolveProjectPath(relPath); err != nil {
-			return
-		}
+		dir := filepath.Join(internal.ProjectRoot, filepath.FromSlash(relPath))
 		var info os.FileInfo
-		//nolint:gosec // dir ограничен корнем проекта через resolveProjectPath
 		if info, err = os.Stat(dir); err == nil && info.IsDir() {
 			result = dir
 		} else if err != nil {
@@ -100,11 +96,7 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 				if modDir, err = r.findModuleDir(req.Mod.Path, req.Mod.Version); err == nil {
 					relPath := strings.TrimPrefix(pkgPath, req.Mod.Path)
 					relPath = strings.TrimPrefix(relPath, "/")
-					var dir string
-					if dir, err = resolvePathWithinBase(modDir, relPath); err != nil {
-						continue
-					}
-					//nolint:gosec // dir ограничен корнем модуля через resolvePathWithinBase
+					dir := filepath.Join(modDir, filepath.FromSlash(relPath))
 					if _, statErr := os.Stat(dir); statErr == nil {
 						return dir, err
 					}
@@ -247,34 +239,4 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 	}
 
 	return "", fmt.Errorf("module not found for package: %s", pkgPath)
-}
-
-func resolveProjectPath(relPath string) (dir string, err error) {
-
-	var basePath string
-	if basePath, err = filepath.Abs(filepath.Clean(internal.ProjectRoot)); err != nil {
-		return
-	}
-	if dir, err = resolvePathWithinBase(basePath, relPath); err != nil {
-		return
-	}
-	return
-}
-
-func resolvePathWithinBase(basePath string, relPath string) (path string, err error) {
-
-	targetPath := filepath.Join(basePath, filepath.FromSlash(relPath))
-	var targetAbsPath string
-	if targetAbsPath, err = filepath.Abs(filepath.Clean(targetPath)); err != nil {
-		return
-	}
-	var baseAbsPath string
-	if baseAbsPath, err = filepath.Abs(filepath.Clean(basePath)); err != nil {
-		return
-	}
-	basePrefix := baseAbsPath + string(os.PathSeparator)
-	if targetAbsPath != baseAbsPath && !strings.HasPrefix(targetAbsPath, basePrefix) {
-		return "", fmt.Errorf("unsafe package path: %s", relPath)
-	}
-	return
 }

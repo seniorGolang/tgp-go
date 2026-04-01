@@ -219,7 +219,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 			})
 			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
 			bg.List(Id("firstByte"), Err()).Op(":=").Id("readUntilFirstNonWhitespace").Call(Id("bodyStream"))
-			bg.If(Err().Op("!=").Nil().Op("&&").Err().Op("!=").Qual("io", "EOF")).BlockFunc(func(ig *Group) {
+			bg.If(Err().Op("!=").Nil().Op("&&").Op("!").Qual("errors", "Is").Call(Err(), Qual("io", "EOF"))).BlockFunc(func(ig *Group) {
 				ig.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
 					Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
 				)

@@ -34,7 +34,7 @@ const (
 	PackagePrometheusCollectors = "github.com/prometheus/client_golang/prometheus/collectors"
 	PackageAttributeOTEL        = "go.opentelemetry.io/otel/attribute"
 	PackageTraceSDK             = "go.opentelemetry.io/otel/sdk/trace"
-	PackageErrors               = "github.com/pkg/errors"
+	PackageErrors               = "errors"
 	PackageStrings              = "strings"
 	PackageBytes                = "bytes"
 	PackageSync                 = "sync"

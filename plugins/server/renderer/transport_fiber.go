@@ -162,7 +162,7 @@ func (r *transportRenderer) renderFiberRecover(srcFile *GoFile) {
 					})
 					ig.If(Id("logger").Op(":=").Qual(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id(VarNameFtx).Dot("UserContext").Call()).Op(";").Id("logger").Op("!=").Nil()).Block(
 						Id("logger").Dot("Error").Call(Lit("panic occurred"),
-							Qual(PackageSlog, "Any").Call(Lit("error"), Qual(PackageErrors, "Wrap").Call(Err(), Lit("recover"))),
+							Qual(PackageSlog, "Any").Call(Lit("error"), Qual(PackageFmt, "Errorf").Call(Lit("recover: %w"), Err())),
 							Qual(PackageSlog, "String").Call(Lit("method"), Id("method")),
 							Qual(PackageSlog, "String").Call(Lit("path"), Id("originalURL")),
 							Qual(PackageSlog, "String").Call(Lit("stack"), Id("string").Call(Qual("runtime/debug", "Stack").Call())),

@@ -319,6 +319,11 @@ func (g *generator) responseBodyStructName(contract *model.Contract, method *mod
 	return types.ToCamel(contract.Name) + types.ToCamel(method.Name) + "ResponseBody"
 }
 
+func (g *generator) requestBodyStructName(contract *model.Contract, method *model.Method) (s string) {
+
+	return types.ToCamel(contract.Name) + types.ToCamel(method.Name) + "RequestBody"
+}
+
 func (g *generator) effectiveResponseSchema(contract *model.Contract, method *model.Method, responseStructName string, bodyResults []*model.Variable) types.Schema {
 
 	var results []*model.Variable
@@ -569,7 +574,9 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 	} else if len(method.Args) > 0 {
 		bodyArgs := g.bodyArgs(method, contract, httpPath)
 		if len(bodyArgs) > 0 {
-			requestSchema := g.effectiveRequestBodySchema(contract, method, requestStructName, bodyArgs)
+			bodyStructName := g.requestBodyStructName(contract, method)
+			g.registerStruct(bodyStructName, contract.PkgPath, method.Annotations, bodyArgs, requestContentType)
+			requestSchema := g.effectiveRequestBodySchema(contract, method, bodyStructName, bodyArgs)
 			operation.RequestBody = &types.RequestBody{
 				Description: requestBodyDescription(method),
 				Content: types.Content{
@@ -640,6 +647,9 @@ func (g *generator) addQueryParameters(operation *types.Operation, contract *mod
 
 	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpArg, "")) {
 		if it.Arg == "path" {
+			continue
+		}
+		if it.Mode != model.ArgModeExplicit && it.Mode != model.ArgModeImplicit {
 			continue
 		}
 		for _, arg := range method.Args {
@@ -826,7 +836,7 @@ func (g *generator) isArgInPath(arg *model.Variable, method *model.Method, httpP
 func (g *generator) isArgInQuery(arg *model.Variable, contract *model.Contract, method *model.Method) (found bool) {
 
 	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpArg, "")) {
-		if it.Arg != "path" && it.Arg == arg.Name {
+		if it.Arg != "path" && it.Arg == arg.Name && (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) {
 			return true
 		}
 	}

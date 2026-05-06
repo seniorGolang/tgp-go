@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"tgp/internal/model"
+	"tgp/internal/tags"
 	"tgp/plugins/swagger/types"
 )
 
@@ -625,8 +626,9 @@ func (g *generator) addPathParameters(operation *types.Operation, contract *mode
 			paramName := strings.TrimPrefix(part, ":")
 			for _, arg := range method.Args {
 				if types.ToLowerCamel(arg.Name) == paramName || arg.Name == paramName {
+					mergedArg := mergeVariableAnnotations(method, arg)
 					var schema types.Schema
-					if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
+					if schemaPtr := g.variableToSchema(mergedArg, contract.PkgPath, true); schemaPtr != nil {
 						schema = *schemaPtr
 					}
 					operation.Parameters = append(operation.Parameters, types.Parameter{
@@ -634,7 +636,7 @@ func (g *generator) addPathParameters(operation *types.Operation, contract *mode
 						Name:        paramName,
 						Required:    true,
 						Schema:      schema,
-						Description: descriptionFromVariable(arg),
+						Description: descriptionFromVariable(mergedArg),
 					})
 					break
 				}
@@ -657,15 +659,16 @@ func (g *generator) addQueryParameters(operation *types.Operation, contract *mod
 				if g.isArgInPath(arg, method, httpPath) {
 					break
 				}
+				mergedArg := mergeVariableAnnotations(method, arg)
 				var schema types.Schema
-				if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
+				if schemaPtr := g.variableToSchema(mergedArg, contract.PkgPath, true); schemaPtr != nil {
 					schema = *schemaPtr
 				}
 				operation.Parameters = append(operation.Parameters, types.Parameter{
 					In:          "query",
 					Name:        it.Key,
 					Schema:      schema,
-					Description: descriptionFromVariable(arg),
+					Description: descriptionFromVariable(mergedArg),
 				})
 				break
 			}
@@ -681,8 +684,9 @@ func (g *generator) addHeaderParameters(operation *types.Operation, contract *mo
 		}
 		for _, arg := range method.Args {
 			if arg.Name == it.Arg {
+				mergedArg := mergeVariableAnnotations(method, arg)
 				var schema types.Schema
-				if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
+				if schemaPtr := g.variableToSchema(mergedArg, contract.PkgPath, true); schemaPtr != nil {
 					schema = *schemaPtr
 				}
 				required := arg.Annotations != nil && arg.Annotations.IsSet(model.TagRequired)
@@ -691,7 +695,7 @@ func (g *generator) addHeaderParameters(operation *types.Operation, contract *mo
 					Name:        it.Key,
 					Required:    required,
 					Schema:      schema,
-					Description: descriptionFromVariable(arg),
+					Description: descriptionFromVariable(mergedArg),
 				})
 				break
 			}
@@ -707,8 +711,9 @@ func (g *generator) addCookieParameters(operation *types.Operation, contract *mo
 		}
 		for _, arg := range method.Args {
 			if arg.Name == it.Arg {
+				mergedArg := mergeVariableAnnotations(method, arg)
 				var schema types.Schema
-				if schemaPtr := g.variableToSchema(arg, contract.PkgPath, true); schemaPtr != nil {
+				if schemaPtr := g.variableToSchema(mergedArg, contract.PkgPath, true); schemaPtr != nil {
 					schema = *schemaPtr
 				}
 				required := arg.Annotations != nil && arg.Annotations.IsSet(model.TagRequired)
@@ -717,12 +722,39 @@ func (g *generator) addCookieParameters(operation *types.Operation, contract *mo
 					Name:        it.Key,
 					Required:    required,
 					Schema:      schema,
-					Description: descriptionFromVariable(arg),
+					Description: descriptionFromVariable(mergedArg),
 				})
 				break
 			}
 		}
 	}
+}
+
+func mergeVariableAnnotations(method *model.Method, variable *model.Variable) (merged *model.Variable) {
+
+	if variable == nil {
+		return nil
+	}
+	if method == nil || method.Annotations == nil {
+		return variable
+	}
+
+	subAnnotations := method.Annotations.Sub(variable.Name)
+	if len(subAnnotations) == 0 {
+		return variable
+	}
+
+	mergedAnnotations := make(tags.DocTags, len(variable.Annotations)+len(subAnnotations))
+	for key, value := range variable.Annotations {
+		mergedAnnotations[key] = value
+	}
+	for key, value := range subAnnotations {
+		mergedAnnotations[key] = value
+	}
+
+	variableCopy := *variable
+	variableCopy.Annotations = mergedAnnotations
+	return &variableCopy
 }
 
 func (g *generator) addResponseHeaders(operation *types.Operation, contract *model.Contract, method *model.Method, successCode int) {

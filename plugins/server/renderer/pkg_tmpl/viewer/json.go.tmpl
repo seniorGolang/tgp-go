@@ -2,25 +2,26 @@
 package viewer
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 )
 
 const (
 	dumpMethod             = "Dump"
-	jsonPlaceholderShown   = "<shown>"
-	jsonPlaceholderMax     = "<max>"
-	jsonPlaceholderInvalid = "<invalid>"
+	jsonPlaceholderShown   = "shown"
+	jsonPlaceholderMax     = "max"
+	jsonPlaceholderInvalid = "invalid"
 	sliceMaxLen            = 16
 	sliceHeadTail          = 4
 	ptrHexPrefix           = "0x"
 )
 
 func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
-
 	kind := v.Kind()
 	if kind == reflect.Invalid {
 		return jsonPlaceholderInvalid, nil
@@ -52,15 +53,15 @@ func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *Config
 	}
 	switch kind {
 	case reflect.Bool:
-		return v.Bool(), nil
+		return optionFromAny(v.Bool(), opt), nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return v.Int(), nil
+		return optionFromAny(v.Int(), opt), nil
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return v.Uint(), nil
+		return optionFromAny(v.Uint(), opt), nil
 	case reflect.Float32, reflect.Float64:
-		return v.Float(), nil
+		return optionFromAny(v.Float(), opt), nil
 	case reflect.Complex64, reflect.Complex128:
-		return fmt.Sprintf("(%g+%gi)", real(v.Complex()), imag(v.Complex())), nil
+		return optionFromAny(fmt.Sprintf("(%g+%gi)", real(v.Complex()), imag(v.Complex())), opt), nil
 	case reflect.String:
 		return string(applyOptions([]byte(v.String()), opt)), nil
 	case reflect.Slice:
@@ -72,10 +73,10 @@ func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *Config
 	case reflect.Struct:
 		return toJSONTreeStruct(v, depth, pointers, cs, opt)
 	case reflect.UnsafePointer, reflect.Chan, reflect.Func:
-		return ptrHexString(v.Pointer()), nil
+		return optionFromAny(ptrHexString(v.Pointer()), opt), nil
 	default:
 		if v.CanInterface() {
-			return v.Interface(), nil
+			return optionFromAny(v.Interface(), opt), nil
 		}
 		return jsonPlaceholderInvalid, nil
 	}
@@ -128,39 +129,115 @@ func toJSONTreeSlice(v reflect.Value, depth int, pointers map[uintptr]int, cs *C
 	if v.Kind() == reflect.Slice && v.IsNil() {
 		return nil, nil
 	}
+	if v.Kind() == reflect.Slice && v.Type().Elem().Kind() == reflect.Uint8 {
+		return maskedHexBytes(v.Bytes(), opt), nil
+	}
 	childDepth := depth + 1
 	if cs.MaxDepth != 0 && childDepth > cs.MaxDepth {
 		return jsonPlaceholderMax, nil
 	}
 	n := v.Len()
 	if n > sliceMaxLen {
-		arr := make([]any, 0, 2*sliceHeadTail+1)
-		for i := 0; i < sliceHeadTail; i++ {
-			item, itemErr := toJSONTree(unpackValue(v.Index(i)), childDepth, pointers, cs, opt)
-			if itemErr != nil {
-				return nil, itemErr
-			}
-			arr = append(arr, item)
-		}
-		arr = append(arr, fmt.Sprintf(" <-[%d]->", n))
-		for i := n - sliceHeadTail; i < n; i++ {
-			item, itemErr := toJSONTree(unpackValue(v.Index(i)), childDepth, pointers, cs, opt)
-			if itemErr != nil {
-				return nil, itemErr
-			}
-			arr = append(arr, item)
-		}
-		return arr, nil
+		return applyOptionText(largeSlicePlaceholder(v, n), opt), nil
 	}
 	arr := make([]any, 0, n)
 	for i := 0; i < n; i++ {
-		item, itemErr := toJSONTree(unpackValue(v.Index(i)), childDepth, pointers, cs, opt)
+		itemOpt := opt
+		if itemOpt.enabled && !itemOpt.full {
+			itemOpt = option{}
+		}
+		item, itemErr := toJSONTree(unpackValue(v.Index(i)), childDepth, pointers, cs, itemOpt)
 		if itemErr != nil {
 			return nil, itemErr
 		}
 		arr = append(arr, item)
 	}
+	if opt.enabled && !opt.full {
+		return applySliceOption(arr, opt), nil
+	}
 	return arr, nil
+}
+
+func largeSlicePlaceholder(v reflect.Value, length int) (s string) {
+
+	return fmt.Sprintf("slice type=%s len=%d", v.Type().String(), length)
+}
+
+func maskedHexBytes(data []byte, opt option) (out string) {
+
+	if !opt.enabled {
+		return hex.EncodeToString(data)
+	}
+	if opt.full {
+		return "hidden"
+	}
+	hexParts := make([]string, len(data))
+	for i, b := range data {
+		hexParts[i] = fmt.Sprintf("%02x", b)
+	}
+	from, to := sliceHideBounds(len(hexParts), opt.formula)
+	if from < 0 {
+		from = 0
+	}
+	if to > len(hexParts) {
+		to = len(hexParts)
+	}
+	if from > to {
+		from, to = to, from
+	}
+	for i := from; i < to; i++ {
+		hexParts[i] = "**"
+	}
+	return strings.Join(hexParts, "")
+}
+
+func applySliceOption(items []any, opt option) (out []any) {
+
+	out = make([]any, len(items))
+	copy(out, items)
+
+	from, to := sliceHideBounds(len(out), opt.formula)
+	if from < 0 {
+		from = 0
+	}
+	if to > len(out) {
+		to = len(out)
+	}
+	if from > to {
+		from, to = to, from
+	}
+	for i := from; i < to; i++ {
+		out[i] = "*"
+	}
+	return out
+}
+
+func sliceHideBounds(length int, formula string) (from int, to int) {
+
+	switch {
+	case formula == "fh":
+		from = 0
+		to = length / 2
+		return
+	case formula == "lh":
+		from = length / 2
+		to = length
+		return
+	case formula == "md":
+		from = length / 3
+		to = length - length/3
+		return
+	case strings.Contains(formula, ":"):
+		params := strings.Split(formula, ":")
+		if len(params) == 2 {
+			left, errLeft := strconv.Atoi(params[0])
+			right, errRight := strconv.Atoi(params[1])
+			if errLeft == nil && errRight == nil {
+				return left, right
+			}
+		}
+	}
+	return 0, length
 }
 
 func toJSONTreeMap(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
@@ -225,6 +302,9 @@ func toJSONTreeStruct(v reflect.Value, depth int, pointers map[uintptr]int, cs *
 	vt := v.Type()
 	for i := 0; i < v.NumField(); i++ {
 		fieldOpt := tagToOption(vt.Field(i).Tag.Get(tagName))
+		if fieldOpt.enabled && fieldOpt.full {
+			continue
+		}
 		fieldVal, fieldErr := toJSONTree(unpackValue(v.Field(i)), childDepth, pointers, cs, fieldOpt)
 		if fieldErr != nil {
 			return nil, fieldErr

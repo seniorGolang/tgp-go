@@ -37,22 +37,15 @@ func (f *formatState) Format(fs fmt.State, verb rune) {
 		_, _ = fs.Write([]byte("null"))
 		return
 	}
-	tree, err := toJSONTree(reflect.ValueOf(f.value), 0, f.pointers, f.cs, nil)
+	tree, err := toJSONTree(reflect.ValueOf(f.value), 0, f.pointers, f.cs, option{})
 	if err != nil {
 		_, _ = fs.Write([]byte(jsonPlaceholderInvalid))
 		return
 	}
-	var out []byte
-	if f.cs.Indent != "" {
-		if out, err = json.MarshalIndent(tree, "", f.cs.Indent); err != nil {
-			_, _ = fs.Write([]byte(jsonPlaceholderInvalid))
-			return
-		}
-	} else {
-		if out, err = json.Marshal(tree); err != nil {
-			_, _ = fs.Write([]byte(jsonPlaceholderInvalid))
-			return
-		}
+	out, err := json.Marshal(tree)
+	if err != nil {
+		_, _ = fs.Write([]byte(jsonPlaceholderInvalid))
+		return
 	}
 	_, _ = fs.Write(out)
 }

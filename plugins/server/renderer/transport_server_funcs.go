@@ -116,16 +116,16 @@ func (r *transportRenderer) serverNewFunc() (c Code) {
 				}
 				dict[Id("headerHandlers")] = Make(Map(String()).Id("HeaderHandler"))
 				dict[Id("config")] = Qual(PackageFiber, "Config").Values(Dict{
-					Id("StreamRequestBody"):     True(),
-					Id("DisableStartupMessage"): True(),
+					Id("StreamRequestBody"):            True(),
+					Id("DisableStartupMessage"):        True(),
 					Id("DisablePreParseMultipartForm"): True(),
-					Id("BodyLimit"):             Id("defaultBodyLimit"),
-					Id("Concurrency"):           Id("defaultConcurrency"),
-					Id("IdleTimeout"):           Id("defaultIdleTimeout"),
-					Id("ReadTimeout"):           Id("defaultReadTimeout"),
-					Id("WriteTimeout"):          Id("defaultWriteTimeout"),
-					Id("ReadBufferSize"):        Id("defaultReadBufferSize"),
-					Id("WriteBufferSize"):       Id("defaultWriteBufferSize"),
+					Id("BodyLimit"):                    Id("defaultBodyLimit"),
+					Id("Concurrency"):                  Id("defaultConcurrency"),
+					Id("IdleTimeout"):                  Id("defaultIdleTimeout"),
+					Id("ReadTimeout"):                  Id("defaultReadTimeout"),
+					Id("WriteTimeout"):                 Id("defaultWriteTimeout"),
+					Id("ReadBufferSize"):               Id("defaultReadBufferSize"),
+					Id("WriteBufferSize"):              Id("defaultWriteBufferSize"),
 				})
 			},
 			))
@@ -199,11 +199,11 @@ func (r *transportRenderer) serveHealthFunc() (c Code) {
 				Id("responseBody").Op("=").Op("[]").Byte().Call(Lit(`"ok"`)),
 			)
 			bg.Id("srv").Op(":=").Qual(PackageFiber, "New").Call(Qual(PackageFiber, "Config").Values(Dict{
-				Id("DisableStartupMessage"): True(),
+				Id("DisableStartupMessage"):        True(),
 				Id("DisablePreParseMultipartForm"): True(),
-				Id("IdleTimeout"):           Id("defaultIdleTimeout"),
-				Id("ReadTimeout"):           Id("defaultReadTimeout"),
-				Id("WriteTimeout"):          Id("defaultWriteTimeout"),
+				Id("IdleTimeout"):                  Id("defaultIdleTimeout"),
+				Id("ReadTimeout"):                  Id("defaultReadTimeout"),
+				Id("WriteTimeout"):                 Id("defaultWriteTimeout"),
 			}))
 			bg.Id("srv").Dot("Get").Call(Id("path"),
 				Func().Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).Params(Id("err").Error()).BlockFunc(func(hg *Group) {

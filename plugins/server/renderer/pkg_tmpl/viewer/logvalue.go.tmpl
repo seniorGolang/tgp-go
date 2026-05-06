@@ -11,7 +11,7 @@ type logValuer struct {
 }
 
 func (l logValuer) LogValue() slog.Value {
-	tree, err := toJSONTree(reflect.ValueOf(l.v), 0, make(map[uintptr]int), &Config, nil)
+	tree, err := toJSONTree(reflect.ValueOf(l.v), 0, make(map[uintptr]int), &Config, option{})
 	if err != nil {
 		return slog.AnyValue(nil)
 	}
@@ -27,7 +27,7 @@ func String(v any) (s string) {
 	if v == nil {
 		return "null"
 	}
-	tree, err := toJSONTree(reflect.ValueOf(v), 0, make(map[uintptr]int), &Config, nil)
+	tree, err := toJSONTree(reflect.ValueOf(v), 0, make(map[uintptr]int), &Config, option{})
 	if err != nil {
 		return jsonPlaceholderInvalid
 	}

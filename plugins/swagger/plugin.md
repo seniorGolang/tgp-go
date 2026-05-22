@@ -130,7 +130,7 @@ tg plugin swagger --out api-docs/openapi.yaml --contracts '!OrderService'
 | `http-part-name`       | Имя части при multipart                                         |
 | `http-part-content`    | `Content-Type` части при multipart                              |
 | `enableInlineSingle`   | Инлайн одного возвращаемого значения в ответ                    |
-| `tags.<arg_or_result>` | Спец‑теги аргументов/результатов (`json:inline`, `form:<name>`) |
+| `<arg_or_result>.tags` | Спец‑теги аргументов/результатов (`json:inline`, `form:<name>`) |
 
 #### Поля структур и аргументы
 
@@ -354,8 +354,8 @@ type UserService interface {
 
 - **tags (TagParamTags)** — специальные под‑аннотации для аргументов/результатов метода.
     - **Формат** (на методе для конкретного аргумента или результата):
-        - ``// @tg tags.result=`json:inline``` — «инлайнит» результат/поле в тело JSON.
-        - ``// @tg tags.filter=`form:filter``` — задаёт имя поля формы для `application/x-www-form-urlencoded`.
+        - ``// @tg result.tags=`json:inline``` — «инлайнит» результат/поле в тело JSON.
+        - ``// @tg filter.tags=`form:filter``` — задаёт имя поля формы для `application/x-www-form-urlencoded`.
     - **Область действия**: метод (подключается через имя аргумента/результата).
     - **Влияние**:
         - `json:inline` — управляет тем, будет ли результат/поле развёрнут внутрь родительского объекта;

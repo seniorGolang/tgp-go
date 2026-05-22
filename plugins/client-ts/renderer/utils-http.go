@@ -11,6 +11,7 @@ import (
 	"tgp/internal/common"
 	"tgp/internal/content"
 	"tgp/internal/model"
+	"tgp/internal/tags"
 	"tgp/plugins/client-ts/tsg"
 )
 
@@ -400,13 +401,8 @@ func (r *ClientRenderer) formFieldName(method *model.Method, variable *model.Var
 	if method == nil || method.Annotations == nil {
 		return toLowerCamel(variable.Name)
 	}
-	sub := method.Annotations.Sub(variable.Name)
-	paramTags := sub.Value(model.TagParamTags, "")
-	for _, item := range strings.Split(paramTags, "|") {
-		tokens := strings.SplitN(strings.TrimSpace(item), ":", 2)
-		if len(tokens) == 2 && strings.TrimSpace(tokens[0]) == "form" {
-			return strings.TrimSpace(tokens[1])
-		}
+	if name, ok := tags.FormFieldName(method.Annotations, variable.Name); ok {
+		return name
 	}
 	return toLowerCamel(variable.Name)
 }
@@ -764,24 +760,10 @@ func (r *ClientRenderer) renderHTTPResponseMergeHeadersAndCookies(mg *tsg.Group,
 
 func (r *ClientRenderer) resultHasJsonInline(method *model.Method, v *model.Variable) (ok bool) {
 
-	sub := method.Annotations.Sub(v.Name)
-	for key, value := range sub {
-		if key != model.TagParamTags {
-			continue
-		}
-		for _, item := range strings.Split(value, "|") {
-			tokens := strings.SplitN(strings.TrimSpace(item), ":", 2)
-			if len(tokens) < 2 {
-				continue
-			}
-			tagName := strings.TrimSpace(tokens[0])
-			tagValue := strings.TrimSpace(tokens[1])
-			if tagName == "json" && (tagValue == "inline" || strings.Contains(tagValue, ",inline")) {
-				return true
-			}
-		}
+	if method == nil {
+		return false
 	}
-	return false
+	return tags.HasJSONInline(method.Annotations, v.Name)
 }
 
 func (r *ClientRenderer) responseHasAnyInline(method *model.Method, results []*model.Variable) (ok bool) {
@@ -792,4 +774,17 @@ func (r *ClientRenderer) responseHasAnyInline(method *model.Method, results []*m
 		}
 	}
 	return false
+}
+
+// tsRPCSingleResultExpr — доступ к единственному результату JSON-RPC после cast в response type.
+func (r *ClientRenderer) tsRPCSingleResultExpr(contract *model.Contract, method *model.Method, ret *model.Variable) *tsg.Statement {
+
+	if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
+		return tsg.NewStatement().Id("result")
+	}
+	if model.ResultFieldEmbedded(r.project, contract, method, ret) {
+		return tsg.NewStatement().Id("result")
+	}
+
+	return tsg.NewStatement().Id("result").Dot(tsSafeName(ret.Name))
 }

@@ -11,7 +11,7 @@ import (
 func DecodeToStruct(values url.Values, dst any) (err error) {
 
 	dstVal := reflect.ValueOf(dst)
-	if dstVal.Kind() != reflect.Ptr || dstVal.IsNil() {
+	if dstVal.Kind() != reflect.Pointer || dstVal.IsNil() {
 		return
 	}
 	dstVal = dstVal.Elem()
@@ -61,7 +61,7 @@ func DecodeToStruct(values url.Values, dst any) (err error) {
 				continue
 			}
 			fv.SetFloat(x)
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if fv.Type().Elem().Kind() == reflect.String {
 				fv.Set(reflect.ValueOf(&s))
 			}
@@ -76,7 +76,7 @@ func EncodeFromStruct(src any) (values url.Values) {
 
 	values = make(url.Values)
 	srcVal := reflect.ValueOf(src)
-	for srcVal.Kind() == reflect.Ptr && !srcVal.IsNil() {
+	for srcVal.Kind() == reflect.Pointer && !srcVal.IsNil() {
 		srcVal = srcVal.Elem()
 	}
 	if srcVal.Kind() != reflect.Struct {
@@ -94,7 +94,7 @@ func EncodeFromStruct(src any) (values url.Values) {
 		}
 		key := strings.TrimSpace(strings.Split(tag, ",")[0])
 		fv := srcVal.Field(i)
-		if fv.Kind() == reflect.Ptr {
+		if fv.Kind() == reflect.Pointer {
 			if fv.IsNil() {
 				continue
 			}

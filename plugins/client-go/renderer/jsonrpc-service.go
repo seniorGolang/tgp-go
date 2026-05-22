@@ -55,22 +55,10 @@ func (r *ClientRenderer) jsonrpcClientMethodFunc(ctx context.Context, contract *
 			// fieldsResult и resultsWithoutErr имеют одинаковый порядок и количество элементов
 			for i, ret := range resultsWithoutErr {
 				if i >= len(fieldsResult) {
-					// Если поле не найдено, используем значение по умолчанию
-					rg.Add(Id("_response_").Dot(ToCamel(ret.Name)))
+					rg.Add(r.clientRPCResultValue(contract, method, ret, exchangeField{name: ret.Name, typeID: ret.TypeID, numberOfPointers: ret.NumberOfPointers}, "_response_"))
 					continue
 				}
-				field := fieldsResult[i]
-				fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
-				// Если поле в структуре - указатель, а возвращаемое значение - не указатель, разыменовываем
-				switch {
-				case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
-					rg.Op("*").Add(fieldValue)
-				case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
-					// Если поле в структуре - не указатель, а возвращаемое значение - указатель, берем адрес
-					rg.Op("&").Add(fieldValue)
-				default:
-					rg.Add(fieldValue)
-				}
+				rg.Add(r.clientRPCResultValue(contract, method, ret, fieldsResult[i], "_response_"))
 			}
 			rg.Err()
 		})
@@ -126,22 +114,10 @@ func (r *ClientRenderer) jsonrpcClientRequestFunc(ctx context.Context, contract 
 					// fieldsResult и resultsWithoutErr имеют одинаковый порядок и количество элементов
 					for i, field := range fieldsResult {
 						if i >= len(resultsWithoutErr) {
-							// Если возвращаемое значение не найдено, используем значение по умолчанию
-							cg.Add(Id("_response_").Dot(ToCamel(field.name)))
+							cg.Add(r.clientRPCResultValue(contract, method, &model.Variable{Name: field.name, TypeRef: model.TypeRef{TypeID: field.typeID, NumberOfPointers: field.numberOfPointers}}, field, "_response_"))
 							continue
 						}
-						ret := resultsWithoutErr[i]
-						fieldValue := Id("_response_").Dot(ToCamel(field.name))
-						// Если поле в структуре - указатель, а возвращаемое значение - не указатель, разыменовываем
-						switch {
-						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
-							cg.Op("*").Add(fieldValue)
-						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
-							// Если поле в структуре - не указатель, а возвращаемое значение - указатель, берем адрес
-							cg.Op("&").Add(fieldValue)
-						default:
-							cg.Add(fieldValue)
-						}
+						cg.Add(r.clientRPCResultValue(contract, method, resultsWithoutErr[i], field, "_response_"))
 					}
 					cg.Err()
 				})

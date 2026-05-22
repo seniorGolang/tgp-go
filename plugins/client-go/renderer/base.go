@@ -16,7 +16,7 @@ import (
 	"tgp/internal/model"
 )
 
-//go:embed pkg_tmpl
+//go:embed pkg-tmpl
 var pkgTmplFS embed.FS
 
 type ClientRenderer struct {
@@ -51,7 +51,7 @@ func (r *ClientRenderer) pkgPath(dir string) (s string) {
 
 func (r *ClientRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateData) (err error) {
 
-	pattern := "pkg_tmpl/" + pkg + "/*.go.tmpl"
+	pattern := "pkg-tmpl/" + pkg + "/*.go.tmpl"
 	var names []string
 	if names, err = fs.Glob(pkgTmplFS, pattern); err != nil {
 		return

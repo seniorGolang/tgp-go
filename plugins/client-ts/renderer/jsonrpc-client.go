@@ -366,11 +366,7 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 			mg.Add(tsg.NewStatement().Const("result").Colon().Id(responseTypeName).Op("=").Id("execResult").Dot("result").Op("as").Id(responseTypeName).Semicolon())
 
 			if len(results) == 1 {
-				if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
-					mg.Return(tsg.NewStatement().Id("result"))
-				} else {
-					mg.Return(tsg.NewStatement().Id("result").Dot(results[0].Name))
-				}
+				mg.Return(r.tsRPCSingleResultExpr(contract, method, results[0]))
 			} else {
 				returnObj := tsg.NewStatement()
 				returnObj.Values(func(rg *tsg.Group) {
@@ -512,11 +508,7 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 
 										callbackArgs := []*tsg.Statement{}
 										if len(results) == 1 {
-											if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
-												callbackArgs = append(callbackArgs, tsg.NewStatement().Id("result"))
-											} else {
-												callbackArgs = append(callbackArgs, tsg.NewStatement().Id("result").Dot(results[0].Name))
-											}
+											callbackArgs = append(callbackArgs, r.tsRPCSingleResultExpr(contract, method, results[0]))
 										} else {
 											for _, ret := range results {
 												callbackArgs = append(callbackArgs, tsg.NewStatement().Id("result").Dot(ret.Name))

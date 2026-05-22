@@ -104,6 +104,10 @@ func (g *generator) generateJsonRPCPath(paths map[string]types.Path, contract *m
 	g.registerStruct(requestStructName, contract.PkgPath, method.Annotations, method.Args, contentJSON)
 	g.registerStruct(responseStructName, contract.PkgPath, method.Annotations, method.Results, contentJSON)
 
+	paramsArgs := g.bodyArgs(method, contract, jsonrpcPath)
+	paramsSchema := g.effectiveRequestBodySchema(contract, method, requestStructName, paramsArgs)
+	resultSchema := g.effectiveResponseSchema(contract, method, responseStructName, nil)
+
 	opSummary := ""
 	opDesc := descriptionFromMethod(method)
 	if method.Annotations != nil {
@@ -119,7 +123,7 @@ func (g *generator) generateJsonRPCPath(paths map[string]types.Path, contract *m
 			Description: requestBodyDescription(method),
 			Content: types.Content{
 				contentJSON: types.Media{
-					Schema: types.JSONRPCSchemaPerPath("params", g.toSchema(requestStructName)),
+					Schema: types.JSONRPCSchemaPerPath("params", paramsSchema),
 				},
 			},
 		},
@@ -130,7 +134,7 @@ func (g *generator) generateJsonRPCPath(paths map[string]types.Path, contract *m
 					contentJSON: types.Media{
 						Schema: types.Schema{
 							OneOf: []types.Schema{
-								types.JSONRPCSchemaPerPath("result", g.toSchema(responseStructName)),
+								types.JSONRPCSchemaPerPath("result", resultSchema),
 								types.JSONRPCErrorSchema(),
 							},
 						},
@@ -405,24 +409,10 @@ func (g *generator) mergeSchema(dst *types.Schema, src types.Schema) {
 
 func (g *generator) resultHasJsonInline(method *model.Method, v *model.Variable) (ok bool) {
 
-	sub := method.Annotations.Sub(v.Name)
-	for key, value := range sub {
-		if key != model.TagParamTags {
-			continue
-		}
-		for _, item := range strings.Split(value, "|") {
-			tokens := strings.SplitN(strings.TrimSpace(item), ":", 2)
-			if len(tokens) < 2 {
-				continue
-			}
-			tagName := strings.TrimSpace(tokens[0])
-			tagValue := strings.TrimSpace(tokens[1])
-			if tagName == "json" && (tagValue == "inline" || strings.Contains(tagValue, ",inline")) {
-				return true
-			}
-		}
+	if method == nil {
+		return false
 	}
-	return false
+	return tags.HasJSONInline(method.Annotations, v.Name)
 }
 
 func (g *generator) bodyArgs(method *model.Method, contract *model.Contract, httpPath string) (out []*model.Variable) {

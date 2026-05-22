@@ -40,7 +40,7 @@ func Generate(rootDir string, moduleName string) (err error) {
 		return
 	}
 
-	if err = renderFile(tmpl, "tag_scanner.go.tmpl", filepath.Join(astgDir, "tag_scanner.go"), meta); err != nil {
+	if err = renderFile(tmpl, "tag-scanner.go.tmpl", filepath.Join(astgDir, "tag_scanner.go"), meta); err != nil {
 		err = fmt.Errorf("failed to render tag_scanner.go: %w", err)
 		return
 	}

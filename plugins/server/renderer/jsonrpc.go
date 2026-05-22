@@ -97,8 +97,8 @@ func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *ty
 			bg.Add(r.applyOverlayFromContext(srcFile, typeGen, method, r.jsonRPCArgErrReturn(), true))
 			bg.Line()
 			bg.ListFunc(func(lg *Group) {
-				for _, ret := range resultsWithoutError(method) {
-					lg.Id("response").Dot(r.responseStructFieldName(method, ret))
+				for _, target := range r.responseAssignmentTargets(method, "response") {
+					lg.Add(target)
 				}
 				lg.Err()
 			}).Op("=").Id("http").Dot("svc").Dot(method.Name).CallFunc(func(cg *Group) {
@@ -126,21 +126,12 @@ func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *ty
 				Id("Version"): Id("Version"),
 			})
 			if len(r.resultNamesExcludeFromBody(method)) > 0 {
-				resultName := responseResultStructName(r.contract.Name, method.Name)
-				bg.Id("resultForMarshal").Op(":=").Id(resultName).Values(DictFunc(func(d Dict) {
-					for _, ret := range resultsWithoutError(method) {
-						d[Id(r.responseStructFieldName(method, ret))] = Id("response").Dot(r.responseStructFieldName(method, ret))
-					}
-				}))
+				bg.Id("resultForMarshal").Op(":=").Add(r.resultForMarshalValues(method, "response"))
 				bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(Op("&").Id("resultForMarshal")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
 					ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("parseError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
 				})
 			} else {
-				resp := Id("response")
-				if len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
-					resp = Id("response").Dot(r.responseStructFieldName(method, resultsWithoutError(method)[0]))
-				}
-				bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(resp).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+				bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(r.responseMarshalArg(method, "response")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
 					ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("parseError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
 				})
 			}

@@ -17,6 +17,10 @@ func FilterContracts(project *model.Project, filterNames []string) (filteredCont
 
 	filteredContracts = make([]*model.Contract, 0)
 	for _, contract := range project.Contracts {
+		if contract == nil {
+			continue
+		}
+
 		for _, filterName := range filterNames {
 			if contract.Name == filterName || contract.ID == filterName {
 				filteredContracts = append(filteredContracts, contract)
@@ -55,12 +59,18 @@ func FilterContractsByInterfaces(project *model.Project, ifaces []string) (filte
 	switch {
 	case len(include) != 0:
 		for _, contract := range project.Contracts {
+			if contract == nil {
+				continue
+			}
 			if contains(include, contract.Name) {
 				filteredContracts = append(filteredContracts, contract)
 			}
 		}
 	case len(exclude) != 0:
 		for _, contract := range project.Contracts {
+			if contract == nil {
+				continue
+			}
 			if !contains(exclude, contract.Name) {
 				filteredContracts = append(filteredContracts, contract)
 			}

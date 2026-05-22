@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"tgp/core/data"
@@ -29,7 +30,20 @@ var pluginDoc string
 
 type AstgPlugin struct{}
 
+const pluginTraceKey = "astgPlugin"
+
 func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err error) {
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Error("astg plugin panic",
+				slog.String(pluginTraceKey, "Execute"),
+				slog.Any("panic", recovered),
+				slog.String("stack", string(debug.Stack())),
+			)
+			panic(recovered)
+		}
+	}()
 
 	slog.SetDefault(slog.Default().With(
 		slog.String("plugin", "astg"),
@@ -82,7 +96,20 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 	}
 
 	if !fromCache {
-		if project, err = parser.CollectWithExcludeDirs(internal.Version, contractsDir, excludeDirs); err != nil || project == nil {
+		pluginTraceStep("parser.CollectWithExcludeDirs")
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					slog.Error("astg plugin panic during collect",
+						slog.Any("panic", recovered),
+						slog.String("stack", string(debug.Stack())),
+					)
+					panic(recovered)
+				}
+			}()
+			project, err = parser.CollectWithExcludeDirs(internal.Version, contractsDir, excludeDirs)
+		}()
+		if err != nil || project == nil {
 			err = fmt.Errorf("%s: %w", i18n.Msg("failed to collect project"), err)
 			return
 		}
@@ -95,13 +122,23 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 			project.ProjectID = projectID
 		}
 
+		pluginTraceStep("descref.ResolveFileRefsInProject")
 		descref.ResolveFileRefsInProject(project, internal.ProjectRoot)
+
+		pluginTraceStep("cache.SanitizeProject")
+		cache.SanitizeProject(project)
+
 		if projectID != "" {
+			pluginTraceStep("cache.SaveProject")
 			cache.SaveProject(projectID, project, internal.ProjectRoot, contractsDir, excludeDirs)
 		}
+	} else {
+		pluginTraceStep("cache.SanitizeProject")
+		cache.SanitizeProject(project)
 	}
 
 	if len(contractsFilter) > 0 {
+		pluginTraceStep("helper.FilterContractsByInterfaces")
 		var filteredContracts []*model.Contract
 		if filteredContracts, err = helper.FilterContractsByInterfaces(project, contractsFilter); err != nil {
 			err = fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts"), err)
@@ -113,11 +150,26 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 	}
 
 	for _, contract := range project.Contracts {
+		if contract == nil {
+			continue
+		}
+
 		errorTypesMap := make(map[string]bool)
 		for _, impl := range contract.Implementations {
+			if impl == nil || impl.MethodsMap == nil {
+				continue
+			}
 			for _, method := range impl.MethodsMap {
+				if method == nil {
+					continue
+				}
 				for _, errorType := range method.ErrorTypes {
-					errorTypesMap[errorType.FullName] = true
+					if errorType == nil {
+						continue
+					}
+					if errorType.FullName != "" {
+						errorTypesMap[errorType.FullName] = true
+					}
 				}
 			}
 		}
@@ -131,18 +183,29 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 	}
 
 	if logLevel, _ := data.Get[string](request, "log-level"); strings.EqualFold(logLevel, "debug") {
+		pluginTraceStep("saveProjectJSON")
 		if saveErr := saveProjectJSON(project); saveErr != nil {
 			slog.Debug(i18n.Msg("failed to save project.json"), slog.String("error", saveErr.Error()))
 		}
 	}
 
+	pluginTraceStep("cache.SanitizeProject")
+	cache.SanitizeProject(project)
+
+	pluginTraceStep("response.Set(project)")
 	if err = response.Set("project", project); err != nil {
 		err = fmt.Errorf("%s: %w", i18n.Msg("failed to set project in response"), err)
 		return
 	}
 
+	pluginTraceStep("analysis.completed")
 	slog.Info(i18n.Msg("analysis completed"))
 	return
+}
+
+func pluginTraceStep(step string) {
+
+	slog.Debug("astg plugin step", slog.String(pluginTraceKey, step))
 }
 
 func saveProjectJSON(project *model.Project) (err error) {

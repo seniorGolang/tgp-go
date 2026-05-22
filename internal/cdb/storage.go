@@ -8,8 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/goccy/go-json"
-
+	"tgp/core/data"
 	"tgp/internal/model"
 )
 
@@ -38,13 +37,13 @@ func ReadProject(root string, relPath string) (project *model.Project, err error
 	}
 	defer gz.Close()
 
-	var data []byte
-	if data, err = io.ReadAll(gz); err != nil {
+	var jsonData []byte
+	if jsonData, err = io.ReadAll(gz); err != nil {
 		return nil, fmt.Errorf("read project: %w", err)
 	}
 
 	project = new(model.Project)
-	if err = json.Unmarshal(data, project); err != nil {
+	if err = data.UnmarshalValue(jsonData, project); err != nil {
 		return nil, fmt.Errorf("unmarshal project: %w", err)
 	}
 	return
@@ -62,8 +61,8 @@ func WriteProject(root string, relPath string, project *model.Project) (err erro
 		return fmt.Errorf("mkdir: %w", err)
 	}
 
-	var data []byte
-	if data, err = json.Marshal(project); err != nil {
+	var jsonData []byte
+	if jsonData, err = data.MarshalValue(project); err != nil {
 		return fmt.Errorf("marshal project: %w", err)
 	}
 
@@ -74,7 +73,7 @@ func WriteProject(root string, relPath string, project *model.Project) (err erro
 	defer f.Close()
 
 	gz := gzip.NewWriter(f)
-	if _, err = gz.Write(data); err != nil {
+	if _, err = gz.Write(jsonData); err != nil {
 		_ = gz.Close()
 		return fmt.Errorf("write gzip: %w", err)
 	}

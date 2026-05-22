@@ -4,6 +4,7 @@ package cache
 
 import (
 	"compress/gzip"
+	stdjson "encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -44,6 +45,11 @@ func GetProject(rootDir string, contractsDir string, excludeDirs []string) (proj
 
 func SaveProject(projectID string, project *model.Project, rootDir string, contractsDir string, excludeDirs []string) {
 
+	if project == nil {
+		return
+	}
+
+	SanitizeProject(project)
 	project.ProjectID = projectID
 
 	var err error
@@ -60,10 +66,11 @@ func SaveProject(projectID string, project *model.Project, rootDir string, contr
 	}
 
 	entry := cacheEntry{
-		Project:      project,
-		Files:        files,
-		ContractsDir: contractsDir,
-		ExcludeDirs:  append([]string(nil), excludeDirs...),
+		SchemaVersion: cacheSchemaVersion,
+		Project:       project,
+		Files:         files,
+		ContractsDir:  contractsDir,
+		ExcludeDirs:   append([]string(nil), excludeDirs...),
 	}
 	branch := ""
 	if project.Git != nil && project.Git.Branch != "" {
@@ -203,6 +210,14 @@ func loadEntry(rootDir string, cacheFile string, projectID string, contractsDir 
 		return
 	}
 
+	if entry.SchemaVersion != cacheSchemaVersion {
+		slog.Debug(i18n.Msg("cache schema version mismatch"),
+			slog.Int("expected", cacheSchemaVersion),
+			slog.Int("got", entry.SchemaVersion),
+			slog.String("cacheFile", cacheFile))
+		return
+	}
+
 	if entry.Project.ProjectID != projectID {
 		slog.Debug(i18n.Msg("project ID mismatch"),
 			slog.String("expected", projectID),
@@ -247,6 +262,7 @@ func loadEntry(rootDir string, cacheFile string, projectID string, contractsDir 
 		}
 	}
 
+	SanitizeProject(entry.Project)
 	return entry.Project, true
 }
 
@@ -272,7 +288,7 @@ func saveEntry(cacheFile string, entry *cacheEntry) (err error) {
 	}
 
 	var jsonData []byte
-	if jsonData, err = json.MarshalIndent(entry, "", "  "); err != nil {
+	if jsonData, err = marshalCacheEntry(entry); err != nil {
 		slog.Debug(i18n.Msg("failed to marshal cache entry"), slog.Any("error", err))
 		return fmt.Errorf("failed to marshal cache entry: %w", err)
 	}
@@ -306,6 +322,29 @@ func saveEntry(cacheFile string, entry *cacheEntry) (err error) {
 	}
 
 	return
+}
+
+func marshalCacheEntry(entry *cacheEntry) (jsonData []byte, err error) {
+
+	jsonData, err = marshalCacheEntryGoccy(entry)
+	if err == nil {
+		return
+	}
+
+	slog.Debug(i18n.Msg("goccy marshal failed, using encoding/json"), slog.Any("error", err))
+	return stdjson.MarshalIndent(entry, "", "  ")
+}
+
+func marshalCacheEntryGoccy(entry *cacheEntry) (jsonData []byte, err error) {
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("goccy marshal panic: %v", recovered)
+			jsonData = nil
+		}
+	}()
+
+	return json.MarshalIndent(entry, "", "  ")
 }
 
 func GetCachePath(projectID string, branch string) (s string) {

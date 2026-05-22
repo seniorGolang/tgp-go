@@ -44,6 +44,8 @@
   "failed to marshal manifest": "не удалось сериализовать манифест",
   "failed to marshal response": "не удалось сериализовать ответ",
   "failed to marshal value for key %q": "не удалось сериализовать значение для ключа %q",
+  "goccy marshal failed, using encoding/json": "ошибка сериализации goccy, используется encoding/json",
+  "goccy unmarshal failed, using encoding/json": "ошибка десериализации goccy, используется encoding/json",
   "failed to read closed flag": "не удалось прочитать флаг закрытия",
   "failed to read connID": "не удалось прочитать идентификатор соединения",
   "failed to read header for data size": "не удалось прочитать заголовок для размера данных",

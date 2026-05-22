@@ -126,6 +126,9 @@ func findContractsInMainFile(file *ast.File, filePath string, project *model.Pro
 	contractIDs = make([]string, 0)
 	contractNames := make(map[string]*model.Contract)
 	for _, contract := range project.Contracts {
+		if contract == nil {
+			continue
+		}
 		contractNames[contract.Name] = contract
 	}
 

@@ -24,6 +24,10 @@ import (
 
 func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string) (project *model.Project, err error) {
 
+	defer traceRecover("CollectWithExcludeDirs")
+	traceRuntime()
+	traceBegin("CollectWithExcludeDirs", slog.String("contractsDir", svcDir))
+
 	project = &model.Project{
 		Version:      version,
 		ContractsDir: svcDir,
@@ -60,6 +64,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string)
 	if loader, err = NewAutonomousPackageLoader(modFile); err != nil {
 		return nil, fmt.Errorf("failed to create package loader: %w", err)
 	}
+	traceStep("loader ready", slog.String("modulePath", project.ModulePath))
 
 	svcDirAbs := filepath.Join(internal.ProjectRoot, svcDir)
 
@@ -106,6 +111,8 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string)
 			}
 		}
 
+		traceStep("contract file", slog.String("file", filePathAbs), slog.String("pkgPath", pkgPath))
+
 		var pkgInfo *PackageInfo
 		if pkgInfo, err = loader.LoadPackageLazy(pkgPath); err != nil {
 			slog.Debug(i18n.Msg("Package not found, skipping file"),
@@ -114,6 +121,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string)
 				slog.String("error", err.Error()))
 			continue
 		}
+		traceStep("package loaded", slog.String("pkgPath", pkgPath), slog.Int("files", len(pkgInfo.Files)))
 
 		var astFile *ast.File
 		fileName := filepath.Base(filePathAbs)
@@ -188,6 +196,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string)
 				}
 
 				contractID := fmt.Sprintf("%s:%s", pkgPath, interfaceName)
+				traceStep("contract iface", slog.String("contractID", contractID))
 				interfaceDocsOut, interfaceDirectives := splitDocsAndDirectives(interfaceDocs)
 				contract := &model.Contract{
 					ID:          contractID,
@@ -240,6 +249,7 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string)
 							continue
 						}
 
+						traceStep("convertMethod", slog.String("contract", interfaceName), slog.String("method", methodName))
 						method := convertMethod(methodName, funcType, extractComments(methodField.Doc, methodField.Comment), contractID, pkgPath, imports, typeInfo, project, loader)
 						if method != nil {
 							contract.Methods = append(contract.Methods, method)
@@ -256,10 +266,13 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string)
 		project.Contracts = append(project.Contracts, contract)
 	}
 
+	traceStep("contracts collected", slog.Int("count", len(project.Contracts)), slog.Int("types", len(project.Types)))
+
 	if err = analyzeProject(project, loader); err != nil {
 		return nil, fmt.Errorf("failed to analyze project: %w", err)
 	}
 
+	traceEnd("CollectWithExcludeDirs", slog.Int("contracts", len(project.Contracts)), slog.Int("types", len(project.Types)))
 	return
 }
 

@@ -4,10 +4,7 @@ package parser
 
 func (l *AutonomousPackageLoader) GetPackage(pkgPath string) (info *PackageInfo, ok bool) {
 
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-	info, ok = l.cache[pkgPath]
-	return
+	return l.cachedPackage(pkgPath)
 }
 
 func (l *AutonomousPackageLoader) GetAllPackages() (result map[string]*PackageInfo) {

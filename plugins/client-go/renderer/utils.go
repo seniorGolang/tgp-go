@@ -14,6 +14,7 @@ import (
 
 	"tgp/internal/common"
 	"tgp/internal/model"
+	"tgp/internal/tags"
 )
 
 const (
@@ -831,7 +832,7 @@ func (r *ClientRenderer) fieldsResultBody(contract *model.Contract, method *mode
 	return r.varsToFields(r.resultsForBody(contract, method), method.Annotations)
 }
 
-func (r *ClientRenderer) varsToFields(vars []*model.Variable, methodTags map[string]string) (out []exchangeField) {
+func (r *ClientRenderer) varsToFields(vars []*model.Variable, methodTags tags.DocTags) (out []exchangeField) {
 
 	fields := make([]exchangeField, 0, len(vars))
 	for _, v := range vars {
@@ -847,29 +848,8 @@ func (r *ClientRenderer) varsToFields(vars []*model.Variable, methodTags map[str
 			mapValue:         v.MapValue,
 			tags:             make(map[string]string),
 		}
-		// Формат ключа: "tag:{variableName}:{tagName}"
-		prefix := fmt.Sprintf("tag:%s:", v.Name)
-		for key, value := range common.SortedPairs(methodTags) {
-			if strings.HasPrefix(key, prefix) {
-				tagName := strings.TrimPrefix(key, prefix)
-				if tagName == "tag" {
-					// Формат: tag:json:fieldName,omitempty|tag:xml:fieldName
-					if list := strings.Split(value, "|"); len(list) > 0 {
-						for _, item := range list {
-							if tokens := strings.Split(item, ":"); len(tokens) >= 2 {
-								tagName := tokens[0]
-								tagValue := strings.Join(tokens[1:], ":")
-								if tagValue == "inline" {
-									tagValue = ",inline"
-								}
-								field.tags[tagName] = tagValue
-							}
-						}
-					}
-				} else {
-					field.tags[tagName] = value
-				}
-			}
+		for tagName, tagValue := range common.SortedPairs(tags.ParseMethodVarTags(methodTags, v.Name)) {
+			field.tags[tagName] = tagValue
 		}
 		fields = append(fields, field)
 	}

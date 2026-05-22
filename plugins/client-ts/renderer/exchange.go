@@ -202,7 +202,8 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 		stmt.Void()
 		stmt.Semicolon()
 	case 1:
-		if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
+		if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) ||
+			model.ResultFieldEmbedded(r.project, contract, method, results[0]) {
 			typeStr := r.walkVariable(results[0].Name, contract.PkgPath, results[0], method.Annotations, false).typeLink()
 			stmt.Export().TypeAlias(responseName)
 			stmt.Add(tsg.TypeFromString(typeStr))

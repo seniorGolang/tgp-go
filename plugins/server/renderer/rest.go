@@ -99,8 +99,8 @@ func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *mode
 			bg.Id(VarNameCtx).Op("=").Id("withMethodLogger").Call(Id(VarNameCtx), Lit(toLowerCamel(r.contract.Name)), Lit(toLowerCamel(method.Name)))
 			bg.Line()
 			bg.If(ListFunc(func(lg *Group) {
-				for _, ret := range r.ResultFieldsWithoutError(method) {
-					lg.Id("response").Dot(r.responseStructFieldName(method, ret))
+				for _, target := range r.responseAssignmentTargets(method, "response") {
+					lg.Add(target)
 				}
 				lg.Err()
 			}).Op("=").Id("http").Dot("svc").Dot(method.Name).CallFunc(func(cg *Group) {

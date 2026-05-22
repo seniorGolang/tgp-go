@@ -59,6 +59,7 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 		contractsDisplay = strings.Join(contractsFilter, ", ")
 	}
 
+	var excludeDirs []string
 	noCache, _ := data.Get[bool](request, "no-cache")
 
 	slog.Info(i18n.Msg("analyzing project"),
@@ -77,11 +78,11 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 			slog.Debug(i18n.Msg("failed to compute project ID"), slog.String("error", err.Error()))
 		}
 	} else {
-		project, fromCache, projectID = cache.GetProject(internal.ProjectRoot)
+		project, fromCache, projectID = cache.GetProject(internal.ProjectRoot, contractsDir, excludeDirs)
 	}
 
 	if !fromCache {
-		if project, err = parser.CollectWithExcludeDirs(internal.Version, contractsDir, nil); err != nil || project == nil {
+		if project, err = parser.CollectWithExcludeDirs(internal.Version, contractsDir, excludeDirs); err != nil || project == nil {
 			err = fmt.Errorf("%s: %w", i18n.Msg("failed to collect project"), err)
 			return
 		}
@@ -96,7 +97,7 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 
 		descref.ResolveFileRefsInProject(project, internal.ProjectRoot)
 		if projectID != "" {
-			cache.SaveProject(projectID, project, internal.ProjectRoot, contractsDir, nil)
+			cache.SaveProject(projectID, project, internal.ProjectRoot, contractsDir, excludeDirs)
 		}
 	}
 

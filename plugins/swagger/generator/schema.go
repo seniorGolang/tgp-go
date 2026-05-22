@@ -581,18 +581,10 @@ func (g *generator) normalizeTypeName(typeInfo *model.Type, typeID string, defau
 
 func (g *generator) getFormFieldName(variable *model.Variable, methodTags tags.DocTags) (formName string) {
 
-	sub := methodTags.Sub(variable.Name)
-	if sub == nil {
-		return ""
+	if name, ok := tags.FormFieldName(methodTags, variable.Name); ok {
+		return name
 	}
-	paramTags := sub.Value(model.TagParamTags, "")
-	for _, item := range strings.Split(paramTags, "|") {
-		tokens := strings.SplitN(strings.TrimSpace(item), ":", 2)
-		if len(tokens) == 2 && strings.TrimSpace(tokens[0]) == "form" {
-			return strings.TrimSpace(tokens[1])
-		}
-	}
-	return ""
+	return
 }
 
 func (g *generator) getJSONFieldName(variable *model.Variable) (jsonName string) {

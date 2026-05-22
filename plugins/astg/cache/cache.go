@@ -23,7 +23,7 @@ const (
 	BaseDir = "/tg/astg/cache"
 )
 
-func GetProject(rootDir string) (project *model.Project, fromCache bool, projectID string) {
+func GetProject(rootDir string, contractsDir string, excludeDirs []string) (project *model.Project, fromCache bool, projectID string) {
 
 	var err error
 	if projectID, err = GetProjectID(rootDir); err != nil {
@@ -34,7 +34,7 @@ func GetProject(rootDir string) (project *model.Project, fromCache bool, project
 	branch := getGitBranchForCache(rootDir)
 	cacheFile := GetCachePath(projectID, branch)
 
-	project, fromCache = loadEntry(rootDir, cacheFile, projectID)
+	project, fromCache = loadEntry(rootDir, cacheFile, projectID, contractsDir, excludeDirs)
 	if fromCache {
 		slog.Debug(i18n.Msg("using cached project"), slog.String("cacheFile", cacheFile))
 	}
@@ -59,7 +59,12 @@ func SaveProject(projectID string, project *model.Project, rootDir string, contr
 		return
 	}
 
-	entry := cacheEntry{Project: project, Files: files}
+	entry := cacheEntry{
+		Project:      project,
+		Files:        files,
+		ContractsDir: contractsDir,
+		ExcludeDirs:  append([]string(nil), excludeDirs...),
+	}
 	branch := ""
 	if project.Git != nil && project.Git.Branch != "" {
 		branch = project.Git.Branch
@@ -146,7 +151,7 @@ func readGitFile(gitDir string, fileName string) (content []byte, err error) {
 	return os.ReadFile(targetAbsPath)
 }
 
-func loadEntry(rootDir string, cacheFile string, projectID string) (project *model.Project, valid bool) {
+func loadEntry(rootDir string, cacheFile string, projectID string, contractsDir string, excludeDirs []string) (project *model.Project, valid bool) {
 
 	var err error
 	var info os.FileInfo
@@ -205,6 +210,20 @@ func loadEntry(rootDir string, cacheFile string, projectID string) (project *mod
 			slog.String("cacheFile", cacheFile))
 		return
 	}
+	if entry.ContractsDir != contractsDir {
+		slog.Debug(i18n.Msg("contractsDir mismatch"),
+			slog.String("expected", contractsDir),
+			slog.String("got", entry.ContractsDir),
+			slog.String("cacheFile", cacheFile))
+		return
+	}
+	if !stringSlicesEqual(entry.ExcludeDirs, excludeDirs) {
+		slog.Debug(i18n.Msg("excludeDirs mismatch"),
+			slog.Any("expected", excludeDirs),
+			slog.Any("got", entry.ExcludeDirs),
+			slog.String("cacheFile", cacheFile))
+		return
+	}
 
 	if len(entry.Files) == 0 {
 		slog.Debug(i18n.Msg("cached entry has no Files"), slog.String("cacheFile", cacheFile))
@@ -229,6 +248,19 @@ func loadEntry(rootDir string, cacheFile string, projectID string) (project *mod
 	}
 
 	return entry.Project, true
+}
+
+func stringSlicesEqual(left []string, right []string) (ok bool) {
+
+	if len(left) != len(right) {
+		return false
+	}
+	for idx := range left {
+		if left[idx] != right[idx] {
+			return false
+		}
+	}
+	return true
 }
 
 func saveEntry(cacheFile string, entry *cacheEntry) (err error) {

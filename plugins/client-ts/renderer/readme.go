@@ -377,11 +377,11 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			if codeExample, err = r.renderTemplate("templates/simple_init_with_result.tmpl", templateData); err != nil {
+			if codeExample, err = r.renderTemplate("templates/simple-init-with-result.tmpl", templateData); err != nil {
 				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
 			}
 		} else {
-			if codeExample, err = r.renderTemplate("templates/simple_init_no_result.tmpl", templateData); err != nil {
+			if codeExample, err = r.renderTemplate("templates/simple-init-no-result.tmpl", templateData); err != nil {
 				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
 			}
 		}
@@ -439,11 +439,11 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			if codeExample, err = r.renderTemplate("templates/init_with_options_with_result.tmpl", templateData); err != nil {
+			if codeExample, err = r.renderTemplate("templates/init-with-options-with-result.tmpl", templateData); err != nil {
 				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
 			}
 		} else {
-			if codeExample, err = r.renderTemplate("templates/init_with_options_no_result.tmpl", templateData); err != nil {
+			if codeExample, err = r.renderTemplate("templates/init-with-options-no-result.tmpl", templateData); err != nil {
 				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
 			}
 		}
@@ -502,11 +502,11 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			if codeExample, err = r.renderTemplate("templates/init_with_headers_with_result.tmpl", templateData); err != nil {
+			if codeExample, err = r.renderTemplate("templates/init-with-headers-with-result.tmpl", templateData); err != nil {
 				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
 			}
 		} else {
-			if codeExample, err = r.renderTemplate("templates/init_with_headers_no_result.tmpl", templateData); err != nil {
+			if codeExample, err = r.renderTemplate("templates/init-with-headers-no-result.tmpl", templateData); err != nil {
 				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
 			}
 		}
@@ -567,11 +567,11 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		var err error
 		if resultVar != "" {
 			templateData["ResultVar"] = resultVar
-			if codeExample, err = r.renderTemplate("templates/init_with_dynamic_headers_with_result.tmpl", templateData); err != nil {
+			if codeExample, err = r.renderTemplate("templates/init-with-dynamic-headers-with-result.tmpl", templateData); err != nil {
 				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
 			}
 		} else {
-			if codeExample, err = r.renderTemplate("templates/init_with_dynamic_headers_no_result.tmpl", templateData); err != nil {
+			if codeExample, err = r.renderTemplate("templates/init-with-dynamic-headers-no-result.tmpl", templateData); err != nil {
 				codeExample = fmt.Sprintf("// Error rendering template: %v", err)
 			}
 		}

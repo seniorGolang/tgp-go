@@ -321,7 +321,7 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 		"NeedsDto":  needsDto,
 	}
 
-	batchExample, err := r.renderTemplate("templates/batch_example.tmpl", templateData)
+	batchExample, err := r.renderTemplate("templates/batch-example.tmpl", templateData)
 	if err != nil {
 		batchExample = fmt.Sprintf("// Error rendering template: %v", err)
 	}

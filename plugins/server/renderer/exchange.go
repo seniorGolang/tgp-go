@@ -151,21 +151,8 @@ func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.
 				field.tags["json"] = "-"
 			}
 		}
-		for key, value := range common.SortedPairs(methodTags.Sub(v.Name)) {
-			if key == model.TagParamTags {
-				if list := strings.Split(value, "|"); len(list) > 0 {
-					for _, item := range list {
-						if tokens := strings.Split(item, ":"); len(tokens) >= 2 {
-							tagName := tokens[0]
-							tagValue := strings.Join(tokens[1:], ":")
-							if tagValue == "inline" {
-								tagValue = ",inline"
-							}
-							field.tags[tagName] = tagValue
-						}
-					}
-				}
-			}
+		for tagName, tagValue := range common.SortedPairs(tags.ParseMethodVarTags(methodTags, v.Name)) {
+			field.tags[tagName] = tagValue
 		}
 		fields = append(fields, field)
 	}

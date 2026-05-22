@@ -47,7 +47,7 @@ func Generate(outDir string, moduleName string, jsonRPC string, rest string) (er
 			EntitySnake:   lowerFirst(iface.PublicName),
 			NeedDtoImport: false,
 		}
-		if err = renderFile(tmpl, "contract_iface.tmpl", filepath.Join(outDir, dirContracts, iface.FileBase+".go"), data); err != nil {
+		if err = renderFile(tmpl, "contract-iface.tmpl", filepath.Join(outDir, dirContracts, iface.FileBase+".go"), data); err != nil {
 			return
 		}
 	}
@@ -61,7 +61,7 @@ func Generate(outDir string, moduleName string, jsonRPC string, rest string) (er
 			EntitySnake:   lowerFirst(iface.PublicName),
 			NeedDtoImport: true,
 		}
-		if err = renderFile(tmpl, "contract_iface.tmpl", filepath.Join(outDir, dirContracts, iface.FileBase+".go"), data); err != nil {
+		if err = renderFile(tmpl, "contract-iface.tmpl", filepath.Join(outDir, dirContracts, iface.FileBase+".go"), data); err != nil {
 			return
 		}
 	}
@@ -82,7 +82,7 @@ func Generate(outDir string, moduleName string, jsonRPC string, rest string) (er
 			Module      string
 			PackageName string
 		}{Module: p.Module, PackageName: iface.FileBase}
-		if err = renderFile(tmpl, "service_contract.tmpl", filepath.Join(svcDir, fileService), svcData); err != nil {
+		if err = renderFile(tmpl, "service-contract.tmpl", filepath.Join(svcDir, fileService), svcData); err != nil {
 			return
 		}
 		doData := struct {
@@ -99,7 +99,7 @@ func Generate(outDir string, moduleName string, jsonRPC string, rest string) (er
 			Module      string
 			PackageName string
 		}{Module: p.Module, PackageName: iface.FileBase}
-		if err = renderFile(tmpl, "service_contract.tmpl", filepath.Join(svcDir, fileService), svcData); err != nil {
+		if err = renderFile(tmpl, "service-contract.tmpl", filepath.Join(svcDir, fileService), svcData); err != nil {
 			return
 		}
 		crudData := struct {
@@ -123,16 +123,16 @@ func Generate(outDir string, moduleName string, jsonRPC string, rest string) (er
 		return
 	}
 	errsDir := filepath.Join(outDir, dirPkg, dirErrs)
-	if err = renderFile(tmpl, "errs_basic.tmpl", filepath.Join(errsDir, fileBasic), p); err != nil {
+	if err = renderFile(tmpl, "errs-basic.tmpl", filepath.Join(errsDir, fileBasic), p); err != nil {
 		return
 	}
-	if err = renderFile(tmpl, "errs_type.tmpl", filepath.Join(errsDir, fileType), p); err != nil {
+	if err = renderFile(tmpl, "errs-type.tmpl", filepath.Join(errsDir, fileType), p); err != nil {
 		return
 	}
-	if err = renderFile(tmpl, "errs_utils.tmpl", filepath.Join(errsDir, fileUtils), p); err != nil {
+	if err = renderFile(tmpl, "errs-utils.tmpl", filepath.Join(errsDir, fileUtils), p); err != nil {
 		return
 	}
-	if err = renderFile(tmpl, "errs_decode.tmpl", filepath.Join(errsDir, fileDecode), p); err != nil {
+	if err = renderFile(tmpl, "errs-decode.tmpl", filepath.Join(errsDir, fileDecode), p); err != nil {
 		return
 	}
 	if err = runGoGenerateCMD(outDir); err != nil {

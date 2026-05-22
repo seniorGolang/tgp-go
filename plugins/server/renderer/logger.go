@@ -139,26 +139,8 @@ func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method
 		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("request"), reqValue))
 	}
 	if !skipResponse {
-		returns := r.ResultFieldsWithoutError(method)
-		originReturns := resultsWithoutError(method)
-		respStruct := Id(responseStructName(r.contract.Name, method.Name)).Values(r.dictByResponseReturns(method, returns, originReturns))
-		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("response"), respStruct))
-	}
-}
-
-func (r *contractRenderer) dictByResponseReturns(method *model.Method, returns []*model.Variable, originReturns []*model.Variable) Dict {
-
-	if len(returns) != len(originReturns) {
-		panic("len of returns and originReturns not the same")
-	}
-	return DictFunc(func(d Dict) {
-		for i, field := range returns {
-			normalVar := originReturns[i]
-			normalVarCode := Id(toLowerCamel(normalVar.Name))
-			if field.NumberOfPointers == 0 && normalVar.NumberOfPointers > 0 {
-				normalVarCode = Op("*").Add(normalVarCode)
-			}
-			d[Id(r.responseStructFieldName(method, field))] = normalVarCode
+		if respValues := r.responseLogValues(method); respValues != nil {
+			bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("response"), respValues))
 		}
-	})
+	}
 }

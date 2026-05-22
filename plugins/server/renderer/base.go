@@ -17,7 +17,7 @@ import (
 	"tgp/internal/model"
 )
 
-//go:embed pkg_tmpl
+//go:embed pkg-tmpl
 var pkgTmplFS embed.FS
 
 type baseRenderer struct {
@@ -80,7 +80,7 @@ func methodsSorted(methods []*model.Method) (out []*model.Method) {
 
 func (r *baseRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateData) (err error) {
 
-	pattern := "pkg_tmpl/" + pkg + "/*.go.tmpl"
+	pattern := "pkg-tmpl/" + pkg + "/*.go.tmpl"
 	var names []string
 	if names, err = fs.Glob(pkgTmplFS, pattern); err != nil {
 		return

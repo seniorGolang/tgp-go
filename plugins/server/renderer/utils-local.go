@@ -51,43 +51,6 @@ func resultsWithoutError(method *model.Method) (out []*model.Variable) {
 	return method.Results
 }
 
-func typeIsEmbeddable(project *model.Project, typeID string) (ok bool) {
-
-	seen := make(map[string]struct{})
-	for typeID != "" {
-		if _, repeated := seen[typeID]; repeated {
-			return false
-		}
-		seen[typeID] = struct{}{}
-
-		typ, found := project.Types[typeID]
-		if !found {
-			return false
-		}
-		switch typ.Kind {
-		case model.TypeKindStruct, model.TypeKindInterface:
-			return true
-		case model.TypeKindAlias:
-			typeID = typ.AliasOf
-		default:
-			return false
-		}
-	}
-
-	return false
-}
-
-func typeNameFromTypeID(project *model.Project, typeID string) (s string) {
-
-	if typ, ok := project.Types[typeID]; ok && typ.TypeName != "" {
-		return typ.TypeName
-	}
-	if idx := strings.Index(typeID, ":"); idx >= 0 && idx+1 < len(typeID) {
-		return typeID[idx+1:]
-	}
-	return typeID
-}
-
 func toCamel(s string) (out string) {
 
 	if s == "" {

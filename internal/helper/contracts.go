@@ -20,7 +20,6 @@ func FilterContracts(project *model.Project, filterNames []string) (filteredCont
 		if contract == nil {
 			continue
 		}
-
 		for _, filterName := range filterNames {
 			if contract.Name == filterName || contract.ID == filterName {
 				filteredContracts = append(filteredContracts, contract)

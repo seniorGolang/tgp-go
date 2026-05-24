@@ -2,10 +2,9 @@
 package data
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-
-	"github.com/goccy/go-json"
 
 	"tgp/core/i18n"
 )
@@ -66,7 +65,7 @@ func (s MapStorage) Set(name string, value any) (err error) {
 	if s == nil {
 		return errors.New(i18n.Msg("storage is nil"))
 	}
-	data, err := MarshalValue(value)
+	data, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf(i18n.Msg("failed to marshal value for key %q")+": %w", name, err)
 	}
@@ -94,7 +93,7 @@ func Get[T any](store Storage, key string) (value T, err error) {
 	if !ok {
 		return value, fmt.Errorf(i18n.Msg("key %q")+": %w", key, ErrNotFound)
 	}
-	if err = UnmarshalValue(raw, &value); err != nil {
+	if err = json.Unmarshal(raw, &value); err != nil {
 		return value, fmt.Errorf(i18n.Msg("failed to unmarshal value for key %q")+": %w", key, err)
 	}
 	return

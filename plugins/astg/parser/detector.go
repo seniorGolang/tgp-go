@@ -18,15 +18,6 @@ func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Proje
 		return
 	}
 
-	typeID := fmt.Sprintf("%s:%s", coreType.ImportPkgPath, coreType.TypeName)
-	traceStep("detectInterfaces", slog.String("typeID", typeID), slog.String("goType", typ.String()))
-
-	typ = types.Unalias(typ)
-	if typ == nil || isInvalidType(typ) {
-		traceStep("detectInterfaces skip invalid", slog.String("typeID", typeID))
-		return
-	}
-
 	// Если интерфейсы уже определены, не анализируем повторно
 	if len(coreType.ImplementsInterfaces) > 0 {
 		return
@@ -41,7 +32,6 @@ func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Proje
 	seenIDs := make(map[string]bool)
 
 	for ifaceID, iface := range allInterfaces {
-		traceStep("detectInterfaces Implements", slog.String("typeID", typeID), slog.String("ifaceID", ifaceID))
 		if types.Implements(typ, iface) {
 			if !seenIDs[ifaceID] {
 				implements = append(implements, ifaceID)
@@ -150,14 +140,6 @@ func detectParseFromString(typ types.Type, coreType *model.Type, project *model.
 
 func isBuiltinErrorType(t types.Type) (ok bool) {
 	return types.Identical(t, types.Universe.Lookup("error").Type())
-}
-
-func isInvalidType(typ types.Type) (ok bool) {
-
-	if basic, isBasic := typ.(*types.Basic); isBasic {
-		return basic.Kind() == types.Invalid
-	}
-	return false
 }
 
 func getAllInterfacesFromLoader(loader *AutonomousPackageLoader) (interfaces map[string]*types.Interface) {

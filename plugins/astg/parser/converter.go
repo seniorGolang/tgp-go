@@ -215,33 +215,22 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 				baseTypeID := coreType.AliasOf
 				if _, exists := project.Types[baseTypeID]; !exists {
 					basePkgPath := named.Obj().Pkg().Path()
-					baseTypeName := named.Obj().Name()
-					traceStep("alias base type load",
-						slog.String("aliasType", fmt.Sprintf("%s:%s", coreType.ImportPkgPath, coreType.TypeName)),
-						slog.String("baseTypeID", baseTypeID),
-						slog.String("basePkgPath", basePkgPath),
-					)
-					var basePkgInfo *PackageInfo
-					var baseOk bool
-					if basePkgInfo, baseOk = loader.GetPackage(basePkgPath); !baseOk || basePkgInfo == nil {
-						var loadErr error
-						if basePkgInfo, loadErr = loader.LoadPackageForType(basePkgPath, baseTypeName); loadErr != nil {
-							traceStep("alias base type load failed",
-								slog.String("baseType", baseTypeID),
-								slog.String("error", loadErr.Error()),
-							)
-							slog.Debug(i18n.Msg("Package info is nil for base type"),
-								slog.String("baseType", baseTypeID),
-								slog.String("error", loadErr.Error()))
-						}
-					}
-					if basePkgInfo != nil && basePkgInfo.Types != nil {
+					// basePkgPath должен быть загружен через loader
+					// Пока пропускаем, так как loader не передается в эту функцию
+					basePkgInfo, ok := loader.GetPackage(basePkgPath)
+					if ok && basePkgInfo != nil {
+						// Важно: используем тот же processingSet для защиты от рекурсии
 						baseCoreType := convertTypeFromGoTypes(named, basePkgPath, basePkgInfo.Imports, project, loader, processingSet)
 						if baseCoreType != nil {
+							// ВАЖНО: сохраняем базовый тип БЕЗ проверки isExcludedType,
+							// так как он нужен для правильной обработки алиаса
+							// Проверка isExcludedType применяется только при сохранении через saveTypeFromGoTypes
 							project.Types[baseTypeID] = baseCoreType
 						} else {
 							slog.Debug(i18n.Msg("Failed to convert base type"), slog.String("baseType", baseTypeID))
 						}
+					} else {
+						slog.Debug(i18n.Msg("Package info is nil for base type"), slog.String("baseType", baseTypeID))
 					}
 				}
 				// Это произойдет в expandTypesRecursively через collectTypeFromID

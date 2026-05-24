@@ -15,38 +15,18 @@ import (
 
 func expandTypesRecursively(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
-	defer traceRecover("expandTypesRecursively")
-	traceBegin("expandTypesRecursively", slog.Int("types", len(project.Types)))
-
 	seenTypes := &typeutil.Map{}
 	msets := &typeutil.MethodSetCache{}
 
 	for _, contract := range project.Contracts {
-		if contract == nil {
-			continue
-		}
-
 		for _, method := range contract.Methods {
-			if method == nil {
-				continue
-			}
-
 			for _, arg := range method.Args {
-				if arg == nil {
-					continue
-				}
-				traceStep("collectTypeFromID arg", slog.String("contract", contract.Name), slog.String("method", method.Name), slog.String("typeID", arg.TypeID))
 				if err = collectTypeFromID(arg.TypeID, project, seenTypes, msets, loader); err != nil {
 					return
 				}
 			}
 
 			for _, result := range method.Results {
-				if result == nil {
-					continue
-				}
-
-				traceStep("collectTypeFromID result", slog.String("contract", contract.Name), slog.String("method", method.Name), slog.String("typeID", result.TypeID))
 				if err = collectTypeFromID(result.TypeID, project, seenTypes, msets, loader); err != nil {
 					return
 				}
@@ -58,8 +38,6 @@ func expandTypesRecursively(project *model.Project, loader *AutonomousPackageLoa
 }
 
 func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeutil.Map, msets *typeutil.MethodSetCache, loader *AutonomousPackageLoader) (err error) {
-
-	defer traceRecover("collectTypeFromID:" + typeID)
 
 	var typ *model.Type
 	var exists bool

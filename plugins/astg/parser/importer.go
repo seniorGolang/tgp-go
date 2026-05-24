@@ -3,33 +3,28 @@
 package parser
 
 import (
-	"fmt"
 	"go/types"
-	"log/slog"
+	"strings"
 	"sync"
 )
 
 type FileSystemImporter struct {
-	loader *AutonomousPackageLoader
-	cache  map[string]*types.Package
-	mu     sync.RWMutex
+	loader          *AutonomousPackageLoader
+	cache           map[string]*types.Package
+	mu              sync.RWMutex
+	lazyMode        bool
+	requiredImports map[string]bool
 }
 
 func (i *FileSystemImporter) Import(path string) (pkg *types.Package, err error) {
-
-	defer traceRecover("Import:" + path)
 
 	i.mu.RLock()
 	var ok bool
 	if pkg, ok = i.cache[path]; ok {
 		i.mu.RUnlock()
-		traceStep("Import cache hit", slog.String("path", path))
 		return
 	}
 	i.mu.RUnlock()
-
-	local := i.loader.isLocalPackage(path)
-	traceStep("Import", slog.String("path", path), slog.Bool("local", local))
 
 	if path == "unsafe" {
 		pkg = types.Unsafe
@@ -39,13 +34,31 @@ func (i *FileSystemImporter) Import(path string) (pkg *types.Package, err error)
 		return
 	}
 
-	if !local {
-		if pkg, err = i.loader.gcImporter.Import(path); err != nil {
-			traceStep("Import gc failed", slog.String("path", path), slog.String("error", err.Error()))
-			err = fmt.Errorf("import %s: %w", path, err)
+	if i.lazyMode {
+		i.mu.RLock()
+		isRequired := i.requiredImports[path]
+		i.mu.RUnlock()
+
+		if !isRequired {
+			stubPkg := types.NewPackage(path, path)
+			i.mu.Lock()
+			i.cache[path] = stubPkg
+			i.mu.Unlock()
+			pkg = stubPkg
 			return
 		}
-		traceStep("Import gc ok", slog.String("path", path))
+	}
+
+	// Внешние пакеты загружаем из export data
+	if !i.loader.isLocalPackage(path) {
+		if pkg, err = i.loader.gcImporter.Import(path); err != nil {
+			name := path
+			if idx := strings.LastIndex(path, "/"); idx >= 0 {
+				name = path[idx+1:]
+			}
+			pkg = types.NewPackage(path, name)
+			err = nil
+		}
 		i.mu.Lock()
 		i.cache[path] = pkg
 		i.mu.Unlock()
@@ -55,17 +68,10 @@ func (i *FileSystemImporter) Import(path string) (pkg *types.Package, err error)
 	var info *PackageInfo
 	info, ok = i.loader.GetPackage(path)
 
-	if !ok || info == nil || info.Types == nil {
-		traceStep("Import load minimal", slog.String("path", path))
-		if info, err = i.loader.LoadPackageMinimal(path); err != nil {
-			traceStep("Import minimal failed", slog.String("path", path), slog.String("error", err.Error()))
+	if !ok {
+		if info, err = i.loader.LoadPackageMinimal(path, i.requiredImports); err != nil {
 			return
 		}
-	}
-
-	if info == nil || info.Types == nil {
-		err = fmt.Errorf("package %s not loaded", path)
-		return
 	}
 
 	i.mu.Lock()

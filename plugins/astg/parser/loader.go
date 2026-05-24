@@ -148,30 +148,11 @@ func (l *AutonomousPackageLoader) LoadPackageLazy(pkgPath string) (info *Package
 
 func (l *AutonomousPackageLoader) LoadPackageFromFiles(pkgPath string, pkgDir string, fset *token.FileSet, files []*ast.File) (info *PackageInfo, err error) {
 
-	l.mu.RLock()
-	var ok bool
-	if info, ok = l.cache[pkgPath]; ok && info != nil {
-		l.mu.RUnlock()
-		return
-	}
-	l.mu.RUnlock()
-
-	l.mu.Lock()
-	if info, ok = l.cache[pkgPath]; ok && info != nil {
-		l.mu.Unlock()
-		return
-	}
-	l.cache[pkgPath] = nil
-	l.mu.Unlock()
-
 	if len(files) == 0 {
-		l.mu.Lock()
-		delete(l.cache, pkgPath)
-		l.mu.Unlock()
 		return nil, fmt.Errorf("no files provided for package %s", pkgPath)
 	}
 
-	requiredImports := extractImportsFromExportedAndAliases(files, l.resolver)
+	requiredImports := allPackageImports(files, l.resolver)
 
 	importer := &FileSystemImporter{
 		loader:          l,

@@ -44,6 +44,62 @@ func (r *contractRenderer) varHeaderMapForRequest(method *model.Method) (out map
 	return
 }
 
+func (r *contractRenderer) varHeaderMapTransportForRequest(method *model.Method) (out map[string]string) {
+
+	out = make(map[string]string)
+	for _, it := range r.headerEntries(method) {
+		if it.Mode != model.ArgModeExplicit && it.Mode != model.ArgModeImplicit {
+			continue
+		}
+		if r.argByName(method, it.Arg) != nil {
+			out[it.Arg] = it.Key
+		}
+	}
+	return
+}
+
+func (r *contractRenderer) varHeaderMapBodyModeForRequest(method *model.Method) (out map[string]string) {
+
+	out = make(map[string]string)
+	for _, it := range r.headerEntries(method) {
+		if it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit {
+			continue
+		}
+		if r.argByName(method, it.Arg) != nil {
+			out[it.Arg] = it.Key
+		}
+	}
+	return
+}
+
+func (r *contractRenderer) varCookieMapTransportForRequest(method *model.Method) (out map[string]string) {
+
+	out = make(map[string]string)
+	for _, it := range r.cookieEntries(method) {
+		if it.Mode != model.ArgModeExplicit && it.Mode != model.ArgModeImplicit {
+			continue
+		}
+		if r.argByName(method, it.Arg) != nil {
+			out[it.Arg] = it.Key
+		}
+	}
+	return
+}
+
+func (r *contractRenderer) varCookieMapBodyModeForRequest(method *model.Method) (out map[string]string) {
+
+	out = make(map[string]string)
+	for _, it := range r.cookieEntries(method) {
+		if it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit {
+			continue
+		}
+		if r.argByName(method, it.Arg) != nil {
+			out[it.Arg] = it.Key
+		}
+	}
+	return
+}
+
 func (r *contractRenderer) varCookieMap(method *model.Method) (out map[string]string) {
 
 	out = make(map[string]string)
@@ -115,17 +171,6 @@ func (r *contractRenderer) argPathMap(method *model.Method) (out map[string]stri
 	return
 }
 
-func (r *contractRenderer) argParamMap(method *model.Method) (out map[string]string) {
-
-	out = make(map[string]string)
-	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, "")) {
-		if it.Arg != "path" {
-			out[it.Arg] = it.Key
-		}
-	}
-	return
-}
-
 func (r *contractRenderer) resultNamesExcludeFromBody(method *model.Method) (out map[string]struct{}) {
 
 	out = make(map[string]struct{})
@@ -189,28 +234,6 @@ func (r *contractRenderer) retCookieMap(method *model.Method) (out map[string]st
 		}
 	}
 	return cookies
-}
-
-func (r *contractRenderer) argsWithoutSpecialArgs(method *model.Method) (out []*model.Variable) {
-
-	vars := make([]*model.Variable, 0)
-	argsAll := argsWithoutContext(method)
-	pathMap := r.argPathMap(method)
-	paramMap := r.argParamMap(method)
-	headerRequest := r.varHeaderMapForRequest(method)
-	cookieRequest := r.varCookieMapForRequest(method)
-
-	for _, arg := range argsAll {
-		_, inPath := pathMap[arg.Name]
-		_, inArgs := paramMap[arg.Name]
-		_, inHeader := headerRequest[arg.Name]
-		_, inCookie := cookieRequest[arg.Name]
-
-		if !inArgs && !inPath && !inHeader && !inCookie {
-			vars = append(vars, arg)
-		}
-	}
-	return vars
 }
 
 func (r *contractRenderer) methodRequestBodyStreamArg(method *model.Method) (v *model.Variable) {
@@ -750,14 +773,6 @@ func toIDWithImport(qualifiedName string, srcFile *GoFile) (stmt *Statement) {
 	return Id(qualifiedName)
 }
 
-func (r *contractRenderer) arguments(method *model.Method) (out []*model.Variable) {
-
-	if method == nil {
-		return nil
-	}
-	return r.argsWithoutSpecialArgs(method)
-}
-
 func (r *contractRenderer) urlArgs(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
 	return r.argFromString(srcFile, typeGen, method, "urlParam", r.argPathMap(method),
 		func(srcName string) Code {
@@ -805,7 +820,21 @@ func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, 
 }
 
 func (r *contractRenderer) httpArgHeaders(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
-	return r.argFromString(srcFile, typeGen, method, "header", r.varHeaderMapForRequest(method),
+
+	return r.argFromString(srcFile, typeGen, method, "header", r.varHeaderMapTransportForRequest(method),
+		func(srcName string) Code {
+			return Id(VarNameFtx).Dot("Get").Call(Lit(srcName))
+		},
+		errBody,
+		func(arg *model.Variable) *Statement {
+			return Id("request").Dot(r.requestStructFieldName(method, arg))
+		},
+	)
+}
+
+func (r *contractRenderer) httpArgHeadersBodyMode(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
+
+	return r.argFromString(srcFile, typeGen, method, "header", r.varHeaderMapBodyModeForRequest(method),
 		func(srcName string) Code {
 			return Id(VarNameFtx).Dot("Get").Call(Lit(srcName))
 		},
@@ -876,7 +905,21 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 }
 
 func (r *contractRenderer) httpCookies(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
-	return r.argFromString(srcFile, typeGen, method, "cookie", r.varCookieMapForRequest(method),
+
+	return r.argFromString(srcFile, typeGen, method, "cookie", r.varCookieMapTransportForRequest(method),
+		func(srcName string) Code {
+			return Id(VarNameFtx).Dot("Cookies").Call(Lit(srcName))
+		},
+		errBody,
+		func(arg *model.Variable) *Statement {
+			return Id("request").Dot(r.requestStructFieldName(method, arg))
+		},
+	)
+}
+
+func (r *contractRenderer) httpCookiesBodyMode(srcFile *GoFile, typeGen *types.Generator, method *model.Method, errBody func(arg, header string) []Code) *Statement {
+
+	return r.argFromString(srcFile, typeGen, method, "cookie", r.varCookieMapBodyModeForRequest(method),
 		func(srcName string) Code {
 			return Id(VarNameFtx).Dot("Cookies").Call(Lit(srcName))
 		},

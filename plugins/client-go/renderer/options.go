@@ -34,11 +34,21 @@ func (r *ClientRenderer) RenderClientOptions() (err error) {
 		),
 	)
 
-	srcFile.Line().Func().Id("DecodeError").Params(Id("decoder").Id("ErrorDecoder")).Params(Id("Option")).Block(
-		Return(Func().Params(Id("cli").Op("*").Id("Client"))).Block(
-			Id("cli").Dot("errorDecoder").Op("=").Id("decoder"),
-		),
-	)
+	if r.HasJsonRPC() {
+		srcFile.Line().Func().Id("DecodeError").Params(Id("decoder").Id("ErrorDecoder")).Params(Id("Option")).Block(
+			Return(Func().Params(Id("cli").Op("*").Id("Client"))).Block(
+				Id("cli").Dot("errorDecoder").Op("=").Id("decoder"),
+			),
+		)
+	}
+
+	if r.HasHTTP() {
+		srcFile.Line().Func().Id("DecodeHTTPError").Params(Id("decoder").Id("HTTPErrorDecoder")).Params(Id("Option")).Block(
+			Return(Func().Params(Id("cli").Op("*").Id("Client"))).Block(
+				Id("cli").Dot("httpErrorDecoder").Op("=").Id("decoder"),
+			),
+		)
+	}
 
 	srcFile.Line().Func().Id("Name").Params(Id("name").String()).Params(Id("Option")).Block(
 		Return(Func().Params(Id("cli").Op("*").Id("Client"))).Block(

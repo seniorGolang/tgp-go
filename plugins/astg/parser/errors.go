@@ -18,13 +18,11 @@ import (
 
 func analyzeMethodErrors(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
-	isErrorTypeCache := make(map[string]bool)
-
 	for _, contract := range project.Contracts {
 		for _, method := range contract.Methods {
 			errorsFromAnnotations := extractErrorsFromAnnotations(method.Annotations)
-			errorsFromImplementations := extractErrorsFromImplementations(method, contract, project, loader, isErrorTypeCache)
-			errorsFromHandlers := extractErrorsFromHandler(method, loader, isErrorTypeCache)
+			errorsFromImplementations := extractErrorsFromImplementations(method, contract)
+			errorsFromHandlers := extractErrorsFromHandler(method, loader)
 
 			errorsMap := make(map[string]*model.ErrorInfo)
 			for _, errInfo := range errorsFromImplementations {
@@ -44,11 +42,12 @@ func analyzeMethodErrors(project *model.Project, loader *AutonomousPackageLoader
 			}
 			method.Errors = make([]*model.ErrorInfo, 0, len(errorsMap))
 			for _, errInfo := range errorsMap {
+				enrichErrorInfoHTTPCode(errInfo, loader)
 				method.Errors = append(method.Errors, errInfo)
 
 				typeID := errInfo.TypeID
 				if typeID == "" {
-					typeID = fmt.Sprintf("%s:%s", errInfo.PkgPath, errInfo.TypeName)
+					continue
 				}
 				if err = ensureTypeLoaded(typeID, project, loader); err != nil {
 					slog.Debug(i18n.Msg("Error type not found, skipping"),
@@ -115,7 +114,318 @@ func extractErrorsFromAnnotations(methodTags tags.DocTags) (errors []*model.Erro
 	return
 }
 
-func extractErrorsFromImplementations(method *model.Method, contract *model.Contract, project *model.Project, loader *AutonomousPackageLoader, isErrorTypeCache map[string]bool) (errors []*model.ErrorInfo) {
+func findErrorTypesInMethodBody(body *ast.BlockStmt, signature *types.Signature, pkgInfo *PackageInfo) (errorTypes []*model.ErrorTypeReference) {
+
+	if body == nil || pkgInfo == nil || pkgInfo.TypeInfo == nil || pkgInfo.Types == nil {
+		return
+	}
+
+	errorTypes = make([]*model.ErrorTypeReference, 0)
+	seen := make(map[string]bool)
+
+	ast.Inspect(body, func(node ast.Node) bool {
+
+		switch n := node.(type) {
+		case *ast.ReturnStmt:
+			if signature == nil {
+				break
+			}
+			results := signature.Results()
+			if results == nil {
+				break
+			}
+			for i, expr := range n.Results {
+				if i >= results.Len() || !isErrorResultType(results.At(i).Type()) {
+					continue
+				}
+				appendErrorTypeRef(expr, pkgInfo, seen, &errorTypes)
+			}
+		case *ast.AssignStmt:
+			for i, lhs := range n.Lhs {
+				ident, ok := lhs.(*ast.Ident)
+				if !ok || ident.Name != "err" || i >= len(n.Rhs) {
+					continue
+				}
+				appendErrorTypeRef(n.Rhs[i], pkgInfo, seen, &errorTypes)
+			}
+		}
+
+		return true
+	})
+
+	return
+}
+
+func appendErrorTypeRef(expr ast.Expr, pkgInfo *PackageInfo, seen map[string]bool, errorTypes *[]*model.ErrorTypeReference) {
+
+	errorRef := errorTypeRefFromExpr(expr, pkgInfo)
+	if errorRef == nil {
+		return
+	}
+	key := fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.Name)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	*errorTypes = append(*errorTypes, errorRef)
+}
+
+func isErrorResultType(typ types.Type) (isError bool) {
+
+	if typ == nil {
+		return
+	}
+
+	typ = derefAndUnaliasType(typ)
+	errorIface := createErrorInterface()
+	if types.Implements(typ, errorIface) {
+		isError = true
+		return
+	}
+
+	isError = types.Implements(types.NewPointer(typ), errorIface)
+	return
+}
+
+func errorTypeRefFromExpr(expr ast.Expr, pkgInfo *PackageInfo) (errorRef *model.ErrorTypeReference) {
+
+	if expr == nil || pkgInfo == nil || pkgInfo.TypeInfo == nil {
+		return
+	}
+
+	typ := pkgInfo.TypeInfo.TypeOf(expr)
+	if typ == nil {
+		return
+	}
+
+	named := namedConcreteErrorType(typ)
+	if named == nil {
+		return
+	}
+
+	obj := named.Obj()
+	if obj == nil || obj.Pkg() == nil {
+		return
+	}
+
+	schemaPkgPath := obj.Pkg().Path()
+	schemaTypeName := obj.Name()
+
+	symbolName := symbolNameFromExpr(expr, pkgInfo)
+	if symbolName == "" {
+		symbolName = schemaTypeName
+	}
+
+	symbolPkgPath := symbolPkgPathFromExpr(expr, pkgInfo, schemaPkgPath)
+	if symbolPkgPath == "" {
+		symbolPkgPath = schemaPkgPath
+	}
+
+	errorRef = &model.ErrorTypeReference{
+		PkgPath:  symbolPkgPath,
+		Name:     symbolName,
+		TypeName: schemaTypeName,
+		FullName: fmt.Sprintf("%s.%s", symbolPkgPath, symbolName),
+	}
+	return
+}
+
+func symbolNameFromExpr(expr ast.Expr, pkgInfo *PackageInfo) (name string) {
+
+	if expr == nil || pkgInfo == nil || pkgInfo.TypeInfo == nil {
+		return
+	}
+
+	switch e := expr.(type) {
+	case *ast.UnaryExpr:
+		if e.Op == token.AND {
+			return symbolNameFromExpr(e.X, pkgInfo)
+		}
+		return symbolNameFromExpr(e.X, pkgInfo)
+	case *ast.SelectorExpr:
+		if selection, ok := pkgInfo.TypeInfo.Selections[e]; ok && selection != nil {
+			return selection.Obj().Name()
+		}
+		if obj, ok := pkgInfo.TypeInfo.Uses[e.Sel]; ok && obj != nil {
+			return obj.Name()
+		}
+	case *ast.Ident:
+		if obj, ok := pkgInfo.TypeInfo.Uses[e]; ok && obj != nil {
+			return obj.Name()
+		}
+	case *ast.CompositeLit:
+		return typeNameFromTypeExpr(e.Type)
+	}
+
+	return
+}
+
+func symbolPkgPathFromExpr(expr ast.Expr, pkgInfo *PackageInfo, defaultPkgPath string) (pkgPath string) {
+
+	if expr == nil || pkgInfo == nil || pkgInfo.TypeInfo == nil {
+		return defaultPkgPath
+	}
+
+	switch e := expr.(type) {
+	case *ast.UnaryExpr:
+		if e.Op == token.AND {
+			return symbolPkgPathFromExpr(e.X, pkgInfo, defaultPkgPath)
+		}
+		return symbolPkgPathFromExpr(e.X, pkgInfo, defaultPkgPath)
+	case *ast.SelectorExpr:
+		if selection, ok := pkgInfo.TypeInfo.Selections[e]; ok && selection != nil {
+			return objectPkgPath(selection.Obj())
+		}
+		if obj, ok := pkgInfo.TypeInfo.Uses[e.Sel]; ok && obj != nil {
+			return objectPkgPath(obj)
+		}
+	case *ast.Ident:
+		if obj, ok := pkgInfo.TypeInfo.Uses[e]; ok && obj != nil {
+			if path := objectPkgPath(obj); path != "" {
+				return path
+			}
+		}
+	case *ast.CompositeLit:
+		return typePkgPathFromTypeExpr(e.Type, pkgInfo, defaultPkgPath)
+	}
+
+	return defaultPkgPath
+}
+
+func typeNameFromTypeExpr(typeExpr ast.Expr) (name string) {
+
+	switch t := typeExpr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.SelectorExpr:
+		return t.Sel.Name
+	case *ast.StarExpr:
+		return typeNameFromTypeExpr(t.X)
+	}
+
+	return
+}
+
+func typePkgPathFromTypeExpr(typeExpr ast.Expr, pkgInfo *PackageInfo, defaultPkgPath string) (pkgPath string) {
+
+	switch t := typeExpr.(type) {
+	case *ast.Ident:
+		if obj, ok := pkgInfo.TypeInfo.Uses[t]; ok && obj != nil {
+			if path := objectPkgPath(obj); path != "" {
+				return path
+			}
+		}
+		return defaultPkgPath
+	case *ast.SelectorExpr:
+		if selection, ok := pkgInfo.TypeInfo.Selections[t]; ok && selection != nil {
+			return objectPkgPath(selection.Obj())
+		}
+	case *ast.StarExpr:
+		return typePkgPathFromTypeExpr(t.X, pkgInfo, defaultPkgPath)
+	}
+
+	return defaultPkgPath
+}
+
+func objectPkgPath(obj types.Object) (pkgPath string) {
+
+	if obj == nil || obj.Pkg() == nil {
+		return
+	}
+
+	pkgPath = obj.Pkg().Path()
+	return
+}
+
+func namedConcreteErrorType(typ types.Type) (named *types.Named) {
+
+	typ = derefAndUnaliasType(typ)
+
+	if isPredeclaredErrorType(typ) {
+		return
+	}
+
+	var ok bool
+	if named, ok = typ.(*types.Named); !ok {
+		return
+	}
+
+	errorIface := createErrorInterface()
+	if types.Implements(named, errorIface) {
+		return
+	}
+
+	if types.Implements(types.NewPointer(named), errorIface) {
+		return named
+	}
+
+	return
+}
+
+func isPredeclaredErrorType(typ types.Type) (isPredeclared bool) {
+
+	errorObj := types.Universe.Lookup("error")
+	if errorObj == nil {
+		return
+	}
+
+	isPredeclared = types.Identical(typ, errorObj.Type())
+	return
+}
+
+func derefAndUnaliasType(typ types.Type) (result types.Type) {
+
+	result = typ
+	for {
+		result = types.Unalias(result)
+		if pointerType, ok := result.(*types.Pointer); ok {
+			result = pointerType.Elem()
+			continue
+		}
+		break
+	}
+	return
+}
+
+func errorInfoFromReference(errorRef *model.ErrorTypeReference) (errInfo *model.ErrorInfo) {
+
+	if errorRef == nil {
+		return
+	}
+
+	typeID := makeTypeID(errorRef.PkgPath, errorRef.TypeName)
+	if typeID == "" {
+		typeID = fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
+	}
+
+	errInfo = &model.ErrorInfo{
+		PkgPath:  errorRef.PkgPath,
+		TypeName: errorRef.Name,
+		FullName: errorRef.FullName,
+		TypeID:   typeID,
+	}
+	return
+}
+
+func errorInfosFromReferences(errorRefs []*model.ErrorTypeReference) (errors []*model.ErrorInfo) {
+
+	errorsMap := make(map[string]*model.ErrorInfo)
+	for _, errorRef := range errorRefs {
+		key := fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.Name)
+		if _, exists := errorsMap[key]; exists {
+			continue
+		}
+		errorsMap[key] = errorInfoFromReference(errorRef)
+	}
+
+	errors = make([]*model.ErrorInfo, 0, len(errorsMap))
+	for _, errInfo := range errorsMap {
+		errors = append(errors, errInfo)
+	}
+	return
+}
+
+func extractErrorsFromImplementations(method *model.Method, contract *model.Contract) (errors []*model.ErrorInfo) {
 
 	errorsMap := make(map[string]*model.ErrorInfo)
 
@@ -125,34 +435,9 @@ func extractErrorsFromImplementations(method *model.Method, contract *model.Cont
 			continue
 		}
 
-		for _, errorRef := range implMethod.ErrorTypes {
-			key := fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
-			if _, exists := errorsMap[key]; exists {
-				continue
-			}
-
-			cacheKey := fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
-			isError, cached := isErrorTypeCache[cacheKey]
-			if !cached {
-				isError = isErrorType(errorRef.PkgPath, errorRef.TypeName, loader)
-				isErrorTypeCache[cacheKey] = isError
-			}
-
-			if isError {
-				typeID := makeTypeID(errorRef.PkgPath, errorRef.TypeName)
-				if typeID == "" {
-					typeID = fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
-				}
-
-				errInfo := &model.ErrorInfo{
-					PkgPath:  errorRef.PkgPath,
-					TypeName: errorRef.TypeName,
-					FullName: errorRef.FullName,
-					TypeID:   typeID,
-				}
-
-				errorsMap[key] = errInfo
-			}
+		for _, errInfo := range errorInfosFromReferences(implMethod.ErrorTypes) {
+			key := fmt.Sprintf("%s:%s", errInfo.PkgPath, errInfo.TypeName)
+			errorsMap[key] = errInfo
 		}
 	}
 
@@ -161,68 +446,6 @@ func extractErrorsFromImplementations(method *model.Method, contract *model.Cont
 		errors = append(errors, errInfo)
 	}
 
-	return
-}
-
-func isErrorType(pkgPath string, typeName string, loader *AutonomousPackageLoader) (isError bool) {
-
-	var ok bool
-	var pkgInfo *PackageInfo
-	if pkgInfo, ok = loader.GetPackage(pkgPath); !ok {
-		var err error
-		if pkgInfo, err = loader.LoadPackageForErrorType(pkgPath, typeName); err != nil {
-			slog.Debug(i18n.Msg("Failed to load package for error type check"),
-				slog.String("package", pkgPath),
-				slog.String("type", typeName),
-				slog.Any("error", err))
-			return
-		}
-	}
-
-	typeObj := pkgInfo.Types.Scope().Lookup(typeName)
-	if typeObj == nil {
-		return
-	}
-
-	var typeNameObj *types.TypeName
-	if typeNameObj, ok = typeObj.(*types.TypeName); !ok {
-		return
-	}
-
-	typ := typeNameObj.Type()
-	errorIface := createErrorInterface()
-	implementsError := types.Implements(typ, errorIface)
-	if !implementsError {
-		pointerType := types.NewPointer(typ)
-		implementsError = types.Implements(pointerType, errorIface)
-		if !implementsError {
-			return
-		}
-		typ = pointerType
-	}
-
-	mset := types.NewMethodSet(typ)
-	codeMethod := mset.Lookup(pkgInfo.Types, "Code")
-	if codeMethod == nil {
-		return
-	}
-
-	var sig *types.Signature
-	if sig, ok = codeMethod.Type().(*types.Signature); !ok {
-		return
-	}
-	results := sig.Results()
-	if results.Len() != 1 {
-		return
-	}
-
-	resultType := results.At(0).Type()
-	var basicType *types.Basic
-	if basicType, ok = resultType.(*types.Basic); !ok || basicType.Kind() != types.Int {
-		return
-	}
-
-	isError = true
 	return
 }
 
@@ -270,7 +493,7 @@ func getHTTPStatusText(code int) (text string) {
 	return fmt.Sprintf("HTTP %d", code)
 }
 
-func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoader, isErrorTypeCache map[string]bool) (errors []*model.ErrorInfo) {
+func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoader) (errors []*model.ErrorInfo) {
 
 	if method.Handler == nil {
 		return
@@ -278,79 +501,71 @@ func extractErrorsFromHandler(method *model.Method, loader *AutonomousPackageLoa
 
 	handlerPkgPath := method.Handler.PkgPath
 	handlerName := method.Handler.Name
+
 	var ok bool
 	var pkgInfo *PackageInfo
-	var astFiles []*ast.File
-	if pkgInfo, ok = loader.GetPackage(handlerPkgPath); ok && pkgInfo != nil {
-		astFiles = pkgInfo.Files
-	} else {
+	if pkgInfo, ok = loader.GetPackage(handlerPkgPath); !ok || pkgInfo == nil {
 		var err error
-		var fset *token.FileSet
-		if astFiles, fset, err = loader.ParsePackageFilesOnly(handlerPkgPath); err != nil {
-			_ = fset
-			slog.Debug(i18n.Msg("Failed to parse handler package files"),
+		if pkgInfo, err = loader.LoadPackageLazy(handlerPkgPath); err != nil {
+			slog.Debug(i18n.Msg("Failed to load handler package"),
 				slog.String("package", handlerPkgPath),
 				slog.String("handler", handlerName),
 				slog.Any("error", err))
-			return nil
+			return
 		}
 	}
 
-	for _, astFile := range astFiles {
-		for _, decl := range astFile.Decls {
-			funcDecl, ok := decl.(*ast.FuncDecl)
-			if !ok {
-				continue
-			}
-
-			if funcDecl.Name == nil || funcDecl.Name.Name != handlerName {
-				continue
-			}
-
-			if funcDecl.Body != nil {
-				errorTypes := findErrorTypesInMethodBody(funcDecl.Body, astFile, handlerPkgPath, loader.resolver)
-				errorsMap := make(map[string]*model.ErrorInfo)
-				for _, errorRef := range errorTypes {
-					key := fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
-					if _, exists := errorsMap[key]; exists {
-						continue
-					}
-
-					cacheKey := fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
-					isError, cached := isErrorTypeCache[cacheKey]
-					if !cached {
-						isError = isErrorType(errorRef.PkgPath, errorRef.TypeName, loader)
-						isErrorTypeCache[cacheKey] = isError
-					}
-
-					if !isError {
-						continue
-					}
-
-					typeID := makeTypeID(errorRef.PkgPath, errorRef.TypeName)
-					if typeID == "" {
-						typeID = fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
-					}
-
-					errInfo := &model.ErrorInfo{
-						PkgPath:  errorRef.PkgPath,
-						TypeName: errorRef.TypeName,
-						FullName: errorRef.FullName,
-						TypeID:   typeID,
-					}
-
-					errorsMap[key] = errInfo
-				}
-
-				errors = make([]*model.ErrorInfo, 0, len(errorsMap))
-				for _, errInfo := range errorsMap {
-					errors = append(errors, errInfo)
-				}
-
-				return
-			}
-		}
+	body := findFuncBodyInFiles(pkgInfo.Files, handlerName)
+	if body == nil {
+		return
 	}
 
+	funcDecl := findFuncDeclInFiles(pkgInfo.Files, handlerName)
+	signature := funcSignatureFromDecl(funcDecl, pkgInfo.TypeInfo)
+
+	return errorInfosFromReferences(findErrorTypesInMethodBody(body, signature, pkgInfo))
+}
+
+func findFuncDeclInFiles(files []*ast.File, funcName string) (funcDecl *ast.FuncDecl) {
+
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			candidate, ok := decl.(*ast.FuncDecl)
+			if !ok || candidate.Name == nil || candidate.Name.Name != funcName {
+				continue
+			}
+			funcDecl = candidate
+			return
+		}
+	}
+	return
+}
+
+func funcSignatureFromDecl(funcDecl *ast.FuncDecl, typeInfo *types.Info) (signature *types.Signature) {
+
+	if funcDecl == nil || funcDecl.Name == nil || typeInfo == nil {
+		return
+	}
+
+	obj, ok := typeInfo.Defs[funcDecl.Name]
+	if !ok {
+		return
+	}
+
+	fn, ok := obj.(*types.Func)
+	if !ok {
+		return
+	}
+
+	signature, ok = fn.Type().(*types.Signature)
+	return
+}
+
+func findFuncBodyInFiles(files []*ast.File, funcName string) (body *ast.BlockStmt) {
+
+	funcDecl := findFuncDeclInFiles(files, funcName)
+	if funcDecl != nil {
+		body = funcDecl.Body
+	}
 	return
 }

@@ -23,4 +23,5 @@ const (
 	openAPIVersion           = "3.0.0"
 	defaultVersion           = "1.0.0"
 	componentsSchemasPrefix  = "#/components/schemas/"
+	responseKeyDefault       = "default"
 )

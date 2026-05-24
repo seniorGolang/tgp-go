@@ -28,6 +28,13 @@ func (r *ClientRenderer) RenderClient() (err error) {
 	srcFile.ImportName(PackageOS, "os")
 	srcFile.ImportName(PackageSync, "sync")
 	srcFile.ImportName(PackageTime, "time")
+	if r.HasJsonRPC() {
+		srcFile.ImportName(PackageURL, "url")
+		srcFile.ImportName(PackagePath, "path")
+		if r.jsonRPCHTTPPrefix() != "" {
+			srcFile.ImportName(PackageStrings, "strings")
+		}
+	}
 	srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
 	if r.HasMetrics() {
 		srcFile.ImportName(PackagePrometheus, "prometheus")
@@ -71,18 +78,24 @@ func (r *ClientRenderer) RenderClient() (err error) {
 				dict[Id("afterRequest")] = Nil()
 				dict[Id("beforeRequest")] = Nil()
 				dict[Id("endpoint")] = Id("endpoint")
-				dict[Id("errorDecoder")] = Id("defaultErrorDecoder")
 				dict[Id("headersFromCtx")] = Index().Any().Values()
 				dict[Id("httpClient")] = Id("defaultClient")
 				dict[Id("logOnError")] = False()
 				dict[Id("logRequests")] = False()
 				dict[Id("name")] = Id("name")
 			}))
+			if r.HasJsonRPC() {
+				bg.Id("cli").Dot("errorDecoder").Op("=").Id("defaultErrorDecoder")
+			}
+			if r.HasHTTP() {
+				bg.Id("cli").Dot("httpErrorDecoder").Op("=").Id("defaultHTTPErrorDecoder")
+			}
 			bg.Id("cli").Dot("applyOpts").Call(Id("opts"))
 			if r.HasJsonRPC() {
+				r.emitJoinEndpointPrefix(bg, "endpoint", r.jsonRPCHTTPPrefix(), "rpcEndpoint")
 				bg.Id("cli").Dot("rpcOpts").Op("=").Append(Id("cli").Dot("rpcOpts"), Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ClientHTTP").Call(Id("cli").Dot("httpClient")))
 				bg.Id("cli").Dot("rpcOpts").Op("=").Append(Id("cli").Dot("rpcOpts"), Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ClientID").Call(Id("cli").Dot("name")))
-				bg.Id("cli").Dot("rpc").Op("=").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "NewClient").Call(Id("endpoint"), Id("cli").Dot("rpcOpts").Op("..."))
+				bg.Id("cli").Dot("rpc").Op("=").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "NewClient").Call(Id("rpcEndpoint"), Id("cli").Dot("rpcOpts").Op("..."))
 			}
 
 			bg.Return()
@@ -121,8 +134,11 @@ func (r *ClientRenderer) clientStructFunc(outDir string) Code {
 		if r.HasJsonRPC() {
 			sg.Line().Id("rpc").Op("*").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ClientRPC")
 			sg.Id("rpcOpts").Op("[]").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "Option")
+			sg.Line().Id("errorDecoder").Id("ErrorDecoder")
 		}
-		sg.Line().Id("errorDecoder").Id("ErrorDecoder")
+		if r.HasHTTP() {
+			sg.Line().Id("httpErrorDecoder").Id("HTTPErrorDecoder")
+		}
 		if r.HasJsonRPC() || r.HasHTTP() {
 			sg.Line().Id("logRequests").Bool()
 			sg.Id("logOnError").Bool()

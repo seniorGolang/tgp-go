@@ -227,7 +227,11 @@ func (r *ClientRenderer) httpDoRoundTripHelper(contract *model.Contract, outDir 
 						Id("httpReq").Dot("Method"),
 					),
 				).Else().Block(
-					Err().Op("=").Id("cli").Dot("errorDecoder").Call(Id("respBodyBytes")),
+					Err().Op("=").Id("cli").Dot("httpErrorDecoder").Call(
+						Id("httpResp").Dot("StatusCode"),
+						Id("httpResp").Dot("Header").Dot("Get").Call(Lit("Content-Type")),
+						Id("respBodyBytes"),
+					),
 				)
 				bgErr.Id("httpResp").Dot("Body").Dot("Close").Call()
 				bgErr.Return(Nil(), Err())

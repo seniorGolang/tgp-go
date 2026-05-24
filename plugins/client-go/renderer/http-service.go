@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
@@ -30,14 +29,12 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			}
 			httpMethod := model.GetHTTPMethod(r.project, contract, method)
 			successStatusCode := model.GetAnnotationValueInt(r.project, contract, method, nil, model.TagHttpSuccess, http.StatusOK)
-			methodPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, r.defaultMethodHTTPPath(contract, method))
 			pathParams := r.argPathMap(contract, method)
-			svcPrefix := model.GetAnnotationValue(r.project, contract, nil, nil, model.TagHttpPrefix, "")
 			argsMappings := model.HTTPArgQueryMapForRequest(r.project, contract, method)
 			cookieMappings := model.HTTPCookieArgMapForRequest(r.project, contract, method)
 			headerMappings := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
 
-			fullURLPath := path.Join(svcPrefix, methodPath)
+			fullURLPath := model.MethodHTTPFullPath(r.project, contract, method)
 			// Формирование URL через net/url: ведущий "/" гарантирует корректный путь при пустом baseURL.Path (url.JoinPath-подобное поведение).
 			bg.Var().Id("baseURL").Op("*").Qual(PackageURL, "URL")
 			bg.If(List(Id("baseURL"), Err()).Op("=").Qual(PackageURL, "Parse").Call(Id("cli").Dot("endpoint")).Op(";").Err().Op("!=").Nil()).Block(Return())
@@ -113,6 +110,8 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 
 			requestMultipart := r.methodRequestMultipart(contract, method)
 			bodyStreamArg := r.methodRequestBodyStreamArg(method)
+			responseMultipart := r.methodResponseMultipart(contract, method)
+			responseStreamResult := r.methodResponseBodyStreamResult(method)
 			argsForBody := r.argsForRequestBody(contract, method)
 			hasBody := len(argsForBody) > 0
 			switch {
@@ -143,6 +142,11 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 
 			if !requestMultipart && bodyStreamArg == nil {
 				acceptType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json")
+				if responseMultipart {
+					acceptType = "multipart/form-data"
+				} else if responseStreamResult != nil {
+					acceptType = model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/octet-stream")
+				}
 				bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Accept"), Lit(acceptType))
 				if hasBody {
 					reqCT := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")
@@ -163,8 +167,6 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				}
 			}
 
-			responseStreamResult := r.methodResponseBodyStreamResult(method)
-			responseMultipart := r.methodResponseMultipart(contract, method)
 			bg.Var().Id("httpResp").Op("*").Qual(PackageHttp, "Response")
 			bg.If(List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("doRoundTrip").Call(
 				Id(_ctx_),

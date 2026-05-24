@@ -146,6 +146,7 @@ type ErrorInfo struct {
 
 type ErrorTypeReference struct {
 	PkgPath  string `json:"pkgPath"`
+	Name     string `json:"name"`
 	TypeName string `json:"typeName"`
 	FullName string `json:"fullName"`
 }

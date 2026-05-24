@@ -40,7 +40,7 @@
 - **client.ts** — функция `newClient()`, класс `Client`, методы вида `userService()` и `userServiceHTTP()` для доступа к клиентам контрактов, метод `batch()` для JSON-RPC batch;
 - **options.ts** — тип `ClientOptions` (url, headers, idGeneratorFn);
 - **version.ts** — константа `VersionASTg` с версией проекта;
-- **error.ts** — типы для разбора ошибок JSON-RPC и функция `defaultErrorDecoder`;
+- **error.ts** — `ErrorJsonRPC`, `ErrorDecoder`, `defaultErrorDecoder`; для REST — `ResponseError`, `HTTPErrorDecoder`, `defaultHTTPErrorDecoder`;
 - **batch.ts** — типы `BatchRequest` и `RpcCallback` для batch-запросов (только при наличии JSON-RPC-контрактов);
 - **jsonrpc/** — реализация JSON-RPC 2.0 клиента;
 - **\<имя-контракта>.ts** — JSON-RPC клиент сервиса (например, `user-service.ts`);

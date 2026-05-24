@@ -13,10 +13,11 @@ import (
 )
 
 type errorInfo struct {
-	code     int    // HTTP статус код (0 если не указан)
-	codeText string // Текстовое описание статус кода
-	pkgPath  string // Путь пакета
-	typeName string // Имя типа ошибки
+	code     int
+	codeText string
+	pkgPath  string
+	typeName string
+	typeID   string
 }
 
 func (r *ClientRenderer) collectMethodErrors(method *model.Method, contract *model.Contract) map[string]errorInfo {
@@ -44,6 +45,7 @@ func (r *ClientRenderer) collectMethodErrors(method *model.Method, contract *mod
 							codeText: codeText,
 							pkgPath:  pkgPath,
 							typeName: typeName,
+							typeID:   fmt.Sprintf("%s:%s", pkgPath, typeName),
 						}
 					}
 				}
@@ -60,6 +62,7 @@ func (r *ClientRenderer) collectMethodErrors(method *model.Method, contract *mod
 				codeText: errInfo.HTTPCodeText,
 				pkgPath:  errInfo.PkgPath,
 				typeName: errInfo.TypeName,
+				typeID:   errInfo.TypeID,
 			}
 		}
 	}
@@ -72,19 +75,12 @@ func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 	stmt := tsg.NewStatement()
 
 	var structType *model.Type
-	typeID := fmt.Sprintf("%s:%s", errInfo.pkgPath, errInfo.typeName)
+	typeID := errInfo.typeID
+	if typeID == "" {
+		typeID = fmt.Sprintf("%s:%s", errInfo.pkgPath, errInfo.typeName)
+	}
 	if typ, ok := r.project.Types[typeID]; ok && typ.Kind == model.TypeKindStruct {
 		structType = typ
-	}
-
-	// Если не нашли по полному пути, пробуем найти по имени типа
-	if structType == nil {
-		for _, typ := range common.SortedPairs(r.project.Types) {
-			if typ.Kind == model.TypeKindStruct && typ.TypeName == errInfo.typeName {
-				structType = typ
-				break
-			}
-		}
 	}
 
 	pkgParts := strings.Split(errInfo.pkgPath, "/")

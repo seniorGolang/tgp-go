@@ -88,7 +88,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(contract, method) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, r.defaultMethodHTTPPath(contract, method))
+					httpPath := model.MethodHTTPFullPath(r.project, contract, method)
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					_ = append(tocItems, tocItem{
@@ -140,7 +140,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(contract, method) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, r.defaultMethodHTTPPath(contract, method))
+					httpPath := model.MethodHTTPFullPath(r.project, contract, method)
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
@@ -517,20 +517,55 @@ func (r *ClientRenderer) renderClientOptions(md *markdown.Markdown, pkgPath, pkg
 	md.PlainText(markdown.Bold("Поддерживаемые опции клиента:"))
 	md.LF()
 
-	options := []struct {
+	var options []struct {
 		name        string
 		description string
 		signature   string
 		example     string
-	}{
-		{
+	}
+
+	if r.HasJsonRPC() {
+		options = append(options, struct {
+			name        string
+			description string
+			signature   string
+			example     string
+		}{
 			name:        "DecodeError",
-			description: "Устанавливает декодер ошибок для кастомной обработки ошибок",
+			description: "Декодер JSON-RPC error из ответа; по умолчанию errorJsonRPC",
 			signature:   "func DecodeError(decoder ErrorDecoder) Option",
 			example: fmt.Sprintf(`client := %s.New("http://localhost:9000",
-    %s.DecodeError(customErrorDecoder),
+    %s.DecodeError(func(errData json.RawMessage) error {
+        var e mypkg.BusinessError
+        if err := json.Unmarshal(errData, &e); err != nil {
+            return err
+        }
+        return e
+    }),
 )`, pkgName, pkgName),
-		},
+		})
+	}
+
+	if r.HasHTTP() {
+		options = append(options, struct {
+			name        string
+			description string
+			signature   string
+			example     string
+		}{
+			name:        "DecodeHTTPError",
+			description: "Декодер тела HTTP-ошибки (REST); по умолчанию *ResponseError",
+			signature:   "func DecodeHTTPError(decoder HTTPErrorDecoder) Option",
+			example: fmt.Sprintf(`client := %s.New("http://localhost:9000",
+    %s.DecodeHTTPError(func(statusCode int, contentType string, body []byte) error {
+        var e mypkg.BusinessError
+        if err := json.Unmarshal(body, &e); err != nil {
+            return err
+        }
+        return e
+    }),
+)`, pkgName, pkgName),
+		})
 	}
 
 	if r.HasJsonRPC() || r.HasHTTP() {

@@ -2,13 +2,12 @@ package cdb
 
 import (
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/goccy/go-json"
 
 	"tgp/internal/model"
 )

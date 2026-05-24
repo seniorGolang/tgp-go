@@ -52,5 +52,5 @@
   "Object in package is not a TypeName": "Объект в пакете не является TypeName",
   "TypeOf returned nil": "TypeOf вернул nil",
   "Failed to get type from AST": "Не удалось получить тип из AST",
-  "Failed to check build tags": "Не удалось проверить build теги"
+  "Failed to check build tags": "Не удалось проверить build теги",
 }

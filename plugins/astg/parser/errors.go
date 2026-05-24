@@ -18,21 +18,10 @@ import (
 
 func analyzeMethodErrors(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
-	defer traceRecover("analyzeMethodErrors")
-	traceBegin("analyzeMethodErrors")
-
 	isErrorTypeCache := make(map[string]bool)
 
 	for _, contract := range project.Contracts {
-		if contract == nil {
-			continue
-		}
-
 		for _, method := range contract.Methods {
-			if method == nil {
-				continue
-			}
-
 			errorsFromAnnotations := extractErrorsFromAnnotations(method.Annotations)
 			errorsFromImplementations := extractErrorsFromImplementations(method, contract, project, loader, isErrorTypeCache)
 			errorsFromHandlers := extractErrorsFromHandler(method, loader, isErrorTypeCache)
@@ -131,18 +120,12 @@ func extractErrorsFromImplementations(method *model.Method, contract *model.Cont
 	errorsMap := make(map[string]*model.ErrorInfo)
 
 	for _, impl := range contract.Implementations {
-		if impl == nil || impl.MethodsMap == nil {
-			continue
-		}
 		implMethod, exists := impl.MethodsMap[method.Name]
-		if !exists || implMethod == nil {
+		if !exists {
 			continue
 		}
 
 		for _, errorRef := range implMethod.ErrorTypes {
-			if errorRef == nil {
-				continue
-			}
 			key := fmt.Sprintf("%s:%s", errorRef.PkgPath, errorRef.TypeName)
 			if _, exists := errorsMap[key]; exists {
 				continue
@@ -183,8 +166,6 @@ func extractErrorsFromImplementations(method *model.Method, contract *model.Cont
 
 func isErrorType(pkgPath string, typeName string, loader *AutonomousPackageLoader) (isError bool) {
 
-	defer traceRecover("isErrorType:" + pkgPath + ":" + typeName)
-
 	var ok bool
 	var pkgInfo *PackageInfo
 	if pkgInfo, ok = loader.GetPackage(pkgPath); !ok {
@@ -196,11 +177,6 @@ func isErrorType(pkgPath string, typeName string, loader *AutonomousPackageLoade
 				slog.Any("error", err))
 			return
 		}
-	}
-
-	if pkgInfo == nil || pkgInfo.Types == nil {
-		traceStep("isErrorType skip nil Types", slog.String("pkgPath", pkgPath), slog.String("typeName", typeName))
-		return
 	}
 
 	typeObj := pkgInfo.Types.Scope().Lookup(typeName)

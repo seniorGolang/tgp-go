@@ -6,7 +6,6 @@ package wasm
 
 import (
 	"fmt"
-	"runtime/debug"
 
 	"github.com/goccy/go-json"
 
@@ -18,7 +17,6 @@ func exportWrapperRecover(result *uint64) {
 	if r := recover(); r != nil {
 		errorBytes, _ := json.Marshal(map[string]string{
 			"error": fmt.Sprintf("panic: %v", r),
-			"stack": string(debug.Stack()),
 		})
 		*result = createErrorResultFromBytes(errorBytes)
 	}

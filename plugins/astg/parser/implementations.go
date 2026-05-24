@@ -29,13 +29,7 @@ type structInfo struct {
 
 func findImplementations(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
-	defer traceRecover("findImplementations")
-	traceBegin("findImplementations")
-
 	for _, contract := range project.Contracts {
-		if contract == nil {
-			continue
-		}
 		contract.Implementations = make([]*model.ImplementationInfo, 0)
 	}
 
@@ -46,15 +40,8 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 	methodSetCacheMu := sync.RWMutex{}
 	contractMethodNames := make(map[string]map[string]bool)
 	for _, contract := range project.Contracts {
-		if contract == nil {
-			continue
-		}
-
 		methodNames := make(map[string]bool)
 		for _, method := range contract.Methods {
-			if method == nil {
-				continue
-			}
 			methodNames[method.Name] = true
 		}
 		contractMethodNames[contract.ID] = methodNames
@@ -153,10 +140,6 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 		for _, structType := range structs {
 			structMethodSet := structMethods[structType.Name]
 			for _, contract := range project.Contracts {
-				if contract == nil {
-					continue
-				}
-
 				methodNames := contractMethodNames[contract.ID]
 				hasMethods := len(methodNames) <= len(structMethodSet)
 				if hasMethods {
@@ -385,20 +368,14 @@ func findStructsInFile(file *ast.File) (structs []structInfo) {
 
 func implementsContract(structType structInfo, contract *model.Contract, file *ast.File, filePath string, pkgPath string, project *model.Project, loader *AutonomousPackageLoader, implPkgInfo *PackageInfo, methodSetCache map[string]*types.MethodSet, pointerMethodSetCache map[string]*types.MethodSet, methodSetCacheMu *sync.RWMutex) (implements bool) {
 
-	defer traceRecover("implementsContract:" + contract.Name + ":" + structType.Name)
-
 	var ok bool
 	var contractPkgInfo *PackageInfo
-	if contractPkgInfo, ok = loader.GetPackage(contract.PkgPath); !ok || contractPkgInfo == nil || contractPkgInfo.Types == nil {
+	if contractPkgInfo, ok = loader.GetPackage(contract.PkgPath); !ok {
 		var err error
-		if contractPkgInfo, err = loader.LoadPackageLazy(contract.PkgPath); err != nil || contractPkgInfo == nil || contractPkgInfo.Types == nil {
-			errMsg := ""
-			if err != nil {
-				errMsg = err.Error()
-			}
+		if contractPkgInfo, err = loader.LoadPackageLazy(contract.PkgPath); err != nil {
 			slog.Debug(i18n.Msg("Failed to load contract package"),
 				slog.String("package", contract.PkgPath),
-				slog.String("error", errMsg))
+				slog.String("error", err.Error()))
 			return
 		}
 	}
@@ -477,25 +454,9 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 			return
 		}
 
-		obj := found.Obj()
-		if obj == nil {
-			return
-		}
-
-		foundMethod, ok := obj.(*types.Func)
-		if !ok {
-			return
-		}
-
-		foundSig, ok := foundMethod.Type().(*types.Signature)
-		if !ok {
-			return
-		}
-
-		contractSig, ok := method.Type().(*types.Signature)
-		if !ok {
-			return
-		}
+		foundMethod := found.Obj().(*types.Func)
+		foundSig := foundMethod.Type().(*types.Signature)
+		contractSig := method.Type().(*types.Signature)
 
 		if !types.Identical(foundSig.Params(), contractSig.Params()) {
 			foundParams := foundSig.Params()

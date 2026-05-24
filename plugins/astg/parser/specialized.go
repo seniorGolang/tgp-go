@@ -5,20 +5,18 @@ package parser
 import (
 	"fmt"
 	"go/ast"
+	"go/types"
 )
 
 func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeName string) (info *PackageInfo, err error) {
 
-	if info, ok := l.cachedPackage(pkgPath); ok {
-		return info, nil
+	l.mu.RLock()
+	var ok bool
+	if info, ok = l.cache[pkgPath]; ok && info != nil {
+		l.mu.RUnlock()
+		return
 	}
-
-	return l.loadPackageOnce(pkgPath, func() (*PackageInfo, error) {
-		return l.loadPackageForErrorTypeBody(pkgPath, typeName)
-	})
-}
-
-func (l *AutonomousPackageLoader) loadPackageForErrorTypeBody(pkgPath string, typeName string) (info *PackageInfo, err error) {
+	l.mu.RUnlock()
 
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
@@ -35,27 +33,60 @@ func (l *AutonomousPackageLoader) loadPackageForErrorTypeBody(pkgPath string, ty
 		return nil, fmt.Errorf("no Go files found in package %s", pkgPath)
 	}
 
-	return l.typeCheckPackage(pkgPath, pkgDir, l.fset, files)
+	requiredImports := extractImportsFromErrorType(files, typeName, l.resolver)
+	importer := &FileSystemImporter{
+		loader:          l,
+		cache:           make(map[string]*types.Package),
+		lazyMode:        true,
+		requiredImports: requiredImports,
+	}
+
+	cfg := &types.Config{
+		Importer: importer,
+		Error:    func(error) {},
+	}
+
+	typeInfo := createTypeInfo()
+	var pkg *types.Package
+	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
+		if pkg == nil {
+			return nil, fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
+		}
+		err = nil
+	}
+
+	imports := collectImports(files, l.resolver)
+
+	info = &PackageInfo{
+		PkgPath:     pkgPath,
+		PackageName: pkg.Name(),
+		Dir:         pkgDir,
+		Files:       files,
+		Types:       pkg,
+		TypeInfo:    typeInfo,
+		Fset:        l.fset,
+		Imports:     imports,
+	}
+
+	l.mu.Lock()
+	l.cache[pkgPath] = info
+	l.mu.Unlock()
+
+	return
 }
 
 func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName string) (info *PackageInfo, err error) {
 
 	l.mu.RLock()
-	if info, ok := l.cache[pkgPath]; ok && info != nil && info.Types != nil {
-		if info.Types.Scope().Lookup(typeName) != nil {
+	var ok bool
+	if info, ok = l.cache[pkgPath]; ok && info != nil {
+		if info.Types != nil && info.Types.Scope().Lookup(typeName) != nil {
 			l.mu.RUnlock()
-			return info, nil
+			return
 		}
 	}
 	l.mu.RUnlock()
 
-	return l.loadPackageOnce(pkgPath, func() (*PackageInfo, error) {
-		return l.loadPackageForTypeBody(pkgPath, typeName)
-	})
-}
-
-func (l *AutonomousPackageLoader) loadPackageForTypeBody(pkgPath string, typeName string) (info *PackageInfo, err error) {
-
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
 		return nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
@@ -71,36 +102,134 @@ func (l *AutonomousPackageLoader) loadPackageForTypeBody(pkgPath string, typeNam
 		return nil, fmt.Errorf("no Go files found in package %s", pkgPath)
 	}
 
-	return l.typeCheckPackage(pkgPath, pkgDir, l.fset, files)
-}
-
-func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string) (info *PackageInfo, err error) {
-
-	if info, ok := l.cachedPackage(pkgPath); ok {
-		return info, nil
+	requiredImports := extractImportsFromTypeDefinition(files, typeName, l.resolver)
+	importer := &FileSystemImporter{
+		loader:          l,
+		cache:           make(map[string]*types.Package),
+		lazyMode:        true,
+		requiredImports: requiredImports,
 	}
 
-	return l.loadPackageOnce(pkgPath, func() (*PackageInfo, error) {
-		return l.loadPackageMinimalBody(pkgPath)
-	})
+	cfg := &types.Config{
+		Importer: importer,
+		Error:    func(error) {},
+	}
+
+	typeInfo := createTypeInfo()
+	var pkg *types.Package
+	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
+		if pkg == nil {
+			return nil, fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
+		}
+		err = nil
+	}
+
+	imports := collectImports(files, l.resolver)
+
+	info = &PackageInfo{
+		PkgPath:     pkgPath,
+		PackageName: pkg.Name(),
+		Dir:         pkgDir,
+		Files:       files,
+		Types:       pkg,
+		TypeInfo:    typeInfo,
+		Fset:        l.fset,
+		Imports:     imports,
+	}
+
+	l.mu.Lock()
+	l.cache[pkgPath] = info
+	l.mu.Unlock()
+
+	return
 }
 
-func (l *AutonomousPackageLoader) loadPackageMinimalBody(pkgPath string) (info *PackageInfo, err error) {
+func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImports map[string]bool) (info *PackageInfo, err error) {
+
+	l.mu.RLock()
+	var ok bool
+	if info, ok = l.cache[pkgPath]; ok && info != nil {
+		l.mu.RUnlock()
+		return
+	}
+	l.mu.RUnlock()
+
+	l.mu.Lock()
+	if info, ok = l.cache[pkgPath]; ok && info != nil {
+		l.mu.Unlock()
+		return
+	}
+	l.cache[pkgPath] = nil
+	l.mu.Unlock()
 
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
+		l.mu.Lock()
+		delete(l.cache, pkgPath)
+		l.mu.Unlock()
 		return nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
 	}
 
 	buildCtx := buildContext()
 	var files []*ast.File
 	if files, err = l.parsePackageFiles(pkgDir, &buildCtx); err != nil {
+		l.mu.Lock()
+		delete(l.cache, pkgPath)
+		l.mu.Unlock()
 		return nil, fmt.Errorf("failed to parse package files in %s: %w", pkgDir, err)
 	}
 
 	if len(files) == 0 {
+		l.mu.Lock()
+		delete(l.cache, pkgPath)
+		l.mu.Unlock()
 		return nil, fmt.Errorf("no Go files found in package %s", pkgPath)
 	}
 
-	return l.typeCheckPackage(pkgPath, pkgDir, l.fset, files)
+	importsToLoad := extractImportsFromExportedAndAliases(files, l.resolver)
+
+	importer := &FileSystemImporter{
+		loader:          l,
+		cache:           make(map[string]*types.Package),
+		lazyMode:        true,
+		requiredImports: importsToLoad,
+	}
+
+	cfg := &types.Config{
+		Importer: importer,
+		Error:    func(error) {},
+	}
+
+	typeInfo := createTypeInfo()
+	var pkg *types.Package
+	if pkg, err = cfg.Check(pkgPath, l.fset, files, typeInfo); err != nil {
+		// Ошибки type checking не критичны, если pkg != nil
+		// Ошибки в телах методов (из-за stub-пакетов) не влияют на method sets
+		if pkg == nil {
+			// Критичная ошибка - пакет не создан
+			l.mu.Lock()
+			delete(l.cache, pkgPath)
+			l.mu.Unlock()
+			return nil, fmt.Errorf("type checking failed for %s: %w", pkgPath, err)
+		}
+		// Некритичные ошибки (pkg != nil) игнорируются - не логируются
+		err = nil
+	}
+
+	imports := collectImports(files, l.resolver)
+
+	info = &PackageInfo{
+		PkgPath:     pkgPath,
+		PackageName: pkg.Name(),
+		Dir:         pkgDir,
+		Files:       files,
+		Types:       pkg,
+		TypeInfo:    typeInfo,
+		Fset:        l.fset,
+		Imports:     imports,
+	}
+
+	l.cache[pkgPath] = info
+
+	return
 }

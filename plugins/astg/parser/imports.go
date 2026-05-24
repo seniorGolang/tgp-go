@@ -7,6 +7,15 @@ import (
 	"go/token"
 )
 
+func allPackageImports(files []*ast.File, resolver *PackageResolver) (requiredImports map[string]bool) {
+
+	requiredImports = make(map[string]bool)
+	for _, impPath := range collectImports(files, resolver) {
+		requiredImports[impPath] = true
+	}
+	return
+}
+
 func extractImportsFromExportedAndAliases(files []*ast.File, resolver *PackageResolver) (requiredImports map[string]bool) {
 
 	requiredImports = make(map[string]bool)

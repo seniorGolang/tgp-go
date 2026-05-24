@@ -77,7 +77,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
 			for _, method := range contract.Methods {
 				if r.methodIsHTTP(method, contract) {
 					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+r.lcName(contract.Name)+"/"+r.lcName(method.Name))
+					httpPath := model.MethodHTTPFullPath(r.project, contract, method)
 					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 					methodAnchor := methodAnchorID(contract.Name, methodTitle)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
@@ -658,7 +658,7 @@ func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.
 func (r *ClientRenderer) renderHTTPMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string) {
 
 	httpMethod := model.GetHTTPMethod(r.project, contract, method)
-	httpPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+r.lcName(contract.Name)+"/"+r.lcName(method.Name))
+	httpPath := model.MethodHTTPFullPath(r.project, contract, method)
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 	methodAnchor := methodAnchorID(contract.Name, methodTitle)

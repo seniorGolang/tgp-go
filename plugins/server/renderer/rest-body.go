@@ -11,7 +11,10 @@ import (
 
 func (r *contractRenderer) httpServeRequestBodyDecode(bg *Group, jsonPkg string, method *model.Method, reqKind string) {
 
+	allowEmpty := model.HTTPAllowsEmptyRequestBody(r.project, r.contract, method)
+
 	writeBadRequest := func(ig *Group) {
+
 		ig.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).Block(
 			Id("server").Dot("metrics").Dot("ErrorResponsesTotal").Dot("WithLabelValues").Call(Lit("rest"), Lit("400"), Id("clientID")).Dot("Inc").Call(),
 		)
@@ -29,29 +32,23 @@ func (r *contractRenderer) httpServeRequestBodyDecode(bg *Group, jsonPkg string,
 		bg.If(Err().Op("=").Id(VarNameFtx).Dot("BodyParser").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindXML:
 		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-		bg.If(Err().Op("=").Qual(PackageXML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-			writeBadRequest(ig)
-		})
+		bg.If(Err().Op("=").Qual(PackageXML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindMsgpack:
 		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-		bg.If(Err().Op("=").Qual(PackageMsgpack, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-			writeBadRequest(ig)
-		})
+		bg.If(Err().Op("=").Qual(PackageMsgpack, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindCBOR:
 		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-		bg.If(Err().Op("=").Qual(PackageCBOR, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-			writeBadRequest(ig)
-		})
+		bg.If(Err().Op("=").Qual(PackageCBOR, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindYAML:
 		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-		bg.If(Err().Op("=").Qual(PackageYAML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-			writeBadRequest(ig)
-		})
+		bg.If(Err().Op("=").Qual(PackageYAML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	default:
 		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-		bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-			writeBadRequest(ig)
-		})
+		decodeErr := Err().Op("!=").Nil()
+		if allowEmpty {
+			decodeErr = Err().Op("!=").Nil().Op("&&").Op("!").Qual(PackageErrors, "Is").Call(Err(), Qual("io", "EOF"))
+		}
+		bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Add(decodeErr)).BlockFunc(writeBadRequest)
 	}
 }
 

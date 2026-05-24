@@ -10,6 +10,9 @@ const (
 	ArgModeExplicit = "explicit"
 	ArgModeImplicit = "implicit"
 	ArgModeBody     = "body"
+
+	typeIDContext = "context:Context"
+	typeIDIOReader = "io:Reader"
 )
 
 // ArgMapItem is one entry from http-headers, http-cookies or http-args (arg|key or arg|key|mode).
@@ -203,6 +206,91 @@ func HTTPArgQueryMapForRequest(project *Project, contract *Contract, method *Met
 	}
 
 	return queryMap
+}
+
+// HTTPPathParamArgSet returns argument names bound to :segments in http-path.
+func HTTPPathParamArgSet(project *Project, contract *Contract, method *Method) (pathArgs map[string]struct{}) {
+
+	pathArgs = make(map[string]struct{})
+	if project == nil || contract == nil || method == nil {
+		return pathArgs
+	}
+
+	urlPath := GetAnnotationValue(project, contract, method, nil, TagHttpPath, "")
+	for _, token := range strings.Split(urlPath, "/") {
+		token = strings.TrimSpace(token)
+		if !strings.HasPrefix(token, ":") {
+			continue
+		}
+		segmentName := strings.TrimPrefix(token, ":")
+		if arg := argByName(method, segmentName); arg != nil {
+			pathArgs[arg.Name] = struct{}{}
+		}
+	}
+
+	return pathArgs
+}
+
+// HTTPArgsFromRequestBody returns arguments populated from the JSON request body.
+// Same rules as generated HTTP clients: body-mode headers/cookies and plain fields;
+// not context, io.Reader, path, http-args query, or explicit/implicit header/cookie transport.
+func HTTPArgsFromRequestBody(project *Project, contract *Contract, method *Method) (args []*Variable) {
+
+	if method == nil {
+		return nil
+	}
+
+	mappings := BuildHTTPArgMappings(project, contract, method)
+	implicit := HTTPImplicitArgSet(mappings)
+	pathParams := HTTPPathParamArgSet(project, contract, method)
+	headerExplicit := HTTPHeaderArgMapForRequest(project, contract, method)
+	cookieExplicit := HTTPCookieArgMapForRequest(project, contract, method)
+	queryArgs := HTTPArgQueryMapForRequest(project, contract, method)
+
+	for _, arg := range method.Args {
+		if arg.TypeID == typeIDContext {
+			continue
+		}
+		if _, ok := implicit[arg.Name]; ok {
+			continue
+		}
+		if arg.TypeID == typeIDIOReader {
+			continue
+		}
+		if _, inPath := pathParams[arg.Name]; inPath {
+			continue
+		}
+		if _, inHeader := headerExplicit[arg.Name]; inHeader {
+			continue
+		}
+		if _, inCookie := cookieExplicit[arg.Name]; inCookie {
+			continue
+		}
+		if _, inQuery := queryArgs[arg.Name]; inQuery {
+			continue
+		}
+		args = append(args, arg)
+	}
+
+	return args
+}
+
+// HTTPNeedsRequestBodyDecode reports whether the HTTP handler should decode the request body into the exchange struct.
+func HTTPNeedsRequestBodyDecode(project *Project, contract *Contract, method *Method) (needs bool) {
+
+	return len(HTTPArgsFromRequestBody(project, contract, method)) > 0
+}
+
+// HTTPAllowsEmptyRequestBody reports whether an empty request body is valid for REST decode.
+// True for GET methods that populate the exchange from the JSON body (including body-mode headers/cookies),
+// so transport overlay can fill fields without a non-empty body.
+func HTTPAllowsEmptyRequestBody(project *Project, contract *Contract, method *Method) (allows bool) {
+
+	if !HTTPNeedsRequestBodyDecode(project, contract, method) {
+		return false
+	}
+
+	return strings.EqualFold(GetHTTPMethod(project, contract, method), "GET")
 }
 
 // HTTPResultNamesExcludeFromBody возвращает имена результатов, которые берутся из заголовка или cookie ответа (любой mode).

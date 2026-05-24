@@ -16,10 +16,22 @@ func (r *ClientRenderer) RenderClientOptions() (err error) {
 	file.Comment(generated.ByToolGatewayComment)
 
 	stmt := tsg.NewStatement()
+	if r.HasJsonRPC() {
+		file.ImportType("./error", "ErrorDecoder")
+	}
+	if r.HasHTTP() {
+		file.ImportType("./error", "HTTPErrorDecoder")
+	}
 	stmt.Export().Type("ClientOptions")
 	stmt.Op("=")
 	stmt.Block(func(grp *tsg.Group) {
 		grp.Add(tsg.NewStatement().Id("url").Colon().Id("string").Semicolon())
+		if r.HasJsonRPC() {
+			grp.Add(tsg.NewStatement().Id("errorDecoder").Optional().Colon().Id("ErrorDecoder").Semicolon())
+		}
+		if r.HasHTTP() {
+			grp.Add(tsg.NewStatement().Id("httpErrorDecoder").Optional().Colon().Id("HTTPErrorDecoder").Semicolon())
+		}
 		// Поддержка статичных заголовков и функции для динамических заголовков
 		recordType := tsg.NewStatement().Id("Record").Generic("string", "string")
 		headersType := tsg.NewStatement()

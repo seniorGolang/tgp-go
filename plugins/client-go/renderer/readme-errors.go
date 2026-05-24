@@ -38,7 +38,7 @@ func (r *ClientRenderer) renderErrorsSection(md *markdown.Markdown) {
 	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", jsonrpcErrorsAnchor))
 	md.LF()
 	md.H3("JSON-RPC ошибки")
-	md.PlainText("При работе с JSON-RPC клиентом ошибки обрабатываются автоматически. Если сервер возвращает ошибку в формате JSON-RPC 2.0, клиент возвращает ошибку типа " + markdown.Code("error") + ".")
+	md.PlainText("При JSON-RPC ошибке вызывается " + markdown.Code("ErrorDecoder") + " с " + markdown.Code("rpcResponse.Error.Raw()") + "; по умолчанию — " + markdown.Code("errorJsonRPC") + " (как в " + markdown.Code("error.go") + "). Свой тип — " + markdown.Code("DecodeError") + ".")
 
 	pkgPath := r.pkgPath(r.outDir)
 	pkgName := filepath.Base(r.outDir)
@@ -115,14 +115,19 @@ func main() {
 			"Кастомные ошибки с "+markdown.Code("withErrorCode")+": формат задаётся проектом, часто "+markdown.Code(`{"code":404,"message":"not found"}`)+".",
 		)
 		md.LF()
-		md.PlainText(markdown.Bold("Рекомендация по ErrorDecoder.") + " Дефолтный декодер ожидает формат JSON-RPC. Для REST задайте свой " + markdown.Code("ErrorDecoder") + ", парсящий фактический формат ошибок сервера (опция " + markdown.Code("WithErrorDecoder") + "). Пример типа для ошибок с полями " + markdown.Code("code") + " и " + markdown.Code("message") + ":")
+		md.PlainText(markdown.Bold("Дефолтный HTTPErrorDecoder.") + " Возвращает " + markdown.Code("*ResponseError") + " (status, Content-Type, тело). " + markdown.Code("Error()") + " — status и сырое тело; " + markdown.Code("Code()") + " — HTTP status для метрик. Свой тип — " + markdown.Code("DecodeHTTPError") + " и разбор " + markdown.Code("e.Body") + ".")
 		md.LF()
-		md.CodeBlocks(markdown.SyntaxHighlightGo, `type restError struct {
-    Code    int    `+"`json:\"code\"`"+`
-    Message string `+"`json:\"message\"`"+`
-}
-
-func (e *restError) Error() string { return e.Message }`)
+		md.PlainText(markdown.Bold("Свой тип.") + " Опция " + markdown.Code("DecodeHTTPError") + ": " + markdown.Code("func(statusCode int, contentType string, body []byte) error") + ".")
+		md.LF()
+		md.CodeBlocks(markdown.SyntaxHighlightGo, fmt.Sprintf(`cli := %s.New("http://localhost:9000",
+    %s.DecodeHTTPError(func(statusCode int, contentType string, body []byte) error {
+        var e mypkg.BusinessError
+        if err := json.Unmarshal(body, &e); err != nil {
+            return err
+        }
+        return e
+    }),
+)`, pkgName, pkgName))
 	}
 }
 

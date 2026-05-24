@@ -3,7 +3,6 @@
 package renderer
 
 import (
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -12,20 +11,12 @@ import (
 	"tgp/internal/model"
 )
 
-func buildFullPath(prefix string, pathValue string) (result string) {
-
-	trimmed := strings.TrimPrefix(pathValue, "/")
-	if prefix == "" {
-		return "/" + trimmed
-	}
-	return path.Join("/", prefix, trimmed)
-}
-
 func (r *contractRenderer) batchPath() (path string) {
 
 	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPrefix, "")
 	pathValue := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPath, "/"+toLowerCamel(r.contract.Name))
-	return buildFullPath(prefix, pathValue)
+
+	return model.JoinHTTPPath(prefix, pathValue)
 }
 
 func (r *transportRenderer) generalBatchPath() (path string) {
@@ -52,7 +43,7 @@ func (r *transportRenderer) generalBatchPath() (path string) {
 		single = p
 		break
 	}
-	return buildFullPath(single, "/")
+	return model.JoinHTTPPath(single, "/")
 }
 
 func (r *contractRenderer) methodHTTPMethod(method *model.Method) (httpMethod string) {
@@ -77,23 +68,18 @@ func (r *contractRenderer) methodHTTPMethod(method *model.Method) (httpMethod st
 	}
 }
 
-func (r *contractRenderer) defaultMethodPathValue(method *model.Method) (path string) {
-	return "/" + toLowerCamel(r.contract.Name) + "/" + toLowerCamel(method.Name)
-}
-
 func (r *contractRenderer) methodHTTPPath(method *model.Method) (path string) {
 
-	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPrefix, "")
-	methodPath := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpPath, r.defaultMethodPathValue(method))
-	return buildFullPath(prefix, methodPath)
+	return model.MethodHTTPFullPath(r.project, r.contract, method)
 }
 
 func (r *contractRenderer) methodJsonRPCPath(method *model.Method) (path string) {
 
 	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPrefix, "")
-	pathValue := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpPath, r.defaultMethodPathValue(method))
+	pathValue := model.MethodHTTPPathValue(r.project, r.contract, method)
 	pathBase := strings.TrimPrefix(strings.Split(pathValue, ":")[0], "/")
-	return buildFullPath(prefix, "/"+pathBase)
+
+	return model.JoinHTTPPath(prefix, "/"+pathBase)
 }
 
 func (r *contractRenderer) methodIsJsonRPC(method *model.Method) (ok bool) {

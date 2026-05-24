@@ -315,7 +315,7 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 		} else {
 			mg.Add(tsg.NewStatement().Const("params").Colon().Id("Record").Generic("string", "never").Op("=").Values(nil).Semicolon())
 		}
-		methodName := r.lcName(contract.Name) + "." + r.lcName(method.Name)
+		methodName := model.JsonRPCWireMethod(contract.Name, method.Name)
 		execCall := tsg.NewStatement()
 		execCall.This().Dot("client").Dot("exec")
 		execCall.Call(
@@ -449,7 +449,7 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 			rpcRequestStmt.Id("rpcRequest").Colon()
 			rpcRequestStmt.Values(func(rg *tsg.Group) {
 				rg.Add(tsg.NewStatement().ObjectField("jsonrpc", tsg.NewStatement().Lit("2.0")))
-				rg.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit(r.lcName(contract.Name)+"."+r.lcName(method.Name))))
+				rg.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit(model.JsonRPCWireMethod(contract.Name, method.Name))))
 				rg.Add(tsg.NewStatement().ObjectField("params", tsg.NewStatement().Id("params")))
 				idGen := tsg.NewStatement()
 				idGen.Id("id").Colon().Id("this.baseClient.getRpcClient").Call().Dot("generateId").Call()
@@ -482,17 +482,15 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 							ig.If(
 								tsg.NewStatement().Id("rpcResponse.error"),
 								func(eg *tsg.Group) {
-									errorMsgStmt := tsg.NewStatement()
-									errorMsgStmt.Const("errorMsg").Colon().Id("string").Op("=")
-									errorMsgStmt.Id("rpcResponse.error").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("rpcResponse.error")).Op("===").Lit("object").Op("&&").Id("rpcResponse.error.message")
-									errorMsgStmt.Op("||").Lit("unknown error")
-									eg.Add(errorMsgStmt.Semicolon())
+									eg.Add(tsg.NewStatement().Const("rpcErr").Op("=").Id("this").Dot("baseClient").Dot("decodeRPCError").Call(
+										tsg.NewStatement().Id("rpcResponse.error"),
+									).Semicolon())
 
 									callbackArgs := make([]*tsg.Statement, 0, len(results)+1)
 									for range results {
 										callbackArgs = append(callbackArgs, tsg.NewStatement().Id("null"))
 									}
-									callbackArgs = append(callbackArgs, tsg.NewStatement().New("Error").Call(tsg.NewStatement().Id("errorMsg")))
+									callbackArgs = append(callbackArgs, tsg.NewStatement().Id("rpcErr"))
 									eg.Add(tsg.NewStatement().Id("callback").Call(callbackArgs...).Semicolon())
 								},
 							)

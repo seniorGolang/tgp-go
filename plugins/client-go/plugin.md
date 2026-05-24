@@ -94,7 +94,8 @@ cli := client.New("https://api.example.com",
     client.AfterRequest(func(ctx context.Context, resp *http.Response) error {
         return nil
     }),
-    client.DecodeError(customErrorDecoder), // Свой декодер ошибок
+    client.DecodeError(customRPCErrorDecoder),       // JSON-RPC: разбор error из ответа
+    client.DecodeHTTPError(customHTTPErrorDecoder), // REST: разбор тела HTTP-ошибки
     client.WithMetrics(),                   // Включить метрики (если в контракте есть @tg metrics)
 )
 ```
@@ -196,17 +197,20 @@ user, err := userService.GetUser(ctx, "123")
 
 ## Обработка ошибок
 
-Клиент обрабатывает ошибки из JSON-RPC и HTTP. Свой формат ошибок можно поддержать опцией `DecodeError`:
+JSON-RPC: по умолчанию `defaultErrorDecoder` разбирает `error` из ответа в `errorJsonRPC`; свой декодер — `DecodeError` (`ErrorDecoder` принимает `json.RawMessage` из `rpcResponse.Error.Raw()`).
+
+HTTP (REST): при неуспешном статусе — `HTTPErrorDecoder`; по умолчанию `*ResponseError`. Свой тип — `DecodeHTTPError`:
 
 ```go
-customDecoder := func(errData json.RawMessage) error {
-    var errMsg struct { Message string `json:"message"`; Code int `json:"code"` }
-    if err := json.Unmarshal(errData, &errMsg); err != nil {
-        return fmt.Errorf("failed to decode error: %w", err)
-    }
-    return fmt.Errorf("error %d: %s", errMsg.Code, errMsg.Message)
-}
-cli := client.New("https://api.example.com", client.DecodeError(customDecoder))
+cli := client.New("https://api.example.com",
+    client.DecodeHTTPError(func(statusCode int, contentType string, body []byte) error {
+        var e mypkg.BusinessError
+        if err := json.Unmarshal(body, &e); err != nil {
+            return err
+        }
+        return e
+    }),
+)
 ```
 
 ## Метрики

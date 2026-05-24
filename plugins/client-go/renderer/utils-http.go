@@ -49,31 +49,7 @@ func (r *ClientRenderer) argsForExchangeRequest(contract *model.Contract, method
 
 func (r *ClientRenderer) argsForRequestBody(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	pathParams := r.argPathMap(contract, method)
-	headerForReq := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
-	cookieForReq := model.HTTPCookieArgMapForRequest(r.project, contract, method)
-	queryForReq := model.HTTPArgQueryMapForRequest(r.project, contract, method)
-
-	var list []*model.Variable
-	for _, arg := range r.argsForClient(contract, method) {
-		if arg.TypeID == TypeIDIOReader {
-			continue
-		}
-		if _, inPath := pathParams[arg.Name]; inPath {
-			continue
-		}
-		if _, inHeader := headerForReq[arg.Name]; inHeader {
-			continue
-		}
-		if _, inCookie := cookieForReq[arg.Name]; inCookie {
-			continue
-		}
-		if _, inQuery := queryForReq[arg.Name]; inQuery {
-			continue
-		}
-		list = append(list, arg)
-	}
-	return list
+	return model.HTTPArgsFromRequestBody(r.project, contract, method)
 }
 
 func (r *ClientRenderer) argPathMap(contract *model.Contract, method *model.Method) (out map[string]struct{}) {
@@ -129,7 +105,7 @@ func (r *ClientRenderer) contractNameToLowerCamel(contract *model.Contract) (s s
 	if contract == nil {
 		return ""
 	}
-	return ToLowerCamel(contract.Name)
+	return model.LowerCamel(contract.Name)
 }
 
 func (r *ClientRenderer) methodNameToLowerCamel(method *model.Method) (s string) {
@@ -137,26 +113,34 @@ func (r *ClientRenderer) methodNameToLowerCamel(method *model.Method) (s string)
 	if method == nil {
 		return ""
 	}
-	return ToLowerCamel(method.Name)
+	return model.LowerCamel(method.Name)
 }
 
-func (r *ClientRenderer) defaultMethodHTTPPath(contract *model.Contract, method *model.Method) (s string) {
+func (r *ClientRenderer) jsonRPCWireMethod(contract *model.Contract, method *model.Method) (s string) {
 
-	return "/" + r.contractNameToLowerCamel(contract) + "/" + r.methodNameToLowerCamel(method)
-}
-
-func (r *ClientRenderer) contractNameToLower(contract *model.Contract) (s string) {
-
-	if contract == nil {
+	if contract == nil || method == nil {
 		return ""
 	}
-	return strings.ToLower(contract.Name)
+	return model.JsonRPCWireMethod(contract.Name, method.Name)
 }
 
-func (r *ClientRenderer) methodNameToLower(method *model.Method) (s string) {
+func (r *ClientRenderer) jsonRPCHTTPPrefix() (prefix string) {
 
-	if method == nil {
-		return ""
+	for _, contract := range r.project.Contracts {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+			return model.GetAnnotationValue(r.project, contract, nil, nil, model.TagHttpPrefix, "")
+		}
 	}
-	return strings.ToLower(method.Name)
+	return ""
+}
+
+// emitJoinEndpointPrefix генерирует присвоение resultVar = endpoint + http-prefix (как HTTP-клиент).
+func (r *ClientRenderer) emitJoinEndpointPrefix(bg *Group, endpointVar string, prefix string, resultVar string) {
+
+	if prefix == "" {
+		bg.Id(resultVar).Op("=").Id(endpointVar)
+		return
+	}
+	trimmedPrefix := strings.Trim(prefix, "/")
+	bg.Id(resultVar).Op(":=").Qual(PackageStrings, "TrimRight").Call(Id(endpointVar), Lit("/")).Op("+").Lit("/").Op("+").Lit(trimmedPrefix)
 }

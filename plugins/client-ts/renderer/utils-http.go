@@ -119,12 +119,7 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		urlStmt.Const(tsLocalVar("baseURL")).Op("=").Id("this").Dot("baseClient").Dot("getEndpoint").Call().Semicolon()
 		mg.Add(urlStmt)
 
-		pathPrefix := model.GetAnnotationValue(r.project, contract, nil, nil, model.TagHttpPrefix, "")
-		path := r.httpPath(method, contract)
-		fullPath := strings.TrimPrefix(path, "/")
-		if pathPrefix != "" {
-			fullPath = pathPrefix + "/" + fullPath
-		}
+		fullPath := strings.TrimPrefix(model.MethodHTTPFullPath(r.project, contract, method), "/")
 		urlStmt2 := tsg.NewStatement()
 		urlStmt2.Var(tsLocalVar("url")).Op("=").Id(tsLocalVar("baseURL"))
 		ternaryExpr := tsg.NewStatement()
@@ -272,30 +267,12 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 
 		mg.If(tsg.NewStatement().Id(tsLocalVar("response")).Dot("status").Op("!=").Lit(successCode), func(ig *tsg.Group) {
 			ig.Add(tsg.NewStatement().Const(tsLocalVar("errorBody")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
-			if len(methodErrors) > 0 {
-				unionTypeName := fmt.Sprintf("%sError", method.Name)
-				ig.Try(
-					func(tg *tsg.Group) {
-						tg.Add(tsg.NewStatement().Const(tsLocalVar("errorData")).Op("=").Id("JSON.parse").Call(tsg.NewStatement().Id(tsLocalVar("errorBody"))).Semicolon())
-						tg.Add(tsg.NewStatement().Const(tsLocalVar("error")).Colon().Id(unionTypeName).Op("=").Id(tsLocalVar("errorData")).Op("as").Id(unionTypeName).Semicolon())
-						tg.Throw(tsg.NewStatement().Id(tsLocalVar("error")))
-					},
-					func(cg *tsg.Group) {
-						cg.If(
-							tsg.NewStatement().Id(tsLocalVar("e")).Op("&&").Typeof(tsg.NewStatement().Id(tsLocalVar("e")), "object").Op("&&").In("message", tsg.NewStatement().Id(tsLocalVar("e"))),
-							func(ig *tsg.Group) {
-								ig.Throw(tsg.NewStatement().Id(tsLocalVar("e")))
-							},
-						)
-						cg.Throw(tsg.NewStatement().New("Error").Call(tsg.NewStatement().TemplateString(
-							[]string{fmt.Sprintf("HTTP error: %d. ", successCode), ""},
-							[]*tsg.Statement{tsg.NewStatement().Id(tsLocalVar("errorBody"))},
-						)))
-					},
-				)
-			} else {
-				ig.Throw(tsg.NewStatement().New("Error").Call(tsg.NewStatement().Lit(fmt.Sprintf("HTTP error: %d. ", successCode)).Op("+").Id(tsLocalVar("errorBody"))))
-			}
+			ig.Add(tsg.NewStatement().Const(tsLocalVar("contentType")).Op("=").Id(tsLocalVar("response")).Dot("headers").Dot("get").Call(tsg.NewStatement().Lit("content-type")).Op("??").Lit("").Semicolon())
+			ig.Throw(tsg.NewStatement().Id("this").Dot("baseClient").Dot("decodeHTTPError").Call(
+				tsg.NewStatement().Id(tsLocalVar("response")).Dot("status"),
+				tsg.NewStatement().Id(tsLocalVar("contentType")),
+				tsg.NewStatement().Id(tsLocalVar("errorBody")),
+			))
 		})
 
 		if len(results) == 0 {
@@ -310,7 +287,7 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 
 func (r *ClientRenderer) httpPath(method *model.Method, contract *model.Contract) (s string) {
 
-	return model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, "/"+r.lcName(contract.Name)+"/"+r.lcName(method.Name))
+	return model.MethodHTTPPathValue(r.project, contract, method)
 }
 
 func (r *ClientRenderer) httpPathParamNames(method *model.Method, contract *model.Contract) (out []string) {
@@ -364,36 +341,7 @@ func (r *ClientRenderer) argsForExchangeRequest(contract *model.Contract, method
 
 func (r *ClientRenderer) argsForRequestBody(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	pathParamSet := make(map[string]bool)
-	for _, segmentName := range r.httpPathParamNames(method, contract) {
-		if arg := r.argByPathParamName(contract, method, segmentName); arg != nil {
-			pathParamSet[arg.Name] = true
-		}
-	}
-	headerForReq := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
-	cookieForReq := model.HTTPCookieArgMapForRequest(r.project, contract, method)
-	queryForReq := model.HTTPArgQueryMapForRequest(r.project, contract, method)
-
-	var list []*model.Variable
-	for _, arg := range r.argsForClient(contract, method) {
-		if arg.TypeID == TypeIDIOReader {
-			continue
-		}
-		if pathParamSet[arg.Name] {
-			continue
-		}
-		if _, inHeader := headerForReq[arg.Name]; inHeader {
-			continue
-		}
-		if _, inCookie := cookieForReq[arg.Name]; inCookie {
-			continue
-		}
-		if _, inQuery := queryForReq[arg.Name]; inQuery {
-			continue
-		}
-		list = append(list, arg)
-	}
-	return list
+	return model.HTTPArgsFromRequestBody(r.project, contract, method)
 }
 
 func (r *ClientRenderer) formFieldName(method *model.Method, variable *model.Variable) (key string) {
@@ -556,9 +504,12 @@ func (r *ClientRenderer) renderHTTPHeaders(mg *tsg.Group, contract *model.Contra
 		reqCT := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")
 		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Lit(reqCT)).Semicolon())
 		var defaultAccept string
-		if responseStreamResult != nil {
+		switch {
+		case responseMultipart:
+			defaultAccept = "multipart/form-data"
+		case responseStreamResult != nil:
 			defaultAccept = "application/octet-stream"
-		} else {
+		default:
 			defaultAccept = "application/json"
 		}
 		acceptType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, defaultAccept)

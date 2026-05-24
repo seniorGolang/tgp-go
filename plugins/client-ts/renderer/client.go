@@ -19,6 +19,12 @@ func (r *ClientRenderer) RenderClient() (err error) {
 	// Импорты
 	file.ImportType("./options", "ClientOptions")
 	if r.HasJsonRPC() {
+		file.ImportNamed("./error", "defaultErrorDecoder")
+	}
+	if r.HasHTTP() {
+		file.ImportNamed("./error", "defaultHTTPErrorDecoder")
+	}
+	if r.HasJsonRPC() {
 		file.ImportNamed("./jsonrpc/client", "JsonRpcClient")
 		file.ImportType("./batch", "BatchRequest", "RpcCallback")
 		file.ImportType("./jsonrpc/utils/jsonrpc", "RequestRPC", "ResponseRPC", "ID")
@@ -75,14 +81,26 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 		constructor.Block(func(cg *tsg.Group) {
 			cg.Add(tsg.NewStatement().This().Dot("endpoint").Op("=").Id("endpoint").Semicolon())
 
+			rpcURLEndpoint := tsg.NewStatement().Id("endpoint")
+			if r.HasJsonRPC() {
+				r.emitJoinEndpointPrefixTS(cg, "endpoint", r.jsonRPCHTTPPrefix(), "rpcURL")
+				rpcURLEndpoint = tsg.NewStatement().Id("rpcURL")
+			}
+
 			// Объединяем опции
 			cg.Add(tsg.NewStatement().Const("defaultOptions").Colon().Id("ClientOptions").Op("=").Values(func(og *tsg.Group) {
-				og.Add(tsg.NewStatement().Id("url").Colon().Id("endpoint"))
+				og.Add(tsg.NewStatement().Id("url").Colon().Add(rpcURLEndpoint))
 				defaultFn := tsg.NewStatement()
 				defaultFn.ArrowFunc().Block(func(bg *tsg.Group) {
 					bg.Return(tsg.NewStatement().Id("crypto").Dot("randomUUID").Call())
 				})
 				og.Add(tsg.NewStatement().Id("idGeneratorFn").Colon().Add(defaultFn))
+				if r.HasJsonRPC() {
+					og.Add(tsg.NewStatement().Id("errorDecoder").Colon().Id("defaultErrorDecoder"))
+				}
+				if r.HasHTTP() {
+					og.Add(tsg.NewStatement().Id("httpErrorDecoder").Colon().Id("defaultHTTPErrorDecoder"))
+				}
 			}).Semicolon())
 
 			cg.Add(tsg.NewStatement().This().Dot("options").Op("=").Id("Object").Dot("assign").Call(
@@ -112,6 +130,16 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 			mg.Return(tsg.NewStatement().This().Dot("endpoint"))
 		}))
 		grp.Line()
+
+		if r.HasJsonRPC() {
+			grp.Add(r.renderDecodeRPCErrorMethod())
+			grp.Line()
+		}
+
+		if r.HasHTTP() {
+			grp.Add(r.renderDecodeHTTPErrorMethod())
+			grp.Line()
+		}
 
 		// Вспомогательный метод для получения заголовков (поддерживает статичные и динамические)
 		grp.Add(tsg.NewStatement().
@@ -272,13 +300,11 @@ func (r *ClientRenderer) renderBatchMethod() *tsg.Statement {
 					cig.If(
 						tsg.NewStatement().Id("response").Op("!=").Id("null").Op("&&").Id("response").Dot("error"),
 						func(eg *tsg.Group) {
-							errorMsg := tsg.NewStatement()
-							errorMsg.Const("errorMsg").Colon().Id("string").Op("=")
-							errorMsg.Id("response.error").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("response.error")).Op("===").Lit("object").Op("&&").Id("response.error.message")
-							errorMsg.Op("||").Lit("unknown error")
-							eg.Add(errorMsg.Semicolon())
+							eg.Add(tsg.NewStatement().Const("rpcErr").Op("=").Id("this").Dot("decodeRPCError").Call(
+								tsg.NewStatement().Id("response.error"),
+							).Semicolon())
 							eg.Add(tsg.NewStatement().Id("callback").Call(
-								tsg.NewStatement().New("Error").Call(tsg.NewStatement().Id("errorMsg")),
+								tsg.NewStatement().Id("rpcErr"),
 								tsg.NewStatement().Id("response"),
 							).Semicolon())
 						},
@@ -296,6 +322,38 @@ func (r *ClientRenderer) renderBatchMethod() *tsg.Statement {
 			)
 		})
 		bg.Add(forLoopStmt)
+	})
+	return stmt
+}
+
+func (r *ClientRenderer) renderDecodeRPCErrorMethod() *tsg.Statement {
+
+	stmt := tsg.NewStatement()
+	stmt.Comment("Decodes JSON-RPC error object from response")
+	stmt.Id("decodeRPCError")
+	stmt.Params(func(pg *tsg.Group) {
+		pg.Add(tsg.NewStatement().Id("errData").Colon().Id("unknown"))
+	})
+	stmt.Colon().Id("Error")
+	stmt.Block(func(mg *tsg.Group) {
+		mg.Return(tsg.TypeFromString("this.options.errorDecoder!(errData)"))
+	})
+	return stmt
+}
+
+func (r *ClientRenderer) renderDecodeHTTPErrorMethod() *tsg.Statement {
+
+	stmt := tsg.NewStatement()
+	stmt.Comment("Decodes REST HTTP error response body")
+	stmt.Id("decodeHTTPError")
+	stmt.Params(func(pg *tsg.Group) {
+		pg.Add(tsg.NewStatement().Id("statusCode").Colon().Id("number"))
+		pg.Add(tsg.NewStatement().Id("contentType").Colon().Id("string"))
+		pg.Add(tsg.NewStatement().Id("body").Colon().Id("string"))
+	})
+	stmt.Colon().Id("Error")
+	stmt.Block(func(mg *tsg.Group) {
+		mg.Return(tsg.TypeFromString("this.options.httpErrorDecoder!(statusCode, contentType, body)"))
 	})
 	return stmt
 }

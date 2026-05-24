@@ -30,7 +30,7 @@ func (r *ClientRenderer) jsonrpcClientMethodFunc(ctx context.Context, contract *
 		}))
 		bg.Var().Id("_response_").Id(r.responseStructName(contract, method))
 		bg.Var().Id("rpcResponse").Op("*").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ResponseRPC")
-		bg.If(List(Id("rpcResponse"), Err()).Op("=").Id("cli").Dot("rpc").Dot("Call").Call(Id(_ctx_), Lit(r.contractNameToLower(contract)+"."+r.methodNameToLower(method)), Id("_request")).Op(";").Err().Op("!=").Nil().Op("||").Id("rpcResponse").Op("==").Nil()).Block(
+		bg.If(List(Id("rpcResponse"), Err()).Op("=").Id("cli").Dot("rpc").Dot("Call").Call(Id(_ctx_), Lit(r.jsonRPCWireMethod(contract, method)), Id("_request")).Op(";").Err().Op("!=").Nil().Op("||").Id("rpcResponse").Op("==").Nil()).Block(
 			Return(),
 		)
 		bg.If(Id("rpcResponse").Dot("Error").Op("!=").Nil()).Block(
@@ -77,7 +77,7 @@ func (r *ClientRenderer) jsonrpcClientRequestFunc(ctx context.Context, contract 
 			Id("rpcRequest"): Op("&").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "RequestRPC").Values(Dict{
 				Id("ID"):      Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "NewID").Call(),
 				Id("JSONRPC"): Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "Version"),
-				Id("Method"):  Lit(r.contractNameToLower(contract) + "." + r.methodNameToLower(method)),
+				Id("Method"):  Lit(r.jsonRPCWireMethod(contract, method)),
 				Id("Params"): Id(r.requestStructName(contract, method)).Values(DictFunc(func(dg Dict) {
 					for _, arg := range r.argsForExchangeRequest(contract, method) {
 						dg[Id(ToCamel(arg.Name))] = Id(ToLowerCamel(arg.Name))

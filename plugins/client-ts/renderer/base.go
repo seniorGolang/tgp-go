@@ -132,7 +132,7 @@ func (r *ClientRenderer) lcName(s string) (out string) {
 	if len(s) == 0 {
 		return ""
 	}
-	return toLowerCamel(s)
+	return model.LowerCamel(s)
 }
 
 func (r *ClientRenderer) requestTypeName(contract *model.Contract, method *model.Method) (s string) {

@@ -27,9 +27,10 @@ type ImplementationMethod struct {
 	ErrorTypes []*ErrorTypeReference `json:"errorTypes,omitempty"`
 }
 
-// ErrorTypeReference представляет ссылку на тип ошибки.
+// ErrorTypeReference представляет ссылку на возвращаемую ошибку.
 type ErrorTypeReference struct {
 	PkgPath  string `json:"pkgPath"`
+	Name     string `json:"name"`
 	TypeName string `json:"typeName"`
 	FullName string `json:"fullName"`
 }

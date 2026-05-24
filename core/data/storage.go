@@ -2,10 +2,9 @@
 package data
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-
-	"github.com/goccy/go-json"
 
 	"tgp/core/i18n"
 )

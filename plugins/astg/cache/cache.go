@@ -4,14 +4,13 @@ package cache
 
 import (
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/goccy/go-json"
 
 	"tgp/core/i18n"
 	"tgp/internal/merkle"
@@ -63,7 +62,7 @@ func SaveProject(projectID string, project *model.Project, rootDir string, contr
 		Project:      project,
 		Files:        files,
 		ContractsDir: contractsDir,
-		ExcludeDirs:  append([]string(nil), excludeDirs...),
+		ExcludeDirs:  excludeDirs,
 	}
 	branch := ""
 	if project.Git != nil && project.Git.Branch != "" {
@@ -272,7 +271,7 @@ func saveEntry(cacheFile string, entry *cacheEntry) (err error) {
 	}
 
 	var jsonData []byte
-	if jsonData, err = json.MarshalIndent(entry, "", "  "); err != nil {
+	if jsonData, err = json.Marshal(entry); err != nil {
 		slog.Debug(i18n.Msg("failed to marshal cache entry"), slog.Any("error", err))
 		return fmt.Errorf("failed to marshal cache entry: %w", err)
 	}

@@ -9,7 +9,7 @@ import (
 
 type cacheEntry struct {
 	Project      *model.Project    `json:"project"`
-	Files        map[string]string `json:"files"`
 	ContractsDir string            `json:"contractsDir"`
 	ExcludeDirs  []string          `json:"excludeDirs"`
+	Files        map[string]string `json:"files"`
 }

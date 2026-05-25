@@ -134,13 +134,11 @@ func (r *ClientRenderer) jsonRPCHTTPPrefix() (prefix string) {
 	return ""
 }
 
-// emitJoinEndpointPrefix генерирует присвоение resultVar = endpoint + http-prefix (как HTTP-клиент).
-func (r *ClientRenderer) emitJoinEndpointPrefix(bg *Group, endpointVar string, prefix string, resultVar string) {
+func (r *ClientRenderer) emitJoinEndpointPrefix(bg *Group, endpointVar string, prefix string) {
 
 	if prefix == "" {
-		bg.Id(resultVar).Op("=").Id(endpointVar)
 		return
 	}
 	trimmedPrefix := strings.Trim(prefix, "/")
-	bg.Id(resultVar).Op(":=").Qual(PackageStrings, "TrimRight").Call(Id(endpointVar), Lit("/")).Op("+").Lit("/").Op("+").Lit(trimmedPrefix)
+	bg.Id(endpointVar).Op("=").Qual(PackageStrings, "TrimRight").Call(Id(endpointVar), Lit("/")).Op("+").Lit("/").Op("+").Lit(trimmedPrefix)
 }

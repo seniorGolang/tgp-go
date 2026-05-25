@@ -11,7 +11,7 @@ const (
 	ArgModeImplicit = "implicit"
 	ArgModeBody     = "body"
 
-	typeIDContext = "context:Context"
+	typeIDContext  = "context:Context"
 	typeIDIOReader = "io:Reader"
 )
 

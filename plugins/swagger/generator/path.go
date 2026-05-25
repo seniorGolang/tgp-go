@@ -730,9 +730,9 @@ func (g *generator) appendArgMapRequestParameter(
 			required = arg.Annotations != nil && arg.Annotations.IsSet(model.TagRequired)
 		case model.ArgModeBody:
 			if paramDesc != "" {
-				paramDesc = paramDesc + ". "
+				paramDesc += ". "
 			}
-			paramDesc = paramDesc + transportBodyOverlayDescription
+			paramDesc += transportBodyOverlayDescription
 		}
 
 		operation.Parameters = append(operation.Parameters, types.Parameter{

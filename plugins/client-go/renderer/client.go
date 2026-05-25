@@ -92,10 +92,10 @@ func (r *ClientRenderer) RenderClient() (err error) {
 			}
 			bg.Id("cli").Dot("applyOpts").Call(Id("opts"))
 			if r.HasJsonRPC() {
-				r.emitJoinEndpointPrefix(bg, "endpoint", r.jsonRPCHTTPPrefix(), "rpcEndpoint")
+				r.emitJoinEndpointPrefix(bg, "endpoint", r.jsonRPCHTTPPrefix())
 				bg.Id("cli").Dot("rpcOpts").Op("=").Append(Id("cli").Dot("rpcOpts"), Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ClientHTTP").Call(Id("cli").Dot("httpClient")))
 				bg.Id("cli").Dot("rpcOpts").Op("=").Append(Id("cli").Dot("rpcOpts"), Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "ClientID").Call(Id("cli").Dot("name")))
-				bg.Id("cli").Dot("rpc").Op("=").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "NewClient").Call(Id("rpcEndpoint"), Id("cli").Dot("rpcOpts").Op("..."))
+				bg.Id("cli").Dot("rpc").Op("=").Qual(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "NewClient").Call(Id("endpoint"), Id("cli").Dot("rpcOpts").Op("..."))
 			}
 
 			bg.Return()

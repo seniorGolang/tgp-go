@@ -503,4 +503,3 @@ func findMethodInFile(file *ast.File, structName string, methodName string) (met
 	}
 	return
 }
-

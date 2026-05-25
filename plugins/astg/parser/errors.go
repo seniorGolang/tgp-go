@@ -557,7 +557,8 @@ func funcSignatureFromDecl(funcDecl *ast.FuncDecl, typeInfo *types.Info) (signat
 		return
 	}
 
-	signature, ok = fn.Type().(*types.Signature)
+	signature, _ = fn.Type().(*types.Signature)
+
 	return
 }
 

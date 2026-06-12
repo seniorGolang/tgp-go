@@ -21,9 +21,11 @@ func (r *transportRenderer) RenderTransportErrors() (err error) {
 	srcFile.ImportName(PackageSlog, "slog")
 
 	srcFile.Line().Add(r.withErrorCodeInterface())
-	srcFile.Line().Add(r.withRedirectInterface())
-	srcFile.Line().Add(r.errValidationType())
-	srcFile.Line().Add(r.errBadRequestDataFunc())
+	if r.hasHTTPServerContracts() {
+		srcFile.Line().Add(r.withRedirectInterface())
+		srcFile.Line().Add(r.errValidationType())
+		srcFile.Line().Add(r.errBadRequestDataFunc())
+	}
 	srcFile.Line().Add(r.exitOnErrorFunc())
 
 	return srcFile.Save(errorsPath)

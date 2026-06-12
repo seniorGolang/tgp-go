@@ -29,13 +29,13 @@ func ReadProject(root string, relPath string) (project *model.Project, err error
 	if f, err = os.Open(path); err != nil {
 		return nil, fmt.Errorf("open project file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var gz *gzip.Reader
 	if gz, err = gzip.NewReader(f); err != nil {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	var data []byte
 	if data, err = io.ReadAll(gz); err != nil {
@@ -70,7 +70,7 @@ func WriteProject(root string, relPath string, project *model.Project) (err erro
 	if f, err = os.Create(path); err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	gz := gzip.NewWriter(f)
 	if _, err = gz.Write(data); err != nil {

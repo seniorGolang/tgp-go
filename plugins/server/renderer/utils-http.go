@@ -82,6 +82,25 @@ func (r *contractRenderer) methodJsonRPCPath(method *model.Method) (path string)
 	return model.JoinHTTPPath(prefix, "/"+pathBase)
 }
 
+func methodIsHTTP(project *model.Project, contract *model.Contract, method *model.Method) (ok bool) {
+
+	if contract == nil || method == nil {
+		return false
+	}
+	contractHasHTTP := model.IsAnnotationSet(project, contract, nil, nil, model.TagServerHTTP)
+	if !contractHasHTTP {
+		return false
+	}
+	contractHasJsonRPC := model.IsAnnotationSet(project, contract, nil, nil, model.TagServerJsonRPC)
+	methodHasExplicitHTTP := model.IsAnnotationSet(project, contract, method, nil, model.TagHTTPMethod)
+	return !contractHasJsonRPC || methodHasExplicitHTTP
+}
+
+func (r *contractRenderer) methodIsHTTP(method *model.Method) (ok bool) {
+
+	return methodIsHTTP(r.project, r.contract, method)
+}
+
 func (r *contractRenderer) methodIsJsonRPC(method *model.Method) (ok bool) {
 
 	if method == nil {

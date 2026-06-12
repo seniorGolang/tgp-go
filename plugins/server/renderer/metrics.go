@@ -139,17 +139,6 @@ func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) 
 	}
 }
 
-func (r *contractRenderer) methodIsHTTP(method *model.Method) (ok bool) {
-
-	contractHasHTTP := model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerHTTP)
-	if !contractHasHTTP {
-		return false
-	}
-	contractHasJsonRPC := model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC)
-	methodHasExplicitHTTP := model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPMethod)
-	return !contractHasJsonRPC || methodHasExplicitHTTP
-}
-
 func (r *contractRenderer) paramNames(vars []*model.Variable) (st *Statement) {
 
 	var list = make([]Code, 0, len(vars))

@@ -415,7 +415,7 @@ func getGitUser(gitDir string) (user string, email string, err error) {
 	if file, err = os.Open(configPath); err != nil {
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -441,7 +441,7 @@ func getGitRemoteURL(gitDir string) (url string, err error) {
 	if file, err = os.Open(configPath); err != nil {
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	inOriginSection := false

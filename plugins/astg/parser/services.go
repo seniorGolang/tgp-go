@@ -173,7 +173,7 @@ func isGeneratedFile(filePath string) (isGenerated bool) {
 	if file, err = os.Open(filePath); err != nil {
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	buf := make([]byte, 200)
 	var n int
@@ -191,7 +191,7 @@ func hasMainFunction(filePath string) (hasMain bool) {
 	if file, err = os.Open(filePath); err != nil {
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	buf := make([]byte, 8192)
 	var n int

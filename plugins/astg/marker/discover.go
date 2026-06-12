@@ -83,7 +83,7 @@ func isGeneratedByHeader(filePath string) (ok bool) {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	buf := make([]byte, 200)
 	var n int
 	n, _ = f.Read(buf)

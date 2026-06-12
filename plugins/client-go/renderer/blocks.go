@@ -242,5 +242,7 @@ func (r *ClientRenderer) httpDoRoundTripHelper(contract *model.Contract, outDir 
 
 func (r *ClientRenderer) httpDeferBodyClose() (c Code) {
 
-	return Defer().Id("httpResp").Dot("Body").Dot("Close").Call()
+	return Defer().Func().Params().Block(
+		Id("_").Op("=").Id("httpResp").Dot("Body").Dot("Close").Call(),
+	).Call()
 }

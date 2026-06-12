@@ -70,7 +70,7 @@ func getGitRemoteURLFromConfig(gitDir string) (remoteURL string, err error) {
 		// Если не удалось открыть config, возвращаем пустую строку без ошибки
 		return "", nil
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	inOriginSection := false

@@ -132,8 +132,10 @@ func (r *transportRenderer) renderHeaderValueInterface(srcFile *GoFile) {
 
 	srcFile.Line().Type().Id("iHeaderValue").Interface(
 		Id("Header").Params().Params(String()),
-	).Line().
-		Line().Type().Id("cookieType").Interface(
-		Id("Cookie").Params().Params(Qual(PackageFiber, "Cookie")),
 	)
+	if r.needsCookieType() {
+		srcFile.Line().Line().Type().Id("cookieType").Interface(
+			Id("Cookie").Params().Params(Qual(PackageFiber, "Cookie")),
+		)
+	}
 }

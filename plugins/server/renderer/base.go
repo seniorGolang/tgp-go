@@ -123,6 +123,36 @@ func (r *baseRenderer) hasJsonRPC() (ok bool) {
 	return false
 }
 
+func (r *baseRenderer) hasHTTPServerContracts() (ok bool) {
+
+	for _, contract := range r.contractsSorted() {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *baseRenderer) needsCookieType() (ok bool) {
+
+	for _, contract := range r.contractsSorted() {
+		if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
+			continue
+		}
+		for _, method := range contract.Methods {
+			if !methodIsHTTP(r.project, contract, method) {
+				continue
+			}
+			cookieValue := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpCookies, "")
+			if len(model.ParseArgMapEntries(cookieValue)) == 0 {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
 func (r *baseRenderer) hasMetrics() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {

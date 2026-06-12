@@ -173,7 +173,7 @@ func loadEntry(rootDir string, cacheFile string, projectID string, contractsDir 
 		slog.Debug(i18n.Msg("failed to open cache file"), slog.Any("error", err), slog.String("cacheFile", cacheFile))
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var gzipReader *gzip.Reader
 	if gzipReader, err = gzip.NewReader(file); err != nil {
@@ -181,7 +181,7 @@ func loadEntry(rootDir string, cacheFile string, projectID string, contractsDir 
 		_ = os.Remove(cacheFile)
 		return
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 
 	var jsonData []byte
 	if jsonData, err = io.ReadAll(gzipReader); err != nil {
@@ -283,16 +283,15 @@ func saveEntry(cacheFile string, entry *cacheEntry) (err error) {
 	}
 
 	gzipWriter := gzip.NewWriter(file)
-	defer gzipWriter.Close()
 	if _, err = gzipWriter.Write(jsonData); err != nil {
-		file.Close()
+		_ = file.Close()
 		_ = os.Remove(cacheFile)
 		slog.Debug(i18n.Msg("failed to write compressed data"), slog.Any("error", err))
 		return fmt.Errorf("failed to write compressed data: %w", err)
 	}
 
 	if err = gzipWriter.Close(); err != nil {
-		file.Close()
+		_ = file.Close()
 		_ = os.Remove(cacheFile)
 		slog.Debug(i18n.Msg("failed to close gzip writer"), slog.Any("error", err))
 		return fmt.Errorf("failed to close gzip writer: %w", err)

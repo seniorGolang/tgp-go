@@ -21,7 +21,6 @@ func (r *transportRenderer) RenderTransportFiber() (err error) {
 	srcFile.PackageComment(generated.ByToolGateway)
 
 	srcFile.ImportName(PackageFiber, "fiber")
-	srcFile.ImportName(PackageErrors, "errors")
 	srcFile.ImportName(PackageSlog, "slog")
 	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(PackageStrings, "strings")
@@ -154,7 +153,7 @@ func (r *transportRenderer) renderFiberRecover(srcFile *GoFile) {
 				dg.If(Id("r").Op(":=").Recover().Op(";").Id("r").Op("!=").Nil()).BlockFunc(func(ig *Group) {
 					ig.List(Err(), Id("ok")).Op(":=").Id("r").Op(".").Call(Error())
 					ig.If(Op("!").Id("ok")).Block(
-						Err().Op("=").Qual(PackageErrors, "New").Call(Qual(PackageFmt, "Sprintf").Call(Lit("%v"), Id("r"))),
+						Err().Op("=").Qual(PackageFmt, "Errorf").Call(Lit("%v"), Id("r")),
 					)
 					ig.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).BlockFunc(func(pg *Group) {
 						pg.Id("clientID").Op(":=").Qual(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "GetClientID").Call(Id(VarNameFtx).Dot("UserContext").Call())

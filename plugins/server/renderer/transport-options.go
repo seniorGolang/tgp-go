@@ -67,10 +67,6 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 			block := func(gr *Group) {
 				gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
 				gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
-				if r.hasJsonRPC() {
-					gr.Id("httpSvc").Dot("maxBatchSize").Op("=").Id("srv").Dot("maxBatchSize")
-					gr.Id("httpSvc").Dot("maxParallelBatch").Op("=").Id("srv").Dot("maxParallelBatch")
-				}
 				gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
 			}
 			srcFile.Line().Func().Id(contract.Name).

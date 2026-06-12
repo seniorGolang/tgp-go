@@ -87,8 +87,10 @@ func newPkgTemplateData() (data *pkgTemplateData) {
 func (r *ClientRenderer) HasJsonRPC() (ok bool) {
 
 	for _, contract := range r.project.Contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-			return true
+		for _, method := range contract.Methods {
+			if r.methodIsJsonRPC(contract, method) {
+				return true
+			}
 		}
 	}
 	return false

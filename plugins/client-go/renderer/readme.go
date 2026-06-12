@@ -57,13 +57,9 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 	}
 	tocItems := make([]tocItem, 0)
 
-	hasJsonRPC := false
+	hasJsonRPC := r.HasJsonRPC()
 
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-			hasJsonRPC = true
-		}
-
 		contractAnchor := contractAnchorID(contract.Name)
 		_ = append(tocItems, tocItem{
 			title:  contract.Name,

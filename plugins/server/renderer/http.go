@@ -38,9 +38,6 @@ func (r *contractRenderer) renderHTTPTypes(srcFile *GoFile) {
 		Id("svc").Op("*").Id("server" + r.contract.Name),
 		Id("base").Qual(r.contract.PkgPath, r.contract.Name),
 	}
-	if r.hasJsonRPC() {
-		fields = append(fields, Id("maxBatchSize").Int(), Id("maxParallelBatch").Int())
-	}
 	if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) {
 		fields = append(fields, Id("srv").Op("*").Id("Server"))
 	}

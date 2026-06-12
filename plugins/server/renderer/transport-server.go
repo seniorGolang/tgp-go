@@ -158,7 +158,7 @@ func (r *transportRenderer) healthServerStopMethod() Code {
 		Params().
 		Block(
 			If(Id("hs").Dot("srv").Op("!=").Nil()).Block(
-				If(Err().Op(":=").Id("hs").Dot("srv").Dot("ShutdownWithTimeout").Call(Id("defaultShutdownTimeout")).Op(";").Err().Op("!=").Nil()).Block(),
+				Id("_").Op("=").Id("hs").Dot("srv").Dot("ShutdownWithTimeout").Call(Id("defaultShutdownTimeout")),
 			),
 		)
 }

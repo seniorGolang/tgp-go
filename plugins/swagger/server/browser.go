@@ -23,7 +23,7 @@ func DetectHostOS() (hostOS string) {
 			var stdoutBytes []byte
 			var readErr error
 			if stdoutBytes, readErr = io.ReadAll(stdoutPipe); readErr == nil {
-				stdoutPipe.Close()
+				_ = stdoutPipe.Close()
 
 				var waitErr error
 				if waitErr = cmd.Wait(); waitErr == nil {

@@ -405,7 +405,9 @@ func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) (err error) 
 				Id("err").Op("=").Qual(PackageFmt, "Errorf").Call(Lit("rpc call %v() on %v: %v"), Id("request").Dot("Method"), Id("httpRequest").Dot("URL").Dot("String").Call(), Id("err").Dot("Error").Call()),
 				Return(),
 			)
-			bg.Defer().Id("httpResponse").Dot("Body").Dot("Close").Call()
+			bg.Defer().Func().Params().Block(
+				Id("_").Op("=").Id("httpResponse").Dot("Body").Dot("Close").Call(),
+			).Call()
 			bg.If(Id("client").Dot("options").Dot("after").Op("!=").Nil()).BlockFunc(
 				func(ag *Group) {
 					ag.If(Err().Op("=").Id("client").Dot("options").Dot("after").Call(Id("ctx"), Id("httpResponse")).Op(";").Err().Op("!=").Nil()).Block(
@@ -494,7 +496,9 @@ func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) (err error) 
 				Id("err").Op("=").Qual(PackageFmt, "Errorf").Call(Lit("rpc batch call on %v: %v"), Id("httpRequest").Dot("URL").Dot("String").Call(), Id("err").Dot("Error").Call()),
 				Return(),
 			)
-			bg.Defer().Id("httpResponse").Dot("Body").Dot("Close").Call()
+			bg.Defer().Func().Params().Block(
+				Id("_").Op("=").Id("httpResponse").Dot("Body").Dot("Close").Call(),
+			).Call()
 			bg.If(Id("client").Dot("options").Dot("after").Op("!=").Nil()).BlockFunc(
 				func(ag *Group) {
 					ag.If(Err().Op("=").Id("client").Dot("options").Dot("after").Call(Id("ctx"), Id("httpResponse")).Op(";").Err().Op("!=").Nil()).Block(

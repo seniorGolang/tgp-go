@@ -50,7 +50,7 @@ func (d *Decoder) RegisterConverter(value any, converterFunc Converter) {
 func (d *Decoder) Decode(dst any, src map[string][]string) (err error) {
 
 	v := reflect.ValueOf(dst)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
+	if v.Kind() != reflect.Pointer || v.Elem().Kind() != reflect.Struct {
 		return errors.New("schema: interface must be a pointer to struct")
 	}
 	defer func() {
@@ -167,7 +167,7 @@ func isEmpty(t reflect.Type, value []string) (ok bool) {
 func (d *Decoder) decode(v reflect.Value, path string, parts []pathPart, values []string) (err error) {
 
 	for _, name := range parts[0].path {
-		if v.Type().Kind() == reflect.Ptr {
+		if v.Type().Kind() == reflect.Pointer {
 			if v.IsNil() {
 				v.Set(reflect.New(v.Type().Elem()))
 			}
@@ -176,7 +176,7 @@ func (d *Decoder) decode(v reflect.Value, path string, parts []pathPart, values 
 		if v.Type().Kind() == reflect.Struct {
 			for i := 0; i < v.NumField(); i++ {
 				field := v.Field(i)
-				if field.Type().Kind() == reflect.Ptr && field.IsNil() && v.Type().Field(i).Anonymous {
+				if field.Type().Kind() == reflect.Pointer && field.IsNil() && v.Type().Field(i).Anonymous {
 					field.Set(reflect.New(field.Type().Elem()))
 				}
 			}
@@ -187,7 +187,7 @@ func (d *Decoder) decode(v reflect.Value, path string, parts []pathPart, values 
 		return
 	}
 	t := v.Type()
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 		if v.IsNil() {
 			v.Set(reflect.New(t))
@@ -210,7 +210,7 @@ func (d *Decoder) decode(v reflect.Value, path string, parts []pathPart, values 
 	if conv == nil && t.Kind() == reflect.Slice && m.IsSliceElement {
 		var items []reflect.Value
 		elemT := t.Elem()
-		isPtrElem := elemT.Kind() == reflect.Ptr
+		isPtrElem := elemT.Kind() == reflect.Pointer
 		if isPtrElem {
 			elemT = elemT.Elem()
 		}
@@ -237,7 +237,7 @@ func (d *Decoder) decode(v reflect.Value, path string, parts []pathPart, values 
 				switch {
 				case m.IsSliceElementPtr:
 					items = append(items, u.Elem().Addr())
-				case u.Kind() == reflect.Ptr:
+				case u.Kind() == reflect.Pointer:
 					items = append(items, u.Elem())
 				default:
 					items = append(items, u)
@@ -331,7 +331,7 @@ func isTextUnmarshaler(v reflect.Value) (out unmarshaler) {
 		return m
 	}
 	t := v.Type()
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() == reflect.Slice {
@@ -339,7 +339,7 @@ func isTextUnmarshaler(v reflect.Value) (out unmarshaler) {
 			return m
 		}
 		m.IsSliceElement = true
-		if t = t.Elem(); t.Kind() == reflect.Ptr {
+		if t = t.Elem(); t.Kind() == reflect.Pointer {
 			t = reflect.PointerTo(t.Elem())
 			v = reflect.Zero(t)
 			m.IsSliceElementPtr = true

@@ -81,18 +81,18 @@ func (c *cache) parsePath(p string, t reflect.Type) (parts []pathPart, err error
 				index: int(index64),
 			})
 			path = make([]string, 0)
-			if field.typ.Kind() == reflect.Ptr {
+			if field.typ.Kind() == reflect.Pointer {
 				t = field.typ.Elem()
 			} else {
 				t = field.typ
 			}
 			if t.Kind() == reflect.Slice {
 				t = t.Elem()
-				if t.Kind() == reflect.Ptr {
+				if t.Kind() == reflect.Pointer {
 					t = t.Elem()
 				}
 			}
-		case field.typ.Kind() == reflect.Ptr:
+		case field.typ.Kind() == reflect.Pointer:
 			t = field.typ.Elem()
 		default:
 			t = field.typ
@@ -159,18 +159,18 @@ func (c *cache) createField(field reflect.StructField, parentAlias string) (f *f
 	var isSlice, isStruct bool
 	ft := field.Type
 	m := isTextUnmarshaler(reflect.Zero(ft))
-	if ft.Kind() == reflect.Ptr {
+	if ft.Kind() == reflect.Pointer {
 		ft = ft.Elem()
 	}
 	if isSlice = ft.Kind() == reflect.Slice; isSlice {
 		ft = ft.Elem()
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 	}
 	if ft.Kind() == reflect.Array {
 		ft = ft.Elem()
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 	}
@@ -247,7 +247,7 @@ type pathPart struct {
 
 func indirectType(typ reflect.Type) (t reflect.Type) {
 
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		return typ.Elem()
 	}
 	return typ

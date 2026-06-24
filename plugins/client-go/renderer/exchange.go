@@ -43,6 +43,9 @@ func (r *ClientRenderer) RenderExchange(contract *model.Contract) (err error) {
 		if isHTTP && (responseStreamResult != nil || responseMultipart) {
 			continue
 		}
+		if !r.shouldGenerateResponseExchange(contract, method, isHTTP, isJSONRPC) {
+			continue
+		}
 
 		exclude := r.resultNamesExcludeFromBody(contract, method)
 		if len(exclude) > 0 && isHTTP {
@@ -52,6 +55,15 @@ func (r *ClientRenderer) RenderExchange(contract *model.Contract) (err error) {
 		}
 	}
 	return srcFile.Save(path.Join(outDir, strings.ToLower(contract.Name)+"-exchange.go"))
+}
+
+func (r *ClientRenderer) shouldGenerateResponseExchange(contract *model.Contract, method *model.Method, isHTTP bool, isJSONRPC bool) (ok bool) {
+
+	if isHTTP && !isJSONRPC && len(r.resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
+		return false
+	}
+
+	return true
 }
 
 func (r *ClientRenderer) exchange(ctx context.Context, contract *model.Contract, name string, fields []exchangeField) Code {

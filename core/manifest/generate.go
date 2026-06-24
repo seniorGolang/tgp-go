@@ -2,10 +2,9 @@
 package manifest
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-
-	"github.com/goccy/go-json"
 
 	"tgp/core/i18n"
 	"tgp/core/plugin"

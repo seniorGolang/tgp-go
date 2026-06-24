@@ -2,11 +2,10 @@
 package i18n
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"strings"
-
-	"github.com/goccy/go-json"
 
 	"tgp/i18n"
 )

@@ -5,9 +5,8 @@
 package wasm
 
 import (
+	"encoding/json"
 	"fmt"
-
-	"github.com/goccy/go-json"
 
 	"tgp/core/i18n"
 )

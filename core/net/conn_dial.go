@@ -6,10 +6,9 @@ package net
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"net"
-
-	"github.com/goccy/go-json"
 
 	"tgp/core/i18n"
 	"tgp/core/wasm"

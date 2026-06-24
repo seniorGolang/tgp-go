@@ -5,7 +5,7 @@
 package wasm
 
 import (
-	"github.com/goccy/go-json"
+	"encoding/json"
 )
 
 // executeRequest представляет запрос на выполнение плагина.

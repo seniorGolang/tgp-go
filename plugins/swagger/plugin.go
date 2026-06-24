@@ -127,18 +127,10 @@ func (p *SwaggerPlugin) Info() (info plugin.Info, err error) {
 				},
 			},
 		},
-		AllowedPaths: map[string]string{
-			"@go": "w",
-		},
-		AllowedShellCMDs: []string{
-			"open",
-			"xdg-open",
-			"cmd",
-			"uname",
-		},
-		AllowedEnvVars: []string{
-			"OSTYPE",
-		},
+		AllowedPaths:     map[string]string{"@go": "w"},
+		AllowedShellCMDs: []string{"open", "xdg-open", "cmd", "uname"},
+		AllowedEnvVars:   []string{"OSTYPE"},
+		AllowedListeners: []string{"tcp/*"},
 	}
 	return
 }

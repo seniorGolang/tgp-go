@@ -6,10 +6,9 @@ package wasm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
-
-	"github.com/goccy/go-json"
 )
 
 // logMessage представляет структуру JSON сообщения лога.

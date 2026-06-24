@@ -6,11 +6,10 @@ package wasm
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"time"
-
-	"github.com/goccy/go-json"
 
 	"tgp/core/i18n"
 )

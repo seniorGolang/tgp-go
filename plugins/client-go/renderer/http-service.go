@@ -192,58 +192,13 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
 				bg.Return()
 			case len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle):
-				excludeSingle := r.resultNamesExcludeFromBody(contract, method)
-				if len(excludeSingle) > 0 {
-					bg.Var().Id("_response_").Id(r.responseBodyStructName(contract, method))
-					jsonPkg := r.getPackageJSON(contract)
-					resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
-					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
-					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
-					fieldsResultBodySingle := r.fieldsResultBody(contract, method)
-					for _, ret := range resultsWithoutErr {
-						if _, excluded := excludeSingle[ret.Name]; excluded {
-							continue
-						}
-						fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
-						var field exchangeField
-						for i := range fieldsResultBodySingle {
-							if fieldsResultBodySingle[i].name == ret.Name {
-								field = fieldsResultBodySingle[i]
-								break
-							}
-						}
-						switch {
-						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
-						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
-						default:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
-						}
-					}
-				} else {
-					bg.Var().Id("_response_").Id(r.responseStructName(contract, method))
-					jsonPkg := r.getPackageJSON(contract)
-					resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
-					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
-					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, false)
-					for i, ret := range resultsWithoutErr {
-						if i >= len(fieldsResult) {
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(Id("_response_").Dot(ToCamel(ret.Name)))
-							continue
-						}
-						field := fieldsResult[i]
-						fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
-						switch {
-						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
-						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
-						default:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
-						}
-					}
+				ret := resultsWithoutErr[0]
+				jsonPkg := r.getPackageJSON(contract)
+				resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+				if len(r.resultsForBody(contract, method)) == 1 {
+					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, ToLowerCamel(ret.Name))
 				}
+				r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
 				bg.Return()
 			default:
 				excludeDefault := r.resultNamesExcludeFromBody(contract, method)

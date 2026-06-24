@@ -1,3 +1,8 @@
 {
-  "Плагин astg-db": "Плагин astg-db"
+  "Плагин astg-db": "Плагин astg-db",
+  "Select project (project@version)": "Выберите проект (проект@версия)",
+  "Select contracts": "Выберите контракты",
+  "contracts db empty": "база контрактов пуста",
+  "no project selected": "проект не выбран",
+  "no contracts selected": "контракты не выбраны"
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"tgp/core"
 	"tgp/core/data"
 	"tgp/core/i18n"
 	"tgp/core/plugin"
@@ -34,6 +33,7 @@ func (p *AstgDbPlugin) Execute(request data.Storage) (response data.Storage, err
 	}
 
 	refStr, _ := data.Get[string](request, optionFromDB)
+	interactive := refStr == ""
 
 	root, rootErr := cdb.Root()
 	if rootErr != nil {
@@ -47,18 +47,11 @@ func (p *AstgDbPlugin) Execute(request data.Storage) (response data.Storage, err
 		return
 	}
 
-	if refStr == "" {
-		refs := cdb.ListRefs(idx)
-		if len(refs) == 0 {
-			slog.Debug(i18n.Msg("contracts db empty, skipping interactive"))
+	if interactive {
+		refStr, err = selectRef(idx)
+		if err != nil {
 			return
 		}
-		selected, selErr := core.InteractiveSelect(i18n.Msg("Select contract ref (project@version)"), refs, false, nil)
-		if selErr != nil || len(selected) == 0 {
-			err = selErr
-			return
-		}
-		refStr = selected[0]
 	}
 
 	parsed, parseErr := cdb.ParseRef(refStr)
@@ -79,11 +72,12 @@ func (p *AstgDbPlugin) Execute(request data.Storage) (response data.Storage, err
 		return
 	}
 
-	contractNamesFromDB := make([]string, 0, len(project.Contracts))
-	for _, c := range project.Contracts {
-		contractNamesFromDB = append(contractNamesFromDB, c.Name+" ("+c.ID+")")
+	if interactive {
+		parsed.Contracts, err = selectContracts(project)
+		if err != nil {
+			return
+		}
 	}
-	slog.Debug(i18n.Msg("contracts in project from db"), slog.Int("count", len(project.Contracts)), slog.Any("contracts", contractNamesFromDB))
 
 	project = cdb.FilterProject(project, parsed.Contracts)
 	slog.Debug(i18n.Msg("contracts after filter"), slog.Any("filter", parsed.Contracts), slog.Int("count", len(project.Contracts)))

@@ -51,7 +51,7 @@ func (p *BaseGoPlugin) Info() (info plugin.Info, err error) {
 		AllowedStdOut:    true,
 		AllowedStdErr:    true,
 		AllowedPaths:     map[string]string{"@root": "w"},
-		AllowedEnvVars:   []string{"PATH", "GOROOT", "GOPATH"},
+		AllowedEnvVars:   []string{"HOME", "TG_HOME", "PATH", "GOROOT", "GOPATH", "GOMODCACHE", "GOCACHE", "GOPROXY", "GOSUMDB", "GOPRIVATE", "GONOSUMDB"},
 		Commands: []plugin.Command{
 			{
 				Path:        []string{"init", "go"},

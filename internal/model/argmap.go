@@ -16,6 +16,14 @@ const (
 	typeIDIOReader = "io:Reader"
 )
 
+func isContextArg(arg *Variable) (ok bool) {
+
+	if arg == nil {
+		return false
+	}
+	return arg.TypeID == typeIDContext || arg.TypeID == "context.Context"
+}
+
 // ArgMapItem is one entry from http-headers, http-cookies or http-args (arg|key or arg|key|mode).
 type ArgMapItem struct {
 	Arg  string
@@ -290,7 +298,7 @@ func HTTPArgsFromRequestBody(project *Project, contract *Contract, method *Metho
 	queryArgs := HTTPArgQueryMapForRequest(project, contract, method)
 
 	for _, arg := range method.Args {
-		if arg.TypeID == typeIDContext {
+		if isContextArg(arg) {
 			continue
 		}
 		if _, ok := implicit[arg.Name]; ok {

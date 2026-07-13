@@ -167,7 +167,7 @@ func (r *ClientRenderer) renderExchangeRequestType(contract *model.Contract, met
 
 				field := tsg.NewStatement()
 				field.Id(tsSafeName(arg.Name))
-				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
+				if arg.NumberOfPointers > 0 || model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					field.Optional()
 				}
 				field.Colon()

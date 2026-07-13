@@ -39,12 +39,18 @@ func (p *ClientTsPlugin) Execute(request data.Storage) (response data.Storage, e
 	}
 
 	opts := generator.Options{
-		Doc: generator.DocOptions{Enabled: true},
+		Doc:            generator.DocOptions{Enabled: true},
+		ClientIdentity: true,
 	}
 
 	var noDoc bool
 	if noDoc, err = data.Get[bool](request, "no-doc"); err == nil {
 		opts.Doc.Enabled = !noDoc
+	}
+
+	var noClientID bool
+	if noClientID, err = data.Get[bool](request, "no-client-id"); err == nil && noClientID {
+		opts.ClientIdentity = false
 	}
 
 	var docFile string
@@ -148,6 +154,13 @@ func (p *ClientTsPlugin) Info() (info plugin.Info, err error) {
 						Name:        "no-doc",
 						Type:        "bool",
 						Description: i18n.Msg("Disable documentation generation"),
+						Required:    false,
+						Default:     false,
+					},
+					{
+						Name:        "no-client-id",
+						Type:        "bool",
+						Description: i18n.Msg("Disable X-Client-Id header generation and sending"),
 						Required:    false,
 						Default:     false,
 					},

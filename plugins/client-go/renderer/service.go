@@ -45,8 +45,6 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 		srcFile.ImportName(PackageBytes, "bytes")
 		srcFile.ImportName(PackageIO, "io")
 		srcFile.ImportName(PackageStrings, "strings")
-		srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
-		srcFile.ImportName(PackageSlog, "slog")
 		jsonPkg := r.getPackageJSON(contract)
 		srcFile.ImportName(jsonPkg, "json")
 		for _, method := range contract.Methods {
@@ -90,8 +88,7 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 		}
 	}
 
-	if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
-		srcFile.ImportName(PackageStrconv, "strconv")
+	if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) && r.contractHasHTTPMethods(contract) {
 		srcFile.ImportName(PackageTime, "time")
 	}
 
@@ -101,13 +98,6 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 
 	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) && r.contractHasResponseMultipart(contract) {
 		srcFile.Add(r.StreamingMultipartHelperTypes())
-	}
-	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) && r.contractHasHTTPMethods(contract) {
-		srcFile.Add(r.httpApplyHeadersFromCtxHelper(contract))
-		srcFile.Add(r.httpDoRoundTripHelper(contract, outDir))
-		if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
-			srcFile.Add(r.httpRecordHTTPMetricsHelper(contract))
-		}
 	}
 	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 		srcFile.Add(r.rpcRecordMetricsHelper(contract))

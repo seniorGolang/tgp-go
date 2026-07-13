@@ -26,6 +26,9 @@ func (r *ClientRenderer) RenderClientOptions() (err error) {
 	stmt.Op("=")
 	stmt.Block(func(grp *tsg.Group) {
 		grp.Add(tsg.NewStatement().Id("url").Colon().Id("string").Semicolon())
+		if r.clientIdentity {
+			grp.Add(tsg.NewStatement().Id("clientName").Colon().Id("string").Semicolon())
+		}
 		if r.HasJsonRPC() {
 			grp.Add(tsg.NewStatement().Id("errorDecoder").Optional().Colon().Id("ErrorDecoder").Semicolon())
 		}

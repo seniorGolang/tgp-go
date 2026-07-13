@@ -82,7 +82,7 @@ func testProjectWithDtoID() (project *model.Project) {
 func TestIsExplicitlyExcludedType_uuidAliasChain(t *testing.T) {
 
 	project := testProjectWithDtoID()
-	renderer := NewClientRenderer(project, t.TempDir(), false, "")
+	renderer := NewClientRenderer(project, t.TempDir(), false, "", true)
 	dtoID := project.Types[testDtoPkg+":ID"]
 	if !renderer.isExplicitlyExcludedType(dtoID) {
 		t.Fatal("dto.ID alias to uuid must be excluded from opaque marshaler path")
@@ -92,7 +92,7 @@ func TestIsExplicitlyExcludedType_uuidAliasChain(t *testing.T) {
 func TestWalkTypeRef_dtoIDMapsToNamedType(t *testing.T) {
 
 	project := testProjectWithDtoID()
-	renderer := NewClientRenderer(project, t.TempDir(), false, "")
+	renderer := NewClientRenderer(project, t.TempDir(), false, "", true)
 
 	schema := renderer.walkTypeRefWithVisited(
 		"id",
@@ -116,7 +116,7 @@ func TestWalkTypeRef_dtoIDMapsToNamedType(t *testing.T) {
 func TestWalkTypeRef_uuidWithMarshalerMapsToString(t *testing.T) {
 
 	project := testProjectWithDtoID()
-	renderer := NewClientRenderer(project, t.TempDir(), false, "")
+	renderer := NewClientRenderer(project, t.TempDir(), false, "", true)
 
 	schema := renderer.walkTypeRefWithVisited(
 		"id",
@@ -137,7 +137,7 @@ func TestWalkTypeRef_uuidWithMarshalerMapsToString(t *testing.T) {
 func TestWalkTypeRef_externalUIDSliceMapsToString(t *testing.T) {
 
 	project := testProjectWithDtoID()
-	renderer := NewClientRenderer(project, t.TempDir(), false, "")
+	renderer := NewClientRenderer(project, t.TempDir(), false, "", true)
 
 	uidTypeID := testUIDPkg + ":ID"
 	schema := renderer.walkTypeRefWithVisited(
@@ -166,7 +166,7 @@ func TestWalkTypeRef_dtoAliasToStructNamespace(t *testing.T) {
 		PkgName:       "dto",
 		AliasOf:       testFiltersPkg + ":AttrFilter",
 	}
-	renderer := NewClientRenderer(project, t.TempDir(), false, "")
+	renderer := NewClientRenderer(project, t.TempDir(), false, "", true)
 
 	schema := renderer.walkTypeRefWithVisited(
 		"filter",
@@ -204,7 +204,7 @@ func TestWalkTypeRef_opaqueMarshalerMapsToAny(t *testing.T) {
 			},
 		},
 	}
-	renderer := NewClientRenderer(project, t.TempDir(), false, "")
+	renderer := NewClientRenderer(project, t.TempDir(), false, "", true)
 
 	schema := renderer.walkTypeRefWithVisited(
 		"payload",
@@ -225,7 +225,7 @@ func TestWalkTypeRef_opaqueMarshalerMapsToAny(t *testing.T) {
 func TestWalkTypeRef_emptySliceWithoutTypeIDMapsToAny(t *testing.T) {
 
 	project := testProjectWithDtoID()
-	renderer := NewClientRenderer(project, t.TempDir(), false, "")
+	renderer := NewClientRenderer(project, t.TempDir(), false, "", true)
 
 	schema := renderer.walkTypeRefWithVisited(
 		"objects",
@@ -279,7 +279,7 @@ func TestRenderExchange_declaresDtoIDAndUsesIt(t *testing.T) {
 	}}
 
 	dir := t.TempDir()
-	renderer := NewClientRenderer(project, dir, false, "")
+	renderer := NewClientRenderer(project, dir, false, "", true)
 	if err := renderer.RenderExchangeTypes(project.Contracts[0]); err != nil {
 		t.Fatalf("RenderExchangeTypes: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestRenderJsonRPCClient_skipsNamespaceTypeDuplicates(t *testing.T) {
 	}}
 
 	dir := t.TempDir()
-	renderer := NewClientRenderer(project, dir, false, "")
+	renderer := NewClientRenderer(project, dir, false, "", true)
 	if err := renderer.RenderExchangeTypes(project.Contracts[0]); err != nil {
 		t.Fatalf("RenderExchangeTypes: %v", err)
 	}

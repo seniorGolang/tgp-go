@@ -42,6 +42,7 @@
 - **`contracts`** — список имён контрактов через запятую; клиент генерируется только по ним (например: `UserService,OrderService`). Если не указан — берутся все контракты.
 - **`doc-file`** — путь к файлу с документации по клиенту. По умолчанию при включённой документации: `<out>/readme.md`.
 - **`no-doc`** — не генерировать документацию (по умолчанию документация создаётся).
+- **`no-client-id`** — не генерировать `identity.ts`, не добавлять `clientName` в `ClientOptions` и не отправлять заголовок `X-Client-Id` (по умолчанию заголовок включён).
 
 Перед каждой генерацией старые сгенерированные файлы в `out` удаляются; затем создаются новые.
 
@@ -50,7 +51,9 @@
 В указанном каталоге создаются следующие файлы:
 
 - **client.ts** — функция `newClient()`, класс `Client`, методы вида `userService()` и `userServiceHTTP()` для доступа к клиентам контрактов, метод `batch()` для JSON-RPC batch;
-- **options.ts** — тип `ClientOptions` (url, headers, idGeneratorFn);
+- **options.ts** — тип `ClientOptions` (url, headers, idGeneratorFn; `clientName` — если не указан `--no-client-id`);
+- **identity.ts** — `resolveDefaultClientName()` для автоматического `X-Client-Id` (Node: hostname; браузер: agent token + instance id из localStorage); не создаётся при `--no-client-id`;
+- **headers.ts** — `buildClientHeaders()` — сборка заголовков запроса (с `X-Client-Id`, если не указан `--no-client-id`);
 - **version.ts** — константа `VersionASTg` с версией проекта;
 - **error.ts** — `ErrorJsonRPC`, `ErrorDecoder`, `defaultErrorDecoder`; для REST — `ResponseError`, `HTTPErrorDecoder`, `defaultHTTPErrorDecoder`;
 - **batch.ts** — типы `BatchRequest` и `RpcCallback` для batch-запросов (только при наличии JSON-RPC-контрактов);
@@ -91,6 +94,9 @@ console.log('User:', user);
 
 ```typescript
 const client = newClient('https://api.example.com', {
+    // Имя клиента для заголовка X-Client-Id (по умолчанию генерируется автоматически)
+    clientName: 'web-checkout',
+
     // Статические заголовки
     headers: {
         'Authorization': 'Bearer token',

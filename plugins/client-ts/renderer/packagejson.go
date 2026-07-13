@@ -66,6 +66,14 @@ func (r *ClientRenderer) RenderPackageJSON() (err error) {
 		},
 	}
 
+	if len(r.npmRuntimeDeps) > 0 {
+		deps := make(map[string]string, len(r.npmRuntimeDeps))
+		for name, version := range r.npmRuntimeDeps {
+			deps[name] = version
+		}
+		pkg["dependencies"] = deps
+	}
+
 	if desc := model.GetAnnotationValue(r.project, nil, nil, nil, tagDesc, ""); desc != "" {
 		pkg["description"] = desc
 	}

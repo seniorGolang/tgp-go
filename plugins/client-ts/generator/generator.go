@@ -15,6 +15,7 @@ import (
 type Options struct {
 	Doc             DocOptions
 	PackageJSONPath string
+	ClientIdentity  bool
 }
 
 type DocOptions struct {
@@ -44,7 +45,7 @@ func GenerateClient(project *model.Project, outDir string, opts Options) (err er
 	gen := &generator{
 		project:  project,
 		outDir:   outDir,
-		renderer: renderer.NewClientRenderer(project, outDir, emitDist, opts.PackageJSONPath),
+		renderer: renderer.NewClientRenderer(project, outDir, emitDist, opts.PackageJSONPath, opts.ClientIdentity),
 		opts:     opts,
 	}
 
@@ -77,6 +78,12 @@ func (g *generator) generate() (err error) {
 			return
 		}
 		if err = g.renderer.RenderVersion(); err != nil {
+			return
+		}
+		if err = g.renderer.RenderIdentity(); err != nil {
+			return
+		}
+		if err = g.renderer.RenderHeaders(); err != nil {
 			return
 		}
 		if g.renderer.HasJsonRPC() {

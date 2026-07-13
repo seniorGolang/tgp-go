@@ -16,22 +16,42 @@ type ClientRenderer struct {
 	outDir                   string
 	emitDist                 bool
 	packageJSONPath          string
+	clientIdentity           bool
 	contract                 *model.Contract
 	knownTypes               map[string]int
 	typeDefTs                map[string]typeDefTs
 	typeAnchorsSet           map[string]bool
 	needParseFormValueHelper bool
+	npmRuntimeDeps           map[string]string
 }
 
-func NewClientRenderer(project *model.Project, outDir string, emitDist bool, packageJSONPath string) (r *ClientRenderer) {
+func NewClientRenderer(project *model.Project, outDir string, emitDist bool, packageJSONPath string, clientIdentity bool) (r *ClientRenderer) {
+
 	return &ClientRenderer{
 		project:         project,
 		outDir:          outDir,
 		emitDist:        emitDist,
 		packageJSONPath: packageJSONPath,
+		clientIdentity:  clientIdentity,
 		knownTypes:      make(map[string]int),
 		typeDefTs:       make(map[string]typeDefTs),
+		npmRuntimeDeps:  make(map[string]string),
 	}
+}
+
+func (r *ClientRenderer) addNpmRuntimeDependency(name string) {
+
+	versions := map[string]string{
+		"fast-xml-parser":  "^4.4.1",
+		"@msgpack/msgpack": "^3.0.0",
+		"cbor-x":           "^1.5.9",
+		"yaml":             "^2.4.0",
+	}
+	version, ok := versions[name]
+	if !ok {
+		return
+	}
+	r.npmRuntimeDeps[name] = version
 }
 
 func (r *ClientRenderer) HasJsonRPC() (ok bool) {

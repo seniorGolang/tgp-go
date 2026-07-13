@@ -39,7 +39,7 @@ func TestRenderHTTPClient_optionalQueryParamSkipsUndefined(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	renderer := NewClientRenderer(project, dir, false, "")
+	renderer := NewClientRenderer(project, dir, false, "", true)
 	if err := renderer.RenderHTTPClientClass(contract); err != nil {
 		t.Fatalf("RenderHTTPClientClass: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestRenderHTTPClient_formBodyUsesFormFieldName(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	renderer := NewClientRenderer(project, dir, false, "")
+	renderer := NewClientRenderer(project, dir, false, "", true)
 	if err := renderer.RenderHTTPClientClass(contract); err != nil {
 		t.Fatalf("RenderHTTPClientClass: %v", err)
 	}
@@ -107,5 +107,51 @@ func TestRenderHTTPClient_formBodyUsesFormFieldName(t *testing.T) {
 	}
 	if strings.Contains(source, `"optionalNote"`) {
 		t.Fatalf("must not use fallback optionalNote form field name, got:\n%s", source)
+	}
+}
+
+func TestRenderHTTPClient_infersParamsTypeForHeaderMethod(t *testing.T) {
+
+	project := &model.Project{ModulePath: "example"}
+	contract := &model.Contract{
+		Name:    "Annotations",
+		PkgPath: "example/contracts",
+		Annotations: tags.DocTags{
+			model.TagServerHTTP: "",
+			model.TagHttpPrefix: "api/v1",
+		},
+		Methods: []*model.Method{{
+			Name: "HeaderRequired",
+			Annotations: tags.DocTags{
+				model.TagHTTPMethod: "GET",
+				model.TagHttpPath:   "/annotations/header-required",
+				model.TagHttpHeader: "token|X-Auth-Token|explicit",
+			},
+			Args: []*model.Variable{
+				{Name: "token", TypeRef: model.TypeRef{TypeID: "string"}},
+			},
+			Results: []*model.Variable{
+				{Name: "ok", TypeRef: model.TypeRef{TypeID: "bool"}},
+			},
+		}},
+	}
+
+	dir := t.TempDir()
+	renderer := NewClientRenderer(project, dir, false, "", true)
+	if err := renderer.RenderHTTPClientClass(contract); err != nil {
+		t.Fatalf("RenderHTTPClientClass: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, "annotations-http.ts"))
+	if err != nil {
+		t.Fatalf("read generated file: %v", err)
+	}
+	source := string(content)
+
+	if strings.Contains(source, ":RequestAnnotationsHeaderRequired") {
+		t.Fatalf("must not annotate params with exchange request type, got:\n%s", source)
+	}
+	if !strings.Contains(source, "const _params_ =") {
+		t.Fatalf("expected inferred params object, got:\n%s", source)
 	}
 }

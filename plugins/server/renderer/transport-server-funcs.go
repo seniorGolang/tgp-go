@@ -10,6 +10,12 @@ import (
 	"tgp/internal/model"
 )
 
+func (r *transportRenderer) contractHasHTTPTransport(contract *model.Contract) (ok bool) {
+
+	return model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||
+		model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC)
+}
+
 func (r *transportRenderer) fiberFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
@@ -32,16 +38,12 @@ func (r *transportRenderer) withLogFunc() (c Code) {
 				if !model.IsAnnotationSet(r.project, contract, nil, nil, TagLogger) {
 					continue
 				}
-				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
-					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
-						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithLog").Call(),
-					)
+				if !r.contractHasHTTPTransport(contract) {
+					continue
 				}
-				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
-						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithLog").Call(),
-					)
-				}
+				bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
+					Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithLog").Call(),
+				)
 			}
 			bg.Return(Id("srv"))
 		})
@@ -57,16 +59,12 @@ func (r *transportRenderer) withTraceFunc() (c Code) {
 			bg.Line()
 			bg.Qual(fmt.Sprintf("%s/tracer", r.pkgPath(r.outDir)), "Init").Call(Id(VarNameCtx), Id("appName"), Id("endpoint"), Id("attributes").Op("..."))
 			for _, contract := range r.contractsSorted() {
-				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
-					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
-						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithTrace").Call(),
-					)
+				if !r.contractHasHTTPTransport(contract) {
+					continue
 				}
-				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
-						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithTrace").Call(),
-					)
-				}
+				bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
+					Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithTrace").Call(),
+				)
 			}
 			bg.Return(Id("srv"))
 		})
@@ -86,16 +84,12 @@ func (r *transportRenderer) withMetricsFunc() (c Code) {
 				if !model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 					continue
 				}
-				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
-					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
-						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot(contract.Name).Call().Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
-					)
+				if !r.contractHasHTTPTransport(contract) {
+					continue
 				}
-				if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-					bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
-						Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
-					)
-				}
+				bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).Block(
+					Id("srv").Dot("http" + contract.Name).Op("=").Id("srv").Dot("http" + contract.Name).Dot("WithMetrics").Call(Id("srv").Dot("metrics")),
+				)
 			}
 			bg.Return(Id("srv"))
 		})

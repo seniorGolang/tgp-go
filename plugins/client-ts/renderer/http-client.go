@@ -61,14 +61,6 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		if !r.isHTTP(method, contract) {
 			continue
 		}
-		clientArgs := r.argsForClient(contract, method)
-		if len(clientArgs) > 0 {
-			requestType := r.requestTypeName(contract, method)
-			if !seenTypes[requestType] {
-				exchangeTypes = append(exchangeTypes, requestType)
-				seenTypes[requestType] = true
-			}
-		}
 		results := r.resultsWithoutError(method)
 		if len(results) > 0 {
 			if r.methodResponseMultipart(contract, method) || r.methodResponseBodyStreamResult(method) != nil {
@@ -95,12 +87,16 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 	for k := range kindsUsed {
 		switch k {
 		case content.KindXML:
+			r.addNpmRuntimeDependency("fast-xml-parser")
 			file.ImportNamed("fast-xml-parser", "XMLBuilder", "XMLParser")
 		case content.KindMsgpack:
+			r.addNpmRuntimeDependency("@msgpack/msgpack")
 			file.ImportAll("@msgpack/msgpack", "Msgpack")
 		case content.KindCBOR:
+			r.addNpmRuntimeDependency("cbor-x")
 			file.ImportAll("cbor-x", "Cbor")
 		case content.KindYAML:
+			r.addNpmRuntimeDependency("yaml")
 			file.Import("yaml", "YAML")
 		}
 	}

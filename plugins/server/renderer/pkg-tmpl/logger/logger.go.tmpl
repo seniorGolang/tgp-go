@@ -121,6 +121,22 @@ func slogLevel(level zerolog.Level) (l slog.Level) {
 	}
 }
 
+func appendAnyToEvent(event *zerolog.Event, key string, v any) (e *zerolog.Event) {
+
+	if err, ok := v.(error); ok {
+		return event.AnErr(key, err)
+	}
+	return event.Interface(key, v)
+}
+
+func appendAnyToContext(ctx zerolog.Context, key string, v any) (out zerolog.Context) {
+
+	if err, ok := v.(error); ok {
+		return ctx.AnErr(key, err)
+	}
+	return ctx.Interface(key, v)
+}
+
 func addAttr(event *zerolog.Event, attr slog.Attr) (e *zerolog.Event) {
 
 	key := attr.Key
@@ -142,9 +158,9 @@ func addAttr(event *zerolog.Event, attr slog.Attr) (e *zerolog.Event) {
 	case slog.KindTime:
 		return event.Time(key, value.Time())
 	case slog.KindAny:
-		return event.Interface(key, value.Any())
+		return appendAnyToEvent(event, key, value.Any())
 	default:
-		return event.Interface(key, value.Any())
+		return appendAnyToEvent(event, key, value.Any())
 	}
 }
 
@@ -169,9 +185,9 @@ func addAttrToContext(ctx zerolog.Context, attr slog.Attr) (out zerolog.Context)
 	case slog.KindTime:
 		return ctx.Time(key, value.Time())
 	case slog.KindAny:
-		return ctx.Interface(key, value.Any())
+		return appendAnyToContext(ctx, key, value.Any())
 	default:
-		return ctx.Interface(key, value.Any())
+		return appendAnyToContext(ctx, key, value.Any())
 	}
 }
 

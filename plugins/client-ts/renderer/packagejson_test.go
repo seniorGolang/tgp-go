@@ -27,7 +27,7 @@ func TestRenderPackageJSON_sameDirAsOut(t *testing.T) {
 			tagNpmRegistry: "https://registry.npmjs.org",
 		},
 	}
-	renderer := NewClientRenderer(project, outDir, true, packagePath)
+	renderer := NewClientRenderer(project, outDir, true, packagePath, true)
 	if err := renderer.RenderPackageJSON(); err != nil {
 		t.Fatalf("RenderPackageJSON: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestRenderPackageJSON_rootPackageOutInSubdir(t *testing.T) {
 			tagVersion: "2.0.0",
 		},
 	}
-	renderer := NewClientRenderer(project, outDir, true, packagePath)
+	renderer := NewClientRenderer(project, outDir, true, packagePath, true)
 	if err := renderer.RenderPackageJSON(); err != nil {
 		t.Fatalf("RenderPackageJSON: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestRenderPackageJSON_rootPackageOutInSubdir(t *testing.T) {
 func TestRenderPackageJSON_requiresNpmName(t *testing.T) {
 
 	outDir := t.TempDir()
-	renderer := NewClientRenderer(&model.Project{}, outDir, true, filepath.Join(outDir, "package.json"))
+	renderer := NewClientRenderer(&model.Project{}, outDir, true, filepath.Join(outDir, "package.json"), true)
 	if err := renderer.RenderPackageJSON(); err == nil {
 		t.Fatal("expected error without npmName")
 	}
@@ -102,7 +102,7 @@ func TestRenderPackageJSON_requiresNpmName(t *testing.T) {
 func TestRenderTsConfig_emitDist(t *testing.T) {
 
 	outDir := t.TempDir()
-	renderer := NewClientRenderer(&model.Project{}, outDir, true, filepath.Join(outDir, "package.json"))
+	renderer := NewClientRenderer(&model.Project{}, outDir, true, filepath.Join(outDir, "package.json"), true)
 	if err := renderer.RenderTsConfig(); err != nil {
 		t.Fatalf("RenderTsConfig: %v", err)
 	}

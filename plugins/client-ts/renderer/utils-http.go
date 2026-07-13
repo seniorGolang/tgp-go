@@ -92,10 +92,6 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 
 	returnType := r.resultToTypeStatement(method, results)
 
-	var requestTypeName string
-	if len(args) > 0 {
-		requestTypeName = r.requestTypeName(contract, method)
-	}
 	var responseTypeName string
 	if len(results) > 0 {
 		responseTypeName = r.responseTypeName(contract, method)
@@ -106,7 +102,7 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 	methodStmt.AsyncMethodWithParams(r.lcName(method.Name), methodParams, returnType, func(mg *tsg.Group) {
 		if len(args) > 0 {
 			paramsObj := tsg.NewStatement()
-			paramsObj.Const(tsLocalVar("params")).Colon().Id(requestTypeName).Op("=")
+			paramsObj.Const(tsLocalVar("params")).Op("=")
 			paramsObj.Values(func(vg *tsg.Group) {
 				for _, arg := range args {
 					vg.Add(tsg.NewStatement().Id(tsSafeName(arg.Name)).Colon().Id(tsSafeName(arg.Name)))
@@ -430,6 +426,20 @@ func (r *ClientRenderer) formParseKind(variable *model.Variable) (kind string) {
 	}
 }
 
+func (r *ClientRenderer) parseFormValueExpr(source *tsg.Statement, kind string) (expr *tsg.Statement) {
+
+	expr = tsg.NewStatement().Id("parseFormValue").Call(source, tsg.NewStatement().Lit(kind))
+	switch kind {
+	case "string":
+		expr = expr.Op("as").Id("string")
+	case "number":
+		expr = expr.Op("as").Id("number")
+	case "boolean":
+		expr = expr.Op("as").Id("boolean")
+	}
+	return expr
+}
+
 func (r *ClientRenderer) renderHTTPBody(mg *tsg.Group, contract *model.Contract, method *model.Method, args []*model.Variable, httpMethod string, requestMultipart bool, bodyStreamArg *model.Variable, bodyStreamArgs []*model.Variable) {
 
 	needBody := httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" || len(args) > 0
@@ -589,7 +599,7 @@ func (r *ClientRenderer) renderHTTPResponse(mg *tsg.Group, contract *model.Contr
 			for _, ret := range results {
 				formKey := r.formFieldName(method, ret)
 				kind := r.formParseKind(ret)
-				rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Id("parseFormValue").Call(tsg.NewStatement().Id(tsLocalVar("formParams")).Dot("get").Call(tsg.NewStatement().Lit(formKey)), tsg.NewStatement().Lit(kind)))
+				rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Add(r.parseFormValueExpr(tsg.NewStatement().Id(tsLocalVar("formParams")).Dot("get").Call(tsg.NewStatement().Lit(formKey)), kind)))
 			}
 		})
 		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Add(responseDataObj).Semicolon())
@@ -698,18 +708,18 @@ func (r *ClientRenderer) renderHTTPResponseMergeHeadersAndCookies(mg *tsg.Group,
 			if headerName, ok := headerMap[ret.Name]; ok {
 				mg.Add(tsg.NewStatement().Assign(
 					tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
-					tsg.NewStatement().Id("parseFormValue").Call(
+					r.parseFormValueExpr(
 						tsg.NewStatement().Id(tsLocalVar("response")).Dot("headers").Dot("get").Call(tsg.NewStatement().Lit(headerName)),
-						tsg.NewStatement().Lit(kind),
+						kind,
 					),
 				).Semicolon())
 			} else {
 				cookieName := cookieMap[ret.Name]
 				mg.Add(tsg.NewStatement().Assign(
 					tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
-					tsg.NewStatement().Id("parseFormValue").Call(
+					r.parseFormValueExpr(
 						tsg.NewStatement().Id("getResponseCookie").Call(tsg.NewStatement().Id(tsLocalVar("response")), tsg.NewStatement().Lit(cookieName)),
-						tsg.NewStatement().Lit(kind),
+						kind,
 					),
 				).Semicolon())
 			}

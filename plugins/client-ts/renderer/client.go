@@ -18,6 +18,10 @@ func (r *ClientRenderer) RenderClient() (err error) {
 
 	// Импорты
 	file.ImportType("./options", "ClientOptions")
+	if r.clientIdentity {
+		file.ImportNamed("./identity", "resolveDefaultClientName")
+	}
+	file.ImportNamed("./headers", "buildClientHeaders")
 	if r.HasJsonRPC() {
 		file.ImportNamed("./error", "defaultErrorDecoder")
 	}
@@ -90,6 +94,9 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 			// Объединяем опции
 			cg.Add(tsg.NewStatement().Const("defaultOptions").Colon().Id("ClientOptions").Op("=").Values(func(og *tsg.Group) {
 				og.Add(tsg.NewStatement().Id("url").Colon().Add(rpcURLEndpoint))
+				if r.clientIdentity {
+					og.Add(tsg.NewStatement().Id("clientName").Colon().Id("resolveDefaultClientName").Call())
+				}
 				defaultFn := tsg.NewStatement()
 				defaultFn.ArrowFunc().Block(func(bg *tsg.Group) {
 					bg.Return(tsg.NewStatement().Id("crypto").Dot("randomUUID").Call())
@@ -145,22 +152,7 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 		grp.Add(tsg.NewStatement().
 			Comment("Gets headers for the request, supporting both static headers and dynamic header functions").
 			AsyncMethodWithParams("getHeaders", nil, tsg.NewStatement().Id("Record").Generic("string", "string"), func(mg *tsg.Group) {
-				mg.If(
-					tsg.NewStatement().Id("this").Dot("options").Dot("headers").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("this").Dot("options").Dot("headers")).Op("===").Lit("function"),
-					func(ig *tsg.Group) {
-						// Если это функция, вызываем её (async функция автоматически обернет Promise)
-						ig.Return(tsg.NewStatement().Id("this").Dot("options").Dot("headers").Call())
-					},
-				)
-				// Иначе возвращаем статичные заголовки или пустой объект
-				mg.If(
-					tsg.NewStatement().Id("this").Dot("options").Dot("headers").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("this").Dot("options").Dot("headers")).Op("!==").Lit("function"),
-					func(ig *tsg.Group) {
-						ig.Return(tsg.NewStatement().Id("this").Dot("options").Dot("headers").Op("as").Id("Record").Generic("string", "string"))
-					},
-				)
-				// Если ничего не подошло, возвращаем пустой объект
-				mg.Return(tsg.NewStatement().ObjectLiteral(nil))
+				mg.Return(tsg.NewStatement().Id("buildClientHeaders").Call(tsg.NewStatement().This().Dot("options")))
 			}))
 		grp.Line()
 

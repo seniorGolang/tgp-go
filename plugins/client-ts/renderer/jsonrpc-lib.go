@@ -47,6 +47,7 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 
 	file.ImportType("./utils/jsonrpc", "RequestRPC", "ResponseRPC", "ID")
 	file.ImportType("../options", "ClientOptions")
+	file.ImportNamed("../headers", "buildClientHeaders")
 
 	classStmt := tsg.NewStatement().
 		Comment("JSON-RPC 2.0 client").
@@ -92,31 +93,6 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 					Semicolon())
 			})
 		grp.Add(generateIdStmt)
-		grp.Line()
-
-		// Приватный метод для получения заголовков (поддерживает статичные и динамические)
-		getHeadersMethod := tsg.NewStatement().
-			Comment("Gets headers for the request, supporting both static headers and dynamic header functions").
-			Private().
-			AsyncMethodWithParams("getHeaders", nil, tsg.NewStatement().Id("Record").Generic("string", "string"), func(mg *tsg.Group) {
-				mg.If(
-					tsg.NewStatement().Id("this").Dot("options").Dot("headers").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("this").Dot("options").Dot("headers")).Op("===").Lit("function"),
-					func(ig *tsg.Group) {
-						// Если это функция, вызываем её (async функция автоматически обернет Promise)
-						ig.Return(tsg.NewStatement().Id("this").Dot("options").Dot("headers").Call())
-					},
-				)
-				// Иначе возвращаем статичные заголовки или пустой объект
-				mg.If(
-					tsg.NewStatement().Id("this").Dot("options").Dot("headers").Op("&&").Id("typeof").Call(tsg.NewStatement().Id("this").Dot("options").Dot("headers")).Op("!==").Lit("function"),
-					func(ig *tsg.Group) {
-						ig.Return(tsg.NewStatement().Id("this").Dot("options").Dot("headers").Op("as").Id("Record").Generic("string", "string"))
-					},
-				)
-				// Если ничего не подошло, возвращаем пустой объект
-				mg.Return(tsg.NewStatement().ObjectLiteral(nil))
-			})
-		grp.Add(getHeadersMethod)
 		grp.Line()
 
 		// Метод call для одиночного запроса
@@ -171,7 +147,7 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 					Id("Record").
 					Generic("string", "string").
 					Op("=").
-					Await(tsg.NewStatement().This().Dot("getHeaders").Call()).
+					Await(tsg.NewStatement().Id("buildClientHeaders").Call(tsg.NewStatement().This().Dot("options"))).
 					Semicolon()
 				bg.Add(headersVar)
 
@@ -252,7 +228,7 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 					Id("Record").
 					Generic("string", "string").
 					Op("=").
-					Await(tsg.NewStatement().This().Dot("getHeaders").Call()).
+					Await(tsg.NewStatement().Id("buildClientHeaders").Call(tsg.NewStatement().This().Dot("options"))).
 					Semicolon()
 				bg.Add(headersVar)
 

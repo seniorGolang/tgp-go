@@ -82,6 +82,11 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 				return
 			}
 		}
+		if g.renderer.HasHTTP() {
+			if err = g.renderer.RenderHTTP(); err != nil {
+				return
+			}
+		}
 	}
 
 	contractsForClient := make([]*model.Contract, 0, len(g.project.Contracts))

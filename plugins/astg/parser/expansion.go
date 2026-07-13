@@ -373,7 +373,7 @@ func ensureTypeLoaded(typeID string, project *model.Project, loader *AutonomousP
 	processingSet := make(map[string]bool)
 	var coreType *model.Type
 	if coreType, err = convertTypeFromGoTypes(typeNameObj.Type(), importPkgPath, pkgInfo.Imports, project, loader, processingSet); err != nil {
-		return err
+		return
 	}
 	if coreType == nil {
 		return fmt.Errorf("failed to convert type %s", typeID)

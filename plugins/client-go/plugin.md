@@ -42,7 +42,6 @@
 - **error.go** — типы для обработки ошибок и декодер по умолчанию;
 - **version.go** — версия генератора;
 - **batch.go** — тип `RequestRPC` и метод `Batch()` (только при наличии JSON-RPC-контрактов);
-- **http.go** — общие HTTP-хелперы (`applyHeadersFromCtx`, `doRoundTrip`, `recordHTTPMetrics`; только при наличии HTTP-контрактов);
 - **metrics.go** — метрики клиента (только при аннотации `@tg metrics` в контракте);
 - **jsonrpc/** — подпакет для JSON-RPC;
 - **dto/** — типы запросов и ответов и общие типы по контрактам;

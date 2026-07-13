@@ -86,8 +86,8 @@ func (g *generator) generateJsonRPCPath(paths map[string]types.Path, contract *m
 	requestStructName := g.requestStructName(contract, method)
 	responseStructName := g.responseStructName(contract, method)
 
-	g.registerStruct(requestStructName, contract.PkgPath, method.Annotations, method.Args, contentJSON)
-	g.registerStruct(responseStructName, contract.PkgPath, method.Annotations, method.Results, contentJSON)
+	g.registerStruct(requestStructName, contract.PkgPath, method, method.Args, contentJSON, true)
+	g.registerStruct(responseStructName, contract.PkgPath, method, method.Results, contentJSON, false)
 
 	paramsArgs := g.bodyArgs(method, contract, jsonrpcPath)
 	paramsSchema := g.effectiveRequestBodySchema(contract, method, requestStructName, paramsArgs)
@@ -330,7 +330,8 @@ func (g *generator) effectiveResponseSchema(contract *model.Contract, method *mo
 		return g.toSchema(responseStructName)
 	}
 	if model.IsAnnotationSet(g.project, contract, method, nil, model.TagHttpEnableInlineSingle) && len(results) == 1 {
-		if s := g.variableToSchema(results[0], contract.PkgPath, false); s != nil && s.Type != "" && s.Type != "object" {
+		effective := model.EffectiveVariable(method, results[0])
+		if s := g.variableToSchema(effective, contract.PkgPath, false); s != nil && s.Type != "" && s.Type != "object" {
 			return *s
 		}
 	}
@@ -350,9 +351,10 @@ func (g *generator) effectiveResponseSchema(contract *model.Contract, method *mo
 	}
 	merged := types.Schema{Type: "object", Properties: make(types.Properties), Required: []string{}}
 	for _, r := range results {
+		effective := model.EffectiveVariable(method, r)
 		inline := (model.IsAnnotationSet(g.project, contract, method, nil, model.TagHttpEnableInlineSingle) && len(results) == 1) || g.resultHasJsonInline(method, r)
 		if inline {
-			s := g.variableToSchema(r, contract.PkgPath, false)
+			s := g.variableToSchema(effective, contract.PkgPath, false)
 			if s != nil {
 				toMerge := g.resolveSchemaForMerge(s)
 				if len(toMerge.Properties) > 0 {
@@ -360,11 +362,11 @@ func (g *generator) effectiveResponseSchema(contract *model.Contract, method *mo
 				}
 			}
 		} else {
-			jsonName := g.getJSONFieldName(r)
+			jsonName := g.getJSONFieldName(effective)
 			if jsonName == "" || jsonName == "-" {
-				jsonName = types.ToLowerCamel(r.Name)
+				jsonName = types.ToLowerCamel(effective.Name)
 			}
-			if s := g.variableToSchema(r, contract.PkgPath, false); s != nil {
+			if s := g.variableToSchema(effective, contract.PkgPath, false); s != nil {
 				merged.Properties[jsonName] = *s
 			}
 		}
@@ -436,8 +438,9 @@ func (g *generator) effectiveRequestBodySchema(contract *model.Contract, method 
 	}
 	merged := types.Schema{Type: "object", Properties: make(types.Properties), Required: []string{}}
 	for _, a := range bodyArgs {
+		effective := model.EffectiveVariable(method, a)
 		if g.resultHasJsonInline(method, a) {
-			s := g.variableToSchema(a, contract.PkgPath, true)
+			s := g.variableToSchema(effective, contract.PkgPath, true)
 			if s != nil {
 				toMerge := g.resolveSchemaForMerge(s)
 				if len(toMerge.Properties) > 0 {
@@ -445,11 +448,11 @@ func (g *generator) effectiveRequestBodySchema(contract *model.Contract, method 
 				}
 			}
 		} else {
-			jsonName := g.getJSONFieldName(a)
+			jsonName := g.getJSONFieldName(effective)
 			if jsonName == "" || jsonName == "-" {
-				jsonName = types.ToLowerCamel(a.Name)
+				jsonName = types.ToLowerCamel(effective.Name)
 			}
-			if s := g.variableToSchema(a, contract.PkgPath, true); s != nil {
+			if s := g.variableToSchema(effective, contract.PkgPath, true); s != nil {
 				merged.Properties[jsonName] = *s
 			}
 		}
@@ -469,11 +472,11 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 	requestContentType := model.GetAnnotationValue(g.project, contract, method, nil, model.TagRequestContentType, contentJSON)
 	responseContentType := model.GetAnnotationValue(g.project, contract, method, nil, model.TagResponseContentType, contentJSON)
 
-	g.registerStruct(requestStructName, contract.PkgPath, method.Annotations, method.Args, requestContentType)
+	g.registerStruct(requestStructName, contract.PkgPath, method, method.Args, requestContentType, true)
 
 	resultsForResponse := g.resultsWithoutError(method)
 	hasPayloadResults := len(resultsForResponse) > 0
-	g.registerStruct(responseStructName, contract.PkgPath, method.Annotations, resultsForResponse, contentJSON)
+	g.registerStruct(responseStructName, contract.PkgPath, method, resultsForResponse, contentJSON, false)
 
 	reqMultipart := g.requestMultipart(contract, method)
 	respMultipart := g.responseMultipart(contract, method)
@@ -498,7 +501,7 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 				var successSchema types.Schema
 				if len(g.resultNamesExcludeFromBody(contract, method)) > 0 {
 					bodyStructName := g.responseBodyStructName(contract, method)
-					g.registerStruct(bodyStructName, contract.PkgPath, method.Annotations, g.resultsForBody(contract, method), contentJSON)
+					g.registerStruct(bodyStructName, contract.PkgPath, method, g.resultsForBody(contract, method), contentJSON, false)
 					successSchema = g.effectiveResponseSchema(contract, method, bodyStructName, g.resultsForBody(contract, method))
 				} else {
 					successSchema = g.effectiveResponseSchema(contract, method, responseStructName, nil)
@@ -574,7 +577,7 @@ func (g *generator) generateHTTPPath(paths map[string]types.Path, contract *mode
 		bodyArgs := g.bodyArgs(method, contract, httpPath)
 		if len(bodyArgs) > 0 {
 			bodyStructName := g.requestBodyStructName(contract, method)
-			g.registerStruct(bodyStructName, contract.PkgPath, method.Annotations, bodyArgs, requestContentType)
+			g.registerStruct(bodyStructName, contract.PkgPath, method, bodyArgs, requestContentType, true)
 			requestSchema := g.effectiveRequestBodySchema(contract, method, bodyStructName, bodyArgs)
 			operation.RequestBody = &types.RequestBody{
 				Description: requestBodyDescription(method),
@@ -624,9 +627,9 @@ func (g *generator) addPathParameters(operation *types.Operation, contract *mode
 			paramName := strings.TrimPrefix(part, ":")
 			for _, arg := range method.Args {
 				if types.ToLowerCamel(arg.Name) == paramName || arg.Name == paramName {
-					mergedArg := mergeVariableAnnotations(method, arg)
+					effective := model.EffectiveVariable(method, arg)
 					var schema types.Schema
-					if schemaPtr := g.variableToSchema(mergedArg, contract.PkgPath, true); schemaPtr != nil {
+					if schemaPtr := g.variableToSchema(effective, contract.PkgPath, true); schemaPtr != nil {
 						schema = *schemaPtr
 					}
 					operation.Parameters = append(operation.Parameters, types.Parameter{
@@ -634,7 +637,7 @@ func (g *generator) addPathParameters(operation *types.Operation, contract *mode
 						Name:        paramName,
 						Required:    true,
 						Schema:      schema,
-						Description: descriptionFromVariable(mergedArg),
+						Description: descriptionFromVariable(effective),
 					})
 					break
 				}
@@ -654,16 +657,17 @@ func (g *generator) addQueryParameters(operation *types.Operation, contract *mod
 				if g.isArgInPath(arg, method, httpPath) {
 					break
 				}
-				mergedArg := mergeVariableAnnotations(method, arg)
+				effective := model.EffectiveVariable(method, arg)
 				var schema types.Schema
-				if schemaPtr := g.variableToSchema(mergedArg, contract.PkgPath, true); schemaPtr != nil {
+				if schemaPtr := g.variableToSchema(effective, contract.PkgPath, true); schemaPtr != nil {
 					schema = *schemaPtr
 				}
 				operation.Parameters = append(operation.Parameters, types.Parameter{
 					In:          "query",
 					Name:        it.Key,
+					Required:    isRequiredQueryParameter(effective),
 					Schema:      schema,
-					Description: descriptionFromVariable(mergedArg),
+					Description: descriptionFromVariable(effective),
 				})
 				break
 			}
@@ -717,17 +721,17 @@ func (g *generator) appendArgMapRequestParameter(
 			continue
 		}
 
-		mergedArg := mergeVariableAnnotations(method, arg)
+		effective := model.EffectiveVariable(method, arg)
 		var schema types.Schema
-		if schemaPtr := g.variableToSchema(mergedArg, contract.PkgPath, true); schemaPtr != nil {
+		if schemaPtr := g.variableToSchema(effective, contract.PkgPath, true); schemaPtr != nil {
 			schema = *schemaPtr
 		}
 
-		paramDesc := descriptionFromVariable(mergedArg)
+		paramDesc := descriptionFromVariable(effective)
 		required := false
 		switch it.Mode {
 		case model.ArgModeExplicit, model.ArgModeImplicit:
-			required = arg.Annotations != nil && arg.Annotations.IsSet(model.TagRequired)
+			required = isRequiredHeaderOrCookie(effective)
 		case model.ArgModeBody:
 			if paramDesc != "" {
 				paramDesc += ". "
@@ -746,33 +750,6 @@ func (g *generator) appendArgMapRequestParameter(
 	}
 }
 
-func mergeVariableAnnotations(method *model.Method, variable *model.Variable) (merged *model.Variable) {
-
-	if variable == nil {
-		return nil
-	}
-	if method == nil || method.Annotations == nil {
-		return variable
-	}
-
-	subAnnotations := method.Annotations.Sub(variable.Name)
-	if len(subAnnotations) == 0 {
-		return variable
-	}
-
-	mergedAnnotations := make(tags.DocTags, len(variable.Annotations)+len(subAnnotations))
-	for key, value := range variable.Annotations {
-		mergedAnnotations[key] = value
-	}
-	for key, value := range subAnnotations {
-		mergedAnnotations[key] = value
-	}
-
-	variableCopy := *variable
-	variableCopy.Annotations = mergedAnnotations
-	return &variableCopy
-}
-
 func (g *generator) addResponseHeaders(operation *types.Operation, contract *model.Contract, method *model.Method, successCode int) {
 
 	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")) {
@@ -781,7 +758,8 @@ func (g *generator) addResponseHeaders(operation *types.Operation, contract *mod
 		}
 		for _, result := range method.Results {
 			if result.Name == it.Arg {
-				schemaPtr := g.variableToSchema(result, contract.PkgPath, false)
+				effective := model.EffectiveVariable(method, result)
+				schemaPtr := g.variableToSchema(effective, contract.PkgPath, false)
 				if schemaPtr == nil {
 					schemaPtr = &types.Schema{Type: "string"}
 				}
@@ -793,7 +771,7 @@ func (g *generator) addResponseHeaders(operation *types.Operation, contract *mod
 					operation.Responses[successKey] = response
 				}
 				operation.Responses[successKey].Headers[it.Key] = types.Header{
-					Description: descriptionFromVariable(result),
+					Description: descriptionFromVariable(effective),
 					Schema:      schema,
 				}
 				break

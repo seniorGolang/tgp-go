@@ -29,25 +29,32 @@ const (
 
 // Если аннотация http-method не задана, возвращает DefaultHTTPMethod.
 func GetHTTPMethod(project *Project, contract *Contract, method *Method) (methodName string) {
+
 	return strings.TrimSpace(GetAnnotationValue(project, contract, method, nil, TagHTTPMethod, DefaultHTTPMethod))
 }
 
-// Поиск снизу вверх (variable → method → contract → project). Приоритет у ближайшего к месту использования.
+// Поиск снизу вверх (variable → method.Sub(variable) → method → contract → project).
 func GetAnnotationValue(project *Project, contract *Contract, method *Method, variable *Variable, tagName string, defaultValue ...string) (value string) {
 
-	if variable != nil && variable.Annotations != nil {
+	if variable != nil && len(variable.Annotations) > 0 {
 		if val, found := variable.Annotations[tagName]; found && val != "" {
 			return val
 		}
 	}
 
-	if method != nil && method.Annotations != nil {
+	if sub := methodVariableAnnotations(method, variable); len(sub) > 0 {
+		if val, found := sub[tagName]; found && val != "" {
+			return val
+		}
+	}
+
+	if method != nil && len(method.Annotations) > 0 {
 		if val, found := method.Annotations[tagName]; found && val != "" {
 			return val
 		}
 	}
 
-	if contract != nil && contract.Annotations != nil {
+	if contract != nil && len(contract.Annotations) > 0 {
 		if val, found := contract.Annotations[tagName]; found && val != "" {
 			return val
 		}
@@ -65,15 +72,19 @@ func GetAnnotationValue(project *Project, contract *Contract, method *Method, va
 
 func GetAnnotationValueInt(project *Project, contract *Contract, method *Method, variable *Variable, tagName string, defaultValue ...int) (value int) {
 
-	if variable != nil && variable.Annotations != nil && variable.Annotations.IsSet(tagName) {
+	if variable != nil && len(variable.Annotations) > 0 && variable.Annotations.IsSet(tagName) {
 		return variable.Annotations.ValueInt(tagName, defaultValue...)
 	}
 
-	if method != nil && method.Annotations != nil && method.Annotations.IsSet(tagName) {
+	if sub := methodVariableAnnotations(method, variable); len(sub) > 0 && sub.IsSet(tagName) {
+		return sub.ValueInt(tagName, defaultValue...)
+	}
+
+	if method != nil && len(method.Annotations) > 0 && method.Annotations.IsSet(tagName) {
 		return method.Annotations.ValueInt(tagName, defaultValue...)
 	}
 
-	if contract != nil && contract.Annotations != nil && contract.Annotations.IsSet(tagName) {
+	if contract != nil && len(contract.Annotations) > 0 && contract.Annotations.IsSet(tagName) {
 		return contract.Annotations.ValueInt(tagName, defaultValue...)
 	}
 
@@ -89,15 +100,19 @@ func GetAnnotationValueInt(project *Project, contract *Contract, method *Method,
 
 func GetAnnotationValueBool(project *Project, contract *Contract, method *Method, variable *Variable, tagName string, defaultValue ...bool) (value bool) {
 
-	if variable != nil && variable.Annotations != nil && variable.Annotations.IsSet(tagName) {
+	if variable != nil && len(variable.Annotations) > 0 && variable.Annotations.IsSet(tagName) {
 		return variable.Annotations.ValueBool(tagName, defaultValue...)
 	}
 
-	if method != nil && method.Annotations != nil && method.Annotations.IsSet(tagName) {
+	if sub := methodVariableAnnotations(method, variable); len(sub) > 0 && sub.IsSet(tagName) {
+		return sub.ValueBool(tagName, defaultValue...)
+	}
+
+	if method != nil && len(method.Annotations) > 0 && method.Annotations.IsSet(tagName) {
 		return method.Annotations.ValueBool(tagName, defaultValue...)
 	}
 
-	if contract != nil && contract.Annotations != nil && contract.Annotations.IsSet(tagName) {
+	if contract != nil && len(contract.Annotations) > 0 && contract.Annotations.IsSet(tagName) {
 		return contract.Annotations.ValueBool(tagName, defaultValue...)
 	}
 
@@ -113,19 +128,25 @@ func GetAnnotationValueBool(project *Project, contract *Contract, method *Method
 
 func IsAnnotationSet(project *Project, contract *Contract, method *Method, variable *Variable, tagName string) (found bool) {
 
-	if variable != nil && variable.Annotations != nil {
+	if variable != nil && len(variable.Annotations) > 0 {
 		if variable.Annotations.IsSet(tagName) {
 			return true
 		}
 	}
 
-	if method != nil && method.Annotations != nil {
+	if sub := methodVariableAnnotations(method, variable); len(sub) > 0 {
+		if sub.IsSet(tagName) {
+			return true
+		}
+	}
+
+	if method != nil && len(method.Annotations) > 0 {
 		if method.Annotations.IsSet(tagName) {
 			return true
 		}
 	}
 
-	if contract != nil && contract.Annotations != nil {
+	if contract != nil && len(contract.Annotations) > 0 {
 		if contract.Annotations.IsSet(tagName) {
 			return true
 		}

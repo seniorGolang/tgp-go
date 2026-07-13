@@ -13,7 +13,7 @@ import (
 	"tgp/plugins/swagger/types"
 )
 
-func (g *generator) registerStruct(name string, pkgPath string, methodTags tags.DocTags, variables []*model.Variable, requestContentType string) {
+func (g *generator) registerStruct(name string, pkgPath string, method *model.Method, variables []*model.Variable, requestContentType string, isRequest bool) {
 
 	if len(variables) == 0 {
 		g.schemas[name] = types.Schema{Type: "object"}
@@ -23,32 +23,40 @@ func (g *generator) registerStruct(name string, pkgPath string, methodTags tags.
 	var required []string
 	properties := make(types.Properties)
 
-	isArgument := !strings.Contains(name, "Response") && !strings.Contains(name, "response")
-	useFormNames := requestContentType == contentForm && isArgument
+	methodTags := tags.DocTags(nil)
+	if method != nil {
+		methodTags = method.Annotations
+	}
+	useFormNames := requestContentType == contentForm && isRequest
 
 	for _, variable := range variables {
-		if g.isContextType(variable.TypeID) {
+		effective := model.EffectiveVariable(method, variable)
+		if g.isContextType(effective.TypeID) {
 			continue
 		}
-		if variable.TypeID == "error" {
+		if effective.TypeID == "error" {
 			continue
 		}
 
 		var propName string
 		if useFormNames {
-			propName = g.getFormFieldName(variable, methodTags)
+			propName = g.getFormFieldName(effective, methodTags)
 		}
 		if propName == "" {
-			propName = g.getJSONFieldName(variable)
+			propName = g.getJSONFieldName(effective)
 		}
 		if propName == "" || propName == "-" {
-			propName = types.ToLowerCamel(variable.Name)
+			propName = types.ToLowerCamel(effective.Name)
 		}
 
-		schema := g.variableToSchema(variable, pkgPath, isArgument)
+		schema := g.variableToSchema(effective, pkgPath, isRequest)
 		if schema != nil {
 			properties[propName] = *schema
-			if variable.Annotations != nil && variable.Annotations.IsSet(model.TagRequired) {
+			if isRequest {
+				if isRequiredGeneratedRequestField(effective, methodTags) {
+					required = append(required, propName)
+				}
+			} else if isRequiredGeneratedResponseField(effective, methodTags) {
 				required = append(required, propName)
 			}
 		}
@@ -443,21 +451,7 @@ func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTag
 			} else {
 				properties[jsonName] = *fieldSchema
 			}
-			if field.NumberOfPointers > 0 {
-				continue
-			}
-			if jsonTag, ok := field.Tags["json"]; ok && len(jsonTag) > 0 {
-				hasOmitempty := false
-				for _, tag := range jsonTag {
-					if strings.TrimSpace(tag) == "omitempty" {
-						hasOmitempty = true
-						break
-					}
-				}
-				if !hasOmitempty {
-					required = append(required, jsonName)
-				}
-			} else {
+			if isRequiredStructField(field) {
 				required = append(required, jsonName)
 			}
 		}

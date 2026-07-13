@@ -144,8 +144,8 @@ func (r *transportRenderer) serverNewFunc() (c Code) {
 				Id(VarNameFtx).Dot("Locals").Call(Lit("server"), Id("srv")),
 				Return(Id("recoverHandler").Call(Id(VarNameFtx))),
 			))
+			bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Id("srv").Dot("clientIDMiddleware"))
 			if r.hasMetrics() {
-				bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Id("srv").Dot("clientIDMiddleware"))
 				bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Id("srv").Dot("inFlightMiddleware"))
 				bg.Id("srv").Dot("srvHTTP").Dot("Use").Call(Id("srv").Dot("requestDurationMiddleware"))
 			}

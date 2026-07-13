@@ -3,6 +3,7 @@
 package renderer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,17 +55,56 @@ func TestRenderIdentity_writesIdentityFile(t *testing.T) {
 	for _, want := range []string{
 		"export function resolveDefaultClientName",
 		"resolveBrowserToken",
-		"resolveInstanceId",
+		"resolveBrowserId",
+		"fnv1a32",
+		"navigator.userAgent",
 		"readNodeHostname",
 		"globalThis",
 		`import {VersionASTg} from "./version"`,
-		"tgp-client-instance-id",
 		"_astg_ts_${VersionASTg}",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("identity.ts must contain %q, got:\n%s", want, source)
 		}
 	}
+	for _, mustNot := range []string{
+		"localStorage",
+		"randomUUID",
+		"tgp-client-instance-id",
+		"resolveInstanceId",
+	} {
+		if strings.Contains(source, mustNot) {
+			t.Fatalf("identity.ts must not contain %q, got:\n%s", mustNot, source)
+		}
+	}
+}
+
+func TestFnv1a32_knownVectors(t *testing.T) {
+
+	if got := fnv1a32(""); got != "811c9dc5" {
+		t.Fatalf("fnv1a32 empty: got %q want %q", got, "811c9dc5")
+	}
+	if got := fnv1a32("hello"); got != "4f9f2cab" {
+		t.Fatalf("fnv1a32 hello: got %q want %q", got, "4f9f2cab")
+	}
+	sampleUA := "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"
+	if got := fnv1a32(sampleUA); got != "742a9f36" {
+		t.Fatalf("fnv1a32 sample UA: got %q want %q", got, "742a9f36")
+	}
+	if len(fnv1a32(sampleUA)) != 8 {
+		t.Fatalf("fnv1a32 must return 8 hex chars, got %q", fnv1a32(sampleUA))
+	}
+}
+
+func fnv1a32(input string) (hex string) {
+
+	hash := uint32(0x811c9dc5)
+	for i := 0; i < len(input); i++ {
+		hash ^= uint32(input[i])
+		hash *= 0x01000193
+	}
+	hex = fmt.Sprintf("%08x", hash)
+	return
 }
 
 func TestRenderHeaders_writesHeadersFile(t *testing.T) {

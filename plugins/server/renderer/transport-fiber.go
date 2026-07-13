@@ -72,6 +72,7 @@ func (r *transportRenderer) RenderTransportFiber() (err error) {
 			})),
 		)
 
+	r.renderRequestLogger(&srcFile)
 	r.renderFiberLogger(&srcFile)
 	r.renderFiberRecover(&srcFile)
 
@@ -91,6 +92,20 @@ func (r *transportRenderer) ensureBodyReaderFunc() Code {
 		)
 }
 
+func (r *transportRenderer) renderRequestLogger(srcFile *GoFile) {
+
+	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+
+	srcFile.Line().Func().Params(Id("srv").Op("*").Id("Server")).
+		Id("requestLogger").
+		Params(Id(VarNameCtx).Qual(PackageContext, "Context")).
+		Params(Id("log").Op("*").Qual(PackageSlog, "Logger")).
+		Block(
+			Id("log").Op("=").Id("srv").Dot("log").Dot("With").Call(Lit("clientID"), Qual(srvctxPkgPath, "GetClientID").Call(Id(VarNameCtx))),
+			Return(Id("log")),
+		)
+}
+
 func (r *transportRenderer) renderFiberLogger(srcFile *GoFile) {
 
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
@@ -101,6 +116,10 @@ func (r *transportRenderer) renderFiberLogger(srcFile *GoFile) {
 	withCtxLogger := func(ctx, logger Code) Code {
 
 		return Qual(srvctxPkgPath, "WithCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(ctx, logger)
+	}
+	requestLoggerCall := func(ctx Code) Code {
+
+		return Id("srv").Dot("requestLogger").Call(ctx)
 	}
 
 	srcFile.Line().Func().Params(Id("srv").Op("*").Id("Server")).
@@ -114,7 +133,7 @@ func (r *transportRenderer) renderFiberLogger(srcFile *GoFile) {
 			)
 			bg.Id("levelName").Op(":=").Qual(PackageStrings, "Clone").Call(String().Call(Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Id("logLevelHeader"))))
 			bg.If(Id("levelName").Op("==").Lit("")).Block(
-				Id(VarNameFtx).Dot("SetUserContext").Call(withCtxLogger(Id("ctx"), Id("srv").Dot("log"))),
+				Id(VarNameFtx).Dot("SetUserContext").Call(withCtxLogger(Id("ctx"), requestLoggerCall(Id("ctx")))),
 				Return(Id(VarNameFtx).Dot("Next").Call()),
 			)
 			bg.Var().Id("level").Qual(PackageSlog, "Level")
@@ -124,18 +143,19 @@ func (r *transportRenderer) renderFiberLogger(srcFile *GoFile) {
 				Case(Lit("warn"), Lit("WARN")).Block(Id("level").Op("=").Qual(PackageSlog, "LevelWarn")),
 				Case(Lit("error"), Lit("ERROR")).Block(Id("level").Op("=").Qual(PackageSlog, "LevelError")),
 				Default().Block(
-					Id(VarNameFtx).Dot("SetUserContext").Call(withCtxLogger(Id("ctx"), Id("srv").Dot("log"))),
+					Id(VarNameFtx).Dot("SetUserContext").Call(withCtxLogger(Id("ctx"), requestLoggerCall(Id("ctx")))),
 					Return(Id(VarNameFtx).Dot("Next").Call()),
 				),
 			)
 			bg.Id("levelVar").Op(":=").Op("new").Call(Qual(PackageSlog, "LevelVar"))
 			bg.Id("levelVar").Dot("Set").Call(Id("level"))
-			bg.Id("baseHandler").Op(":=").Id("srv").Dot("log").Dot("Handler").Call()
-			bg.Id("requestLogger").Op(":=").Qual(PackageSlog, "New").Call(Op("&").Id("levelHandler").Values(Dict{
+			bg.Id("log").Op(":=").Id("srv").Dot("requestLogger").Call(Id("ctx"))
+			bg.Id("baseHandler").Op(":=").Id("log").Dot("Handler").Call()
+			bg.Id("levelLogger").Op(":=").Qual(PackageSlog, "New").Call(Op("&").Id("levelHandler").Values(Dict{
 				Id("handler"): Id("baseHandler"),
 				Id("level"):   Id("levelVar"),
 			}))
-			bg.Id(VarNameFtx).Dot("SetUserContext").Call(withCtxLogger(Id("ctx"), Id("requestLogger")))
+			bg.Id(VarNameFtx).Dot("SetUserContext").Call(withCtxLogger(Id("ctx"), Id("levelLogger")))
 			bg.Return(Id(VarNameFtx).Dot("Next").Call())
 		})
 }

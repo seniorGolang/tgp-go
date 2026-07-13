@@ -29,7 +29,6 @@ const (
 
 // Если аннотация http-method не задана, возвращает DefaultHTTPMethod.
 func GetHTTPMethod(project *Project, contract *Contract, method *Method) (methodName string) {
-
 	return strings.TrimSpace(GetAnnotationValue(project, contract, method, nil, TagHTTPMethod, DefaultHTTPMethod))
 }
 

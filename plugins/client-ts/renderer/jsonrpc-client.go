@@ -114,7 +114,7 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		if importedTypes[typeName] {
 			continue
 		}
-		if def.importPkg == "dto" {
+		if def.importPkg != "" {
 			continue
 		}
 		file.Add(r.renderTypeDef(def))

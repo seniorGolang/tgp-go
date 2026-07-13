@@ -120,7 +120,34 @@ func (r *ClientRenderer) walkTypeRefWithVisited(typeName, pkgPath string, typeRe
 
 	typeID := typeRef.TypeID
 	typ, ok := r.project.Types[typeID]
-	if tsType, okBuiltin := goBuiltinTSType(typeID, typ); okBuiltin {
+	if !ok {
+		if typeID == TypeIDIOReader || typeID == TypeIDIOReadCloser {
+			schema.kind = "scalar"
+			schema.typeName = "Blob"
+			return
+		}
+		if tsType, okBuiltin := r.goBuiltinTSType(typeID, nil); okBuiltin {
+			schema.kind = "scalar"
+			schema.typeName = tsType
+			return
+		}
+		if r.isExcludedTypeID(typeID) {
+			typeStr := r.typeIDToTSType(typeID)
+			schema.kind = "scalar"
+			schema.typeName = typeStr
+			return
+		}
+		typeStr := r.typeIDToTSType(typeID)
+		schema.kind = "scalar"
+		schema.typeName = typeStr
+		return
+	}
+
+	if typ.Kind == model.TypeKindAlias && typ.AliasOf != "" && typ.TypeName != "" && r.isTypeFromCurrentProject(typ.ImportPkgPath) {
+		return r.walkNamedAliasType(schema, typeName, pkgPath, typ, typeRef, varTags, processing, isArgument)
+	}
+
+	if tsType, okBuiltin := r.goBuiltinTSType(typeID, typ); okBuiltin {
 		schema.kind = "scalar"
 		schema.typeName = tsType
 		return
@@ -170,17 +197,6 @@ func (r *ClientRenderer) walkTypeRefWithVisited(typeName, pkgPath string, typeRe
 			return schema
 		}
 	}
-	if !ok {
-		if typeID == TypeIDIOReader || typeID == TypeIDIOReadCloser {
-			schema.kind = "scalar"
-			schema.typeName = "Blob"
-			return
-		}
-		typeStr := r.typeIDToTSType(typeID)
-		schema.kind = "scalar"
-		schema.typeName = typeStr
-		return
-	}
 
 	hasCustomMarshaler := r.hasMarshaler(typ, isArgument)
 	isExcluded := r.isExplicitlyExcludedType(typ)
@@ -192,24 +208,15 @@ func (r *ClientRenderer) walkTypeRefWithVisited(typeName, pkgPath string, typeRe
 	if hasCustomMarshaler && !isExcluded {
 		schema.kind = "scalar"
 		schema.typeName = "any"
-		if typ.ImportPkgPath != "" {
-			if typ.PkgName != "" {
-				schema.importPkg = typ.PkgName
-			} else if typ.ImportAlias != "" {
-				schema.importPkg = typ.ImportAlias
-			}
-			if typ.TypeName != "" {
-				schema.importName = typ.TypeName
-			}
-		}
-		if schema.importPkg != "" && schema.importName != "" {
-			typeKey := fmt.Sprintf("%s:%s", schema.importPkg, schema.importName)
-			r.typeDefTs[typeKey] = schema
-		}
 		return
 	}
 
 	if isExcluded {
+		if tsType, okBuiltin := r.goBuiltinTSType(typeID, typ); okBuiltin {
+			schema.kind = "scalar"
+			schema.typeName = tsType
+			return
+		}
 		typeStr := r.typeIDToTSType(typeID)
 		schema.kind = "scalar"
 		schema.typeName = typeStr
@@ -339,42 +346,6 @@ func (r *ClientRenderer) walkTypeRefWithVisited(typeName, pkgPath string, typeRe
 		}
 		return
 
-	case model.TypeKindAlias:
-		// Для алиасов создаем type alias, который ссылается на базовый тип
-		// ВАЖНО: не разворачиваем базовый тип, а сохраняем алиас как ссылку
-		if typ.AliasOf != "" {
-			_, baseTypeExists := r.project.Types[typ.AliasOf]
-			if !baseTypeExists {
-				aliasTypeRef := &model.TypeRef{TypeID: typ.AliasOf}
-				return r.walkTypeRefWithVisited(typeName, pkgPath, aliasTypeRef, varTags, processing, isArgument)
-			}
-
-			baseTypeRefForWalk := &model.TypeRef{TypeID: typ.AliasOf}
-			baseSchema := r.walkTypeRefWithVisited("base", pkgPath, baseTypeRefForWalk, nil, processing, isArgument)
-
-			baseTypeRefName := baseSchema.typeLink()
-
-			schema.kind = "scalar"
-			schema.typeName = baseTypeRefName
-			schema.name = typ.TypeName
-
-			if typ.ImportPkgPath != "" {
-				if typ.PkgName != "" {
-					schema.importPkg = typ.PkgName
-				} else if typ.ImportAlias != "" {
-					schema.importPkg = typ.ImportAlias
-				}
-				schema.importName = typ.TypeName
-			}
-
-			if schema.importPkg != "" && schema.importName != "" {
-				typeKey := fmt.Sprintf("%s:%s", schema.importPkg, schema.importName)
-				r.typeDefTs[typeKey] = schema
-			}
-
-			return schema
-		}
-
 	case model.TypeKindArray:
 		schema.kind = "array"
 		schema.typeName = "array"
@@ -453,6 +424,45 @@ func (r *ClientRenderer) walkTypeRefWithVisited(typeName, pkgPath string, typeRe
 	}
 
 	return
+}
+
+func (r *ClientRenderer) walkNamedAliasType(schema typeDefTs, typeName, pkgPath string, typ *model.Type, typeRef *model.TypeRef, varTags map[string]string, processing map[string]bool, isArgument bool) (result typeDefTs) {
+
+	if typeRef.NumberOfPointers > 0 {
+		schema.nullable = true
+	}
+	_, baseTypeExists := r.project.Types[typ.AliasOf]
+	if !baseTypeExists {
+		aliasTypeRef := &model.TypeRef{TypeID: typ.AliasOf}
+		return r.walkTypeRefWithVisited(typeName, pkgPath, aliasTypeRef, varTags, processing, isArgument)
+	}
+	baseTypeRefForWalk := &model.TypeRef{TypeID: typ.AliasOf}
+	baseSchema := r.walkTypeRefWithVisited("base", pkgPath, baseTypeRefForWalk, nil, processing, isArgument)
+	var underlyingType string
+	if baseSchema.importPkg != "" && baseSchema.importName != "" {
+		underlyingType = baseSchema.typeLink()
+	} else {
+		underlyingType = baseSchema.typeName
+		if underlyingType == "" {
+			underlyingType = baseSchema.def()
+		}
+	}
+	schema.kind = "scalar"
+	schema.typeName = underlyingType
+	schema.name = typ.TypeName
+	if typ.ImportPkgPath != "" {
+		if typ.PkgName != "" {
+			schema.importPkg = typ.PkgName
+		} else if typ.ImportAlias != "" {
+			schema.importPkg = typ.ImportAlias
+		}
+		schema.importName = typ.TypeName
+	}
+	if schema.importPkg != "" && schema.importName != "" {
+		typeKey := fmt.Sprintf("%s:%s", schema.importPkg, schema.importName)
+		r.typeDefTs[typeKey] = schema
+	}
+	return schema
 }
 
 func (r *ClientRenderer) jsonName(field *model.StructField) (value string, inline bool) {

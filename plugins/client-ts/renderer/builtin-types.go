@@ -17,6 +17,7 @@ var builtinExact = map[string]string{
 // builtinPkg задаёт маппинг по пакету: любой тип из пакета с таким последним сегментом пути -> TS-тип.
 var builtinPkg = map[string]string{
 	"uuid": "string",
+	"uid":  "string",
 }
 
 func lastSegment(pkgPath string) string {
@@ -38,16 +39,9 @@ func keyFromTypeID(typeID string) (pkgSeg, typeName string) {
 	return lastSegment(typeID[:colon]), typeID[colon+1:]
 }
 
-// goBuiltinTSType возвращает встроенный TS-тип для внешнего Go-типа (uuid.UUID, time.Time, time.Duration и т.п.).
-// typ может быть nil, если тип не найден в project.Types (тогда используется typeID).
-func goBuiltinTSType(typeID string, typ *model.Type) (tsType string, ok bool) {
-	var pkgSeg, typeName string
-	if typ != nil {
-		pkgSeg = lastSegment(typ.ImportPkgPath)
-		typeName = typ.TypeName
-	} else {
-		pkgSeg, typeName = keyFromTypeID(typeID)
-	}
+func lookupBuiltinTS(importPkgPath, typeName string) (tsType string, ok bool) {
+
+	pkgSeg := lastSegment(importPkgPath)
 	if pkgSeg == "" && typeName == "" {
 		return "", false
 	}
@@ -59,4 +53,26 @@ func goBuiltinTSType(typeID string, typ *model.Type) (tsType string, ok bool) {
 		return t, true
 	}
 	return "", false
+}
+
+// goBuiltinTSType возвращает встроенный TS-тип для внешнего Go-типа (uuid.UUID, time.Time, time.Duration и т.п.).
+// typ может быть nil, если тип не найден в project.Types (тогда используется typeID).
+func (r *ClientRenderer) goBuiltinTSType(typeID string, typ *model.Type) (tsType string, ok bool) {
+
+	if typ != nil {
+		base := r.followAliasChain(typ)
+		if t, has := lookupBuiltinTS(base.ImportPkgPath, base.TypeName); has {
+			return t, true
+		}
+	}
+	var importPkgPath, typeName string
+	if typ != nil {
+		importPkgPath = typ.ImportPkgPath
+		typeName = typ.TypeName
+	} else {
+		pkgSeg, name := keyFromTypeID(typeID)
+		importPkgPath = "/" + pkgSeg
+		typeName = name
+	}
+	return lookupBuiltinTS(importPkgPath, typeName)
 }

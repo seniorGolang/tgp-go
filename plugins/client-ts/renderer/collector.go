@@ -172,36 +172,3 @@ func (r *ClientRenderer) isBuiltinType(typeID string) (ok bool) {
 	}
 	return builtinTypes[typeID]
 }
-
-func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) (ok bool) {
-
-	if typ == nil {
-		return false
-	}
-
-	// Decimal типы - преобразуются в number
-	if strings.HasSuffix(typ.TypeName, "Decimal") {
-		return false // НЕ исключаем, преобразуем
-	}
-
-	// big.Int, big.Float, big.Rat - преобразуются в number
-	if typ.ImportPkgPath == "math/big" {
-		if typ.TypeName == "Int" || typ.TypeName == "Float" || typ.TypeName == "Rat" {
-			return false // НЕ исключаем, преобразуем
-		}
-	}
-
-	// sql.Null типы - преобразуются в соответствующие типы
-	if typ.ImportPkgPath == "database/sql" {
-		if strings.HasPrefix(typ.TypeName, "Null") {
-			return false // НЕ исключаем, преобразуем
-		}
-	}
-
-	// guregu/null типы - преобразуются в соответствующие типы
-	if strings.Contains(typ.ImportPkgPath, "guregu/null") {
-		return false // НЕ исключаем, преобразуем
-	}
-
-	return false
-}

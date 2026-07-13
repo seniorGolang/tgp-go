@@ -91,9 +91,9 @@ func Middleware(opts ...Option) (h fiber.Handler) {
 		responseMetricAttrs := make([]attribute.KeyValue, 0, len(requestMetricsAttrs))
 		copy(responseMetricAttrs, requestMetricsAttrs)
 		reqHeader := make(http.Header)
-		for k, v := range ftx.Request().Header.All() {
+		ftx.Request().Header.VisitAll(func(k, v []byte) {
 			reqHeader.Add(string(k), string(v))
-		}
+		})
 		ctx := cfg.Propagators.Extract(savedCtx, propagation.HeaderCarrier(reqHeader))
 		options := []trace.SpanStartOption{
 			trace.WithAttributes(httpServerTraceAttributesFromRequest(ftx, cfg)...),

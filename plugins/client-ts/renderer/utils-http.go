@@ -80,7 +80,7 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 				typeStr := r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true).typeLink()
 				paramStmt := tsg.NewStatement()
 				paramStmt.Id(tsSafeName(arg.Name))
-				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
+				if arg.NumberOfPointers > 0 || model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					paramStmt.Optional()
 				}
 				paramStmt.Colon()
@@ -145,13 +145,19 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 			}
 		}
 		argParamMap := model.HTTPArgQueryMapForRequest(r.project, contract, method)
-		var queryParams []struct{ argName, queryKey string }
+		var queryParams []struct {
+			arg      *model.Variable
+			queryKey string
+		}
 		for _, arg := range args {
 			if pathParamSet[arg.Name] {
 				continue
 			}
 			if queryKey, ok := argParamMap[arg.Name]; ok {
-				queryParams = append(queryParams, struct{ argName, queryKey string }{arg.Name, queryKey})
+				queryParams = append(queryParams, struct {
+					arg      *model.Variable
+					queryKey string
+				}{arg, queryKey})
 			}
 		}
 		sort.Slice(queryParams, func(i, j int) bool { return queryParams[i].queryKey < queryParams[j].queryKey })
@@ -160,15 +166,23 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 			if i > 0 {
 				sep = "&"
 			}
-			mg.Add(tsg.NewStatement().
+			urlAppend := tsg.NewStatement().
 				Id(tsLocalVar("url")).
 				Op("=").
 				Id(tsLocalVar("url")).
 				Op("+").
 				Lit(sep + qp.queryKey + "=").
 				Op("+").
-				Id("encodeURIComponent").Call(tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(qp.argName))).
-				Semicolon())
+				Id("encodeURIComponent").Call(tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(qp.arg.Name)))
+			if qp.arg.NumberOfPointers > 0 {
+				mg.Add(tsg.NewStatement().If(
+					tsg.NewStatement().Id(tsLocalVar("params")).Dot(tsSafeName(qp.arg.Name)).Op("!==").Id("undefined"),
+					func(bg *tsg.Group) {
+						bg.Add(urlAppend.Semicolon())
+					}))
+				continue
+			}
+			mg.Add(urlAppend.Semicolon())
 		}
 
 		requestMultipart := r.methodRequestMultipart(contract, method)

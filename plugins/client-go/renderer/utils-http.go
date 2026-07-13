@@ -93,11 +93,16 @@ func (r *ClientRenderer) argByName(method *model.Method, argName string) (v *mod
 
 func (r *ClientRenderer) varToString(ctx context.Context, variable *model.Variable) (c Code) {
 
+	var expr Code
 	if variable.TypeID == "string" {
-		return Id(ToLowerCamel(variable.Name))
+		expr = Id(ToLowerCamel(variable.Name))
+	} else {
+		expr = Qual(PackageFmt, "Sprint").Call(Id(ToLowerCamel(variable.Name)))
 	}
-	// Для остальных типов используем fmt.Sprint
-	return Qual(PackageFmt, "Sprint").Call(Id(ToLowerCamel(variable.Name)))
+	if variable.NumberOfPointers > 0 {
+		expr = Op("*").Add(expr)
+	}
+	return expr
 }
 
 func (r *ClientRenderer) contractNameToLowerCamel(contract *model.Contract) (s string) {

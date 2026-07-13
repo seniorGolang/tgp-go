@@ -233,8 +233,8 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 					if _, exists := project.Types[typeID]; !exists {
 						pkgInfo, ok := loader.GetPackage(alias.Obj().Pkg().Path())
 						if ok && pkgInfo != nil {
-							coreType := convertTypeFromGoTypes(typ, alias.Obj().Pkg().Path(), pkgInfo.Imports, project, loader, processingSet)
-							if coreType != nil {
+							var coreType *model.Type
+							if coreType, _ = convertTypeFromGoTypes(typ, alias.Obj().Pkg().Path(), pkgInfo.Imports, project, loader, processingSet); coreType != nil {
 								detectInterfaces(typ, coreType, project, loader)
 								detectParseFromString(typ, coreType, project, loader)
 								project.Types[typeID] = coreType
@@ -248,16 +248,16 @@ func convertFieldType(typ types.Type, pkgPath string, imports map[string]string,
 						importPkgPath := named.Obj().Pkg().Path()
 						pkgInfo, ok := loader.GetPackage(importPkgPath)
 						if ok && pkgInfo != nil {
-							coreType := convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet)
-							if coreType != nil {
+							var coreType *model.Type
+							if coreType, _ = convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet); coreType != nil {
 								detectInterfaces(typ, coreType, project, loader)
 								detectParseFromString(typ, coreType, project, loader)
 								project.Types[typeID] = coreType
 							}
 						} else {
 							if pkgInfo, err := loader.LoadPackageForType(importPkgPath, named.Obj().Name()); err == nil {
-								coreType := convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet)
-								if coreType != nil {
+								var coreType *model.Type
+								if coreType, _ = convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet); coreType != nil {
 									detectInterfaces(typ, coreType, project, loader)
 									detectParseFromString(typ, coreType, project, loader)
 									project.Types[typeID] = coreType

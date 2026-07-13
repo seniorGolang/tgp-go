@@ -763,8 +763,8 @@ func toIDWithImport(qualifiedName string, srcFile *GoFile) (stmt *Statement) {
 
 	// Формат: "package/path:FunctionName"
 	if tokens := strings.Split(qualifiedName, ":"); len(tokens) == 2 {
-		pkgPath := tokens[0]
-		funcName := tokens[1]
+		pkgPath := strings.TrimSpace(tokens[0])
+		funcName := strings.TrimSpace(tokens[1])
 		baseName := filepath.Base(pkgPath)
 		srcFile.ImportName(pkgPath, baseName)
 		return Qual(pkgPath, funcName)

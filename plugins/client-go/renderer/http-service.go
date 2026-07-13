@@ -213,7 +213,6 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 						if _, excluded := excludeDefault[ret.Name]; excluded {
 							continue
 						}
-						fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
 						var field exchangeField
 						for i := range fieldsResultBody {
 							if fieldsResultBody[i].name == ret.Name {
@@ -221,14 +220,14 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 								break
 							}
 						}
-						switch {
-						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
-						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
-						default:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
+						if field.name == "" {
+							field = exchangeField{
+								name:             ret.Name,
+								typeID:           ret.TypeID,
+								numberOfPointers: ret.NumberOfPointers,
+							}
 						}
+						bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(r.clientRPCResultValue(contract, method, ret, field, "_response_"))
 					}
 				} else {
 					bg.Var().Id("_response_").Id(r.responseStructName(contract, method))
@@ -237,20 +236,17 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
 					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, false)
 					for i, ret := range resultsWithoutErr {
-						if i >= len(fieldsResult) {
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(Id("_response_").Dot(ToCamel(ret.Name)))
-							continue
+						var field exchangeField
+						if i < len(fieldsResult) {
+							field = fieldsResult[i]
+						} else {
+							field = exchangeField{
+								name:             ret.Name,
+								typeID:           ret.TypeID,
+								numberOfPointers: ret.NumberOfPointers,
+							}
 						}
-						field := fieldsResult[i]
-						fieldValue := Id("_response_").Dot(ToCamel(ret.Name))
-						switch {
-						case field.numberOfPointers > 0 && ret.NumberOfPointers == 0:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("*").Add(fieldValue)
-						case field.numberOfPointers == 0 && ret.NumberOfPointers > 0:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Op("&").Add(fieldValue)
-						default:
-							bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(fieldValue)
-						}
+						bg.Id(ToLowerCamel(ret.Name)).Op("=").Add(r.clientRPCResultValue(contract, method, ret, field, "_response_"))
 					}
 				}
 				bg.Return()

@@ -136,7 +136,7 @@ tg plugin swagger --out api-docs/openapi.yaml --contracts '!OrderService'
 
 | Аннотация  | Уровень                       | Назначение                       | Влияет на OpenAPI                  |
 |------------|-------------------------------|----------------------------------|------------------------------------|
-| `required` | поле / аргумент / результат   | Обязательность                   | `required[]`, `parameter.required` |
+| `required` | поле / аргумент / результат / sub на методе | Обязательность (явная или выведенная, см. ниже) | `required[]`, `parameter.required` |
 | `desc`     | поле / аргумент / результат   | Описание                         | `schema.description`               |
 | `format`   | поле / аргумент (базовый тип) | Формат значения (`uuid`, и т.п.) | `schema.format`                    |
 | `example`  | поле / аргумент (базовый тип) | Пример значения                  | `schema.example`                   |
@@ -352,7 +352,7 @@ type UserService interface {
     - **Область действия**: метод.
     - **Влияние**: `operation.deprecated = true`, операция помечается как устаревшая в Swagger UI.
 
-- **tags (TagParamTags)** — специальные под‑аннотации для аргументов/результатов метода.
+- **tags (TagParamTags)** — специальные sub-аннотации для аргументов/результатов метода (полный синтаксис — в `tg plugin doc astg`).
     - **Формат** (на методе для конкретного аргумента или результата):
         - ``// @tg result.tags=`json:inline``` — «инлайнит» результат/поле в тело JSON.
         - ``// @tg filter.tags=`form:filter``` — задаёт имя поля формы для `application/x-www-form-urlencoded`.
@@ -376,12 +376,32 @@ GetUser(ctx context.Context, userID string, filter string) (user *User, err erro
 
 ### Поля структур и аргументы
 
+Общий синтаксис sub-аннотаций на методе (`token.required`, `result.tags=json:inline` и т.д.) — в документации плагина `astg`: `tg plugin doc astg`.
+
 - **required** — поле или параметр обязателен.
-    - **Формат**: `// @tg required`
+    - **Формат**: `// @tg required` на поле/параметре или `// @tg <имя>.required` на методе.
     - **Область действия**: поле структуры или аргумент/результат метода.
     - **Влияние**:
         - для полей структур — добавляет имя поля в список `required` схемы;
-        - для параметров методов — помечает параметр как обязательный в OpenAPI.
+        - для параметров методов — помечает параметр как обязательный в OpenAPI (`parameter.required`).
+
+#### Вывод `required` в OpenAPI
+
+Если `@tg required` не задан явно, плагин выводит обязательность по контексту:
+
+| Контекст | Обязательно, если… |
+|----------|-------------------|
+| Поле тела **запроса** | тип не указатель, нет `omitempty` в `@tg json` или в `<var>.tags=json:...,omitempty` |
+| Поле тела **ответа** | нет `omitempty` (указатель без `omitempty` считается обязательным) |
+| **Query**-параметр | тип не указатель; `@tg required` или `<var>.required` делает обязательным и указатель |
+| **Header** / **cookie** | только при явном `@tg required` или `<var>.required` |
+
+Пример обязательного указателя через sub-аннотацию:
+
+```go
+// @tg Forced.required
+GetItem(ctx context.Context, forced *string) (item Item, err error)
+```
 
 - **desc** — описание поля или параметра.
     - **Формат**: `// @tg desc=\`Описание поля\``

@@ -14,6 +14,8 @@ import (
 type ClientRenderer struct {
 	project                  *model.Project
 	outDir                   string
+	emitDist                 bool
+	packageJSONPath          string
 	contract                 *model.Contract
 	knownTypes               map[string]int
 	typeDefTs                map[string]typeDefTs
@@ -21,12 +23,14 @@ type ClientRenderer struct {
 	needParseFormValueHelper bool
 }
 
-func NewClientRenderer(project *model.Project, outDir string) (r *ClientRenderer) {
+func NewClientRenderer(project *model.Project, outDir string, emitDist bool, packageJSONPath string) (r *ClientRenderer) {
 	return &ClientRenderer{
-		project:    project,
-		outDir:     outDir,
-		knownTypes: make(map[string]int),
-		typeDefTs:  make(map[string]typeDefTs),
+		project:         project,
+		outDir:          outDir,
+		emitDist:        emitDist,
+		packageJSONPath: packageJSONPath,
+		knownTypes:      make(map[string]int),
+		typeDefTs:       make(map[string]typeDefTs),
 	}
 }
 

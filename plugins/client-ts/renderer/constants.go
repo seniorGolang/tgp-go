@@ -5,6 +5,13 @@ package renderer
 const (
 	tagSummary         = "summary"
 	tagRequired        = "required"
+	tagNpmName         = "npmName"
+	tagNpmRegistry     = "npmRegistry"
+	tagNpmPrivate      = "npmPrivate"
+	tagLicense         = "license"
+	tagAuthor          = "author"
+	tagVersion         = "version"
+	tagDesc            = "desc"
 	TypeIDIOReader     = "io:Reader"
 	TypeIDIOReadCloser = "io:ReadCloser"
 )

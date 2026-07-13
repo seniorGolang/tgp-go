@@ -5,7 +5,6 @@ package main
 
 import (
 	_ "embed"
-	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -18,6 +17,7 @@ import (
 	"tgp/internal/model"
 	"tgp/internal/stats"
 	"tgp/plugins/client-ts/generator"
+	"tgp/plugins/client-ts/path"
 )
 
 //go:embed plugin.md
@@ -34,24 +34,38 @@ func (p *ClientTsPlugin) Execute(request data.Storage) (response data.Storage, e
 	}
 
 	var output string
-	if output, err = helper.GetOutput(request); err != nil || output == "" {
-		return nil, errors.New(i18n.Msg("out option is required and must be a string"))
+	if output, err = path.ResolveOutput(request); err != nil {
+		return nil, err
 	}
 
-	docOpts := generator.DocOptions{
-		Enabled: true,
+	opts := generator.Options{
+		Doc: generator.DocOptions{Enabled: true},
 	}
 
 	var noDoc bool
 	if noDoc, err = data.Get[bool](request, "no-doc"); err == nil {
-		docOpts.Enabled = !noDoc
+		opts.Doc.Enabled = !noDoc
 	}
 
-	if docOpts.FilePath, err = data.Get[string](request, "doc-file"); err != nil {
-		docOpts.FilePath = ""
+	var docFile string
+	if docFile, err = data.Get[string](request, "doc-file"); err != nil {
+		docFile = ""
 	}
-	if docOpts.FilePath == "" && docOpts.Enabled {
-		docOpts.FilePath = filepath.Join(output, "readme.md")
+	if docFile != "" {
+		if opts.Doc.FilePath, err = path.ResolveRaw(docFile); err != nil {
+			return nil, err
+		}
+	} else if opts.Doc.Enabled {
+		opts.Doc.FilePath = filepath.Join(output, "readme.md")
+	}
+
+	var packageJSONPath string
+	var hasPackageJSON bool
+	if packageJSONPath, hasPackageJSON, err = path.ResolveOptional(request, "package-json"); err != nil {
+		return nil, err
+	}
+	if hasPackageJSON {
+		opts.PackageJSONPath = packageJSONPath
 	}
 
 	var contracts []string
@@ -59,32 +73,26 @@ func (p *ClientTsPlugin) Execute(request data.Storage) (response data.Storage, e
 		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
 	}
 
-	// Фильтруем контракты, если указаны
 	project.Contracts = helper.FilterContracts(project, contracts)
 
 	clientStats := stats.CollectClientStats(project)
 
-	// Логируем начало генерации с деталями
-	attrs := stats.StartGenerationAttrs(clientStats, output, docOpts)
+	attrs := stats.StartGenerationAttrs(clientStats, output, opts.Doc)
 	slog.Info(i18n.Msg("generation started"), attrs...)
 
-	// Очищаем старые сгенерированные файлы перед новой генерацией
 	if err = cleanup.GeneratedFiles(output); err != nil {
 		slog.Debug(i18n.Msg("failed to cleanup generated files"), slog.String("error", err.Error()))
-		// Не возвращаем ошибку, так как очистка не критична
 	}
 
-	if err = generator.GenerateClient(project, output, docOpts); err != nil {
+	if err = generator.GenerateClient(project, output, opts); err != nil {
 		slog.Error(i18n.Msg("failed to generate TypeScript client"), slog.String("error", err.Error()))
 		err = fmt.Errorf("%s: %w", i18n.Msg("generate TypeScript client"), err)
 		return
 	}
 
-	// Подсчитываем количество типов (приблизительно, из project.Types)
 	clientStats.SetTotalTypes(len(project.Types))
 
-	// Логируем завершение генерации с деталями
-	attrs = stats.CompleteGenerationAttrs(clientStats, output, docOpts)
+	attrs = stats.CompleteGenerationAttrs(clientStats, output, opts.Doc)
 	slog.Info(i18n.Msg("TypeScript client generation completed"), attrs...)
 
 	return
@@ -119,6 +127,12 @@ func (p *ClientTsPlugin) Info() (info plugin.Info, err error) {
 						Required:    true,
 					},
 					{
+						Name:        "package-json",
+						Type:        "string",
+						Description: i18n.Msg("Path to generated package.json (requires @tg npmName)"),
+						Required:    false,
+					},
+					{
 						Name:        "contracts",
 						Type:        "string",
 						Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")"),
@@ -141,7 +155,7 @@ func (p *ClientTsPlugin) Info() (info plugin.Info, err error) {
 			},
 		},
 		AllowedPaths: map[string]string{
-			"@root": "w", // Доступ к директории с go.mod (монтируется хостом в корень "/")
+			"@root": "w",
 		},
 	}
 	return

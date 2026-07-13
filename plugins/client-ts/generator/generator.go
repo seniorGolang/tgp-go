@@ -12,6 +12,11 @@ import (
 	"tgp/plugins/client-ts/renderer"
 )
 
+type Options struct {
+	Doc             DocOptions
+	PackageJSONPath string
+}
+
 type DocOptions struct {
 	Enabled  bool   // Включена ли генерация документации (по умолчанию true)
 	FilePath string // Полный путь к файлу документации (пусто = outDir/readme.md)
@@ -27,7 +32,7 @@ func (d DocOptions) GetFilePath() (s string) {
 	return d.FilePath
 }
 
-func GenerateClient(project *model.Project, outDir string, docOpts DocOptions) (err error) {
+func GenerateClient(project *model.Project, outDir string, opts Options) (err error) {
 
 	if err = validate.Project(project); err != nil {
 		return fmt.Errorf("invalid project: %w", err)
@@ -35,13 +40,15 @@ func GenerateClient(project *model.Project, outDir string, docOpts DocOptions) (
 
 	slog.Debug(i18n.Msg("generating TypeScript client"), slog.String("outDir", outDir))
 
+	emitDist := opts.PackageJSONPath != ""
 	gen := &generator{
 		project:  project,
 		outDir:   outDir,
-		renderer: renderer.NewClientRenderer(project, outDir),
+		renderer: renderer.NewClientRenderer(project, outDir, emitDist, opts.PackageJSONPath),
+		opts:     opts,
 	}
 
-	if err = gen.generate(docOpts); err != nil {
+	if err = gen.generate(); err != nil {
 		slog.Error(i18n.Msg("failed to generate TypeScript client"), slog.String("error", err.Error()))
 		return
 	}
@@ -54,9 +61,10 @@ type generator struct {
 	project  *model.Project
 	outDir   string
 	renderer *renderer.ClientRenderer
+	opts     Options
 }
 
-func (g *generator) generate(docOpts DocOptions) (err error) {
+func (g *generator) generate() (err error) {
 
 	for _, contract := range g.project.Contracts {
 		if err = validate.Contract(contract, g.project); err != nil {
@@ -123,12 +131,15 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 		if err = g.renderer.RenderTsConfig(); err != nil {
 			return
 		}
+		if err = g.renderer.RenderPackageJSON(); err != nil {
+			return
+		}
 	}
 
-	if docOpts.Enabled && (g.renderer.HasJsonRPC() || g.renderer.HasHTTP()) {
+	if g.opts.Doc.Enabled && (g.renderer.HasJsonRPC() || g.renderer.HasHTTP()) {
 		rendererDocOpts := renderer.DocOptions{
-			Enabled:  docOpts.Enabled,
-			FilePath: docOpts.FilePath,
+			Enabled:  g.opts.Doc.Enabled,
+			FilePath: g.opts.Doc.FilePath,
 		}
 		if err = g.renderer.RenderReadmeTS(rendererDocOpts); err != nil {
 			return

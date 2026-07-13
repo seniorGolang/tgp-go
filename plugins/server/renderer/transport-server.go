@@ -103,8 +103,8 @@ func (r *transportRenderer) renderServerFunctions(srcFile *GoFile) {
 	if r.hasTrace() {
 		srcFile.Line().Add(r.withTraceFunc())
 	}
+	srcFile.Line().Add(r.clientIDMiddleware())
 	if r.hasMetrics() {
-		srcFile.Line().Add(r.clientIDMiddleware())
 		srcFile.Line().Add(r.inFlightMiddleware())
 		srcFile.Line().Add(r.requestDurationMiddleware())
 		srcFile.Line().Add(r.withMetricsFunc())

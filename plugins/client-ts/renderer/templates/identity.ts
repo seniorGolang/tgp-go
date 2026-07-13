@@ -1,7 +1,5 @@
 import {VersionASTg} from "./version";
 
-const storageKey = "tgp-client-instance-id";
-
 type NodeProcess = {versions?: {node?: string}};
 type NodeRequire = (id: string) => {hostname: () => string};
 
@@ -15,6 +13,15 @@ function isNodeRuntime(): boolean {
 function readNodeHostname(): string {
     const req = (globalThis as {require?: NodeRequire}).require;
     return req!("node:os").hostname();
+}
+
+function fnv1a32(input: string): string {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < input.length; i++) {
+        hash ^= input.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function resolveBrowserToken(): string {
@@ -37,14 +44,8 @@ function resolveBrowserToken(): string {
     return "unknown";
 }
 
-function resolveInstanceId(): string {
-    const stored = localStorage.getItem(storageKey);
-    if (stored) {
-        return stored;
-    }
-    const created = crypto.randomUUID();
-    localStorage.setItem(storageKey, created);
-    return created;
+function resolveBrowserId(): string {
+    return fnv1a32(navigator.userAgent);
 }
 
 export function resolveDefaultClientName(): string {
@@ -59,7 +60,7 @@ export function resolveDefaultClientName(): string {
         return cachedClientName;
     }
     const browserToken = resolveBrowserToken();
-    const instanceId = resolveInstanceId();
-    cachedClientName = `${browserToken}_${instanceId}_astg_ts_${VersionASTg}`;
+    const browserId = resolveBrowserId();
+    cachedClientName = `${browserToken}_${browserId}_astg_ts_${VersionASTg}`;
     return cachedClientName;
 }

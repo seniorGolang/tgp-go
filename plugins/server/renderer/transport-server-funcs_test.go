@@ -34,6 +34,54 @@ func TestRenderTransportServer_WithLogSingleAssignmentPerHybridContract(t *testi
 	assertSingleWithMetricsAssignment(t, source, "httpShapes")
 }
 
+func TestRenderTransportServer_ClientIDMiddlewareAlwaysRegistered(t *testing.T) {
+
+	project := transportServerTestProject()
+	dir := filepath.Join(t.TempDir(), "transport")
+
+	renderer := NewTransportRenderer(project, dir)
+	if err := renderer.RenderTransportServer(); err != nil {
+		t.Fatalf("RenderTransportServer: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, "server.go"))
+	if err != nil {
+		t.Fatalf("read generated file: %v", err)
+	}
+	source := string(content)
+
+	if !strings.Contains(source, "func (srv *Server) clientIDMiddleware(ftx *fiber.Ctx) error") {
+		t.Fatalf("clientIDMiddleware must always be generated, got:\n%s", source)
+	}
+	if !strings.Contains(source, `srv.srvHTTP.Use(srv.clientIDMiddleware)`) {
+		t.Fatalf("clientIDMiddleware must always be registered, got:\n%s", source)
+	}
+}
+
+func TestRenderTransportServer_ClientIDMiddlewareWithoutMetrics(t *testing.T) {
+
+	project := transportServerLogOnlyProject()
+	dir := filepath.Join(t.TempDir(), "transport")
+
+	renderer := NewTransportRenderer(project, dir)
+	if err := renderer.RenderTransportServer(); err != nil {
+		t.Fatalf("RenderTransportServer: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, "server.go"))
+	if err != nil {
+		t.Fatalf("read generated file: %v", err)
+	}
+	source := string(content)
+
+	if strings.Contains(source, "inFlightMiddleware") {
+		t.Fatalf("metrics middleware must not be generated without @tg metrics, got:\n%s", source)
+	}
+	if !strings.Contains(source, `srv.srvHTTP.Use(srv.clientIDMiddleware)`) {
+		t.Fatalf("clientIDMiddleware must be registered without @tg metrics, got:\n%s", source)
+	}
+}
+
 func TestRenderTransportServer_WithLogKeepsHTTPOnlyAndJsonRPCOnlyContracts(t *testing.T) {
 
 	project := transportServerTestProject()
@@ -167,6 +215,42 @@ func transportServerTestProject() (project *model.Project) {
 				},
 				Methods: []*model.Method{
 					rpcMethod("Ping"),
+				},
+			},
+		},
+	}
+	return project
+}
+
+func transportServerLogOnlyProject() (project *model.Project) {
+
+	project = &model.Project{
+		ModulePath: "example",
+		Types:      map[string]*model.Type{},
+		Contracts: []*model.Contract{
+			{
+				Name:    "Modes",
+				PkgPath: "example/contracts",
+				ID:      "Modes",
+				Annotations: tags.DocTags{
+					model.TagServerHTTP: "",
+					TagLogger:           "",
+				},
+				Methods: []*model.Method{
+					{
+						Name: "Ping",
+						Args: []*model.Variable{
+							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+						},
+						Results: []*model.Variable{
+							{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+						},
+						Annotations: tags.DocTags{
+							model.TagHTTPMethod: "GET",
+							model.TagHttpPath:   "/ping",
+						},
+					},
 				},
 			},
 		},

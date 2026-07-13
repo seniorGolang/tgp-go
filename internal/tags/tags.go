@@ -95,7 +95,14 @@ func ParseTags(docs []string) (tags DocTags) {
 			for k, v := range values {
 
 				if _, found := tags[k]; found {
-					tags[k] += "," + v
+					if v == "" {
+						continue
+					}
+					if tags[k] == "" {
+						tags[k] = v
+					} else {
+						tags[k] += "," + v
+					}
 				} else {
 					tags[k] = v
 				}

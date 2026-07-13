@@ -227,7 +227,11 @@ func saveTypeFromGoTypes(t types.Type, project *model.Project, loader *Autonomou
 	}
 
 	processingSet := make(map[string]bool)
-	coreType := convertTypeFromGoTypes(t, importPkgPath, pkgInfo.Imports, project, loader, processingSet)
+	var coreType *model.Type
+	var convErr error
+	if coreType, convErr = convertTypeFromGoTypes(t, importPkgPath, pkgInfo.Imports, project, loader, processingSet); convErr != nil {
+		return
+	}
 	if coreType == nil {
 		return
 	}
@@ -368,7 +372,10 @@ func ensureTypeLoaded(typeID string, project *model.Project, loader *AutonomousP
 
 	processingSet := make(map[string]bool)
 	var coreType *model.Type
-	if coreType = convertTypeFromGoTypes(typeNameObj.Type(), importPkgPath, pkgInfo.Imports, project, loader, processingSet); coreType == nil {
+	if coreType, err = convertTypeFromGoTypes(typeNameObj.Type(), importPkgPath, pkgInfo.Imports, project, loader, processingSet); err != nil {
+		return err
+	}
+	if coreType == nil {
 		return fmt.Errorf("failed to convert type %s", typeID)
 	}
 

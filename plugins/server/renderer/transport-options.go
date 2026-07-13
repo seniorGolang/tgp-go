@@ -63,6 +63,9 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 
 	for _, contract := range r.contractsSorted() {
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
+			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+				continue
+			}
 			srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
 			block := func(gr *Group) {
 				gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))

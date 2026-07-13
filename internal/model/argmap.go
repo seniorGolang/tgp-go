@@ -3,6 +3,7 @@
 package model
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -58,6 +59,47 @@ func ParseArgMapEntries(value string) (items []ArgMapItem) {
 	}
 
 	return items
+}
+
+// ParseArgMapEntriesStrict парсит http-args, http-headers и http-cookies с ошибкой на неверный формат.
+func ParseArgMapEntriesStrict(value string) (items []ArgMapItem, err error) {
+
+	if value == "" {
+		return nil, nil
+	}
+
+	for index, pair := range strings.Split(value, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+
+		parts := strings.Split(pair, "|")
+		if len(parts) < 2 {
+			return nil, fmt.Errorf("entry %q must be arg|key or arg|key|mode", pair)
+		}
+
+		arg := strings.TrimSpace(parts[0])
+		key := strings.TrimSpace(parts[1])
+		if arg == "" || key == "" {
+			return nil, fmt.Errorf("entry %q must be arg|key or arg|key|mode", pair)
+		}
+
+		mode := ArgModeBody
+		if len(parts) >= 3 {
+			mode = strings.TrimSpace(parts[2])
+			if mode != ArgModeExplicit && mode != ArgModeImplicit && mode != ArgModeBody {
+				return nil, fmt.Errorf("entry %d %q: mode must be explicit, implicit or body", index+1, pair)
+			}
+		}
+
+		items = append(items, ArgMapItem{
+			Arg:  arg,
+			Key:  key,
+			Mode: mode,
+		})
+	}
+	return items, nil
 }
 
 // ArgMapItemsByArg returns map arg -> ArgMapItem for the first occurrence of each arg.

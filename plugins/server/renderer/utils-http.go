@@ -109,15 +109,15 @@ func (r *contractRenderer) methodIsJsonRPC(method *model.Method) (ok bool) {
 	return r.contract != nil && model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPMethod)
 }
 
-func (r *contractRenderer) methodHandlerQual(srcFile *GoFile, method *model.Method) (code Code) {
+func (r *contractRenderer) methodHandlerQual(srcFile *GoFile, method *model.Method) (stmt *Statement) {
 
 	handlerValue := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHandler, "")
 	if handlerValue == "" {
 		return Id("")
 	}
 	if tokens := strings.Split(handlerValue, ":"); len(tokens) == 2 {
-		pkgPath := tokens[0]
-		funcName := tokens[1]
+		pkgPath := strings.TrimSpace(tokens[0])
+		funcName := strings.TrimSpace(tokens[1])
 		baseName := filepath.Base(pkgPath)
 		srcFile.ImportName(pkgPath, baseName)
 		return Qual(pkgPath, funcName)

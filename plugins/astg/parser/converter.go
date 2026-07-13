@@ -11,10 +11,10 @@ import (
 	"tgp/internal/model"
 )
 
-func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]string, project *model.Project, loader *AutonomousPackageLoader, processingTypes ...map[string]bool) (coreType *model.Type) {
+func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]string, project *model.Project, loader *AutonomousPackageLoader, processingTypes ...map[string]bool) (coreType *model.Type, err error) {
 
 	if typ == nil {
-		return
+		return nil, nil
 	}
 
 	var processingSet map[string]bool
@@ -42,7 +42,7 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 				project.Types[typeID] = existingType
 			}
 			coreType = existingType
-			return
+			return coreType, nil
 		}
 	}
 
@@ -84,7 +84,7 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 				}
 			}
 			project.Types[typeID] = coreType
-			return
+			return coreType, nil
 		}
 
 		// Помечаем тип как обрабатываемый
@@ -220,7 +220,10 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 					basePkgInfo, ok := loader.GetPackage(basePkgPath)
 					if ok && basePkgInfo != nil {
 						// Важно: используем тот же processingSet для защиты от рекурсии
-						baseCoreType := convertTypeFromGoTypes(named, basePkgPath, basePkgInfo.Imports, project, loader, processingSet)
+						var baseCoreType *model.Type
+						if baseCoreType, err = convertTypeFromGoTypes(named, basePkgPath, basePkgInfo.Imports, project, loader, processingSet); err != nil {
+							return nil, err
+						}
 						if baseCoreType != nil {
 							// ВАЖНО: сохраняем базовый тип БЕЗ проверки isExcludedType,
 							// так как он нужен для правильной обработки алиаса
@@ -265,14 +268,14 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 		coreType.Kind = model.TypeKindInterface
 
 	default:
-		return
+		return nil, nil
 	}
 
 	if loader != nil && coreType.ImportPkgPath != "" && coreType.TypeName != "" {
 		coreType.Docs, coreType.Directives = getTypeDocs(loader, coreType.ImportPkgPath, coreType.TypeName)
 	}
 
-	return
+	return coreType, nil
 }
 
 func convertBasicKind(kind types.BasicKind) (typeKind model.TypeKind) {

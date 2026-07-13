@@ -95,6 +95,9 @@ func (e *Encoder) encode(v reflect.Value, dst map[string][]string) (err error) {
 		}
 		encFunc := typeEncoder(v.Field(i).Type(), e.regenc)
 		if encFunc != nil {
+			if v.Field(i).Kind() == reflect.Pointer && v.Field(i).IsNil() {
+				continue
+			}
 			value := encFunc(v.Field(i))
 			if opts.Contains("omitempty") && isZero(v.Field(i)) {
 				continue

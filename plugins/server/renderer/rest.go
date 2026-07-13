@@ -205,7 +205,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 				for _, arg := range args {
 					callArgs = append(callArgs, Id("request").Dot(r.requestStructFieldName(method, arg)))
 				}
-				bg.Return().Add(toIDWithImport(responseMethod, srcFile).Call(callArgs...))
+				bg.Return(toIDWithImport(responseMethod, srcFile).Call(callArgs...))
 			} else {
 				responseStreamResult := r.methodResponseBodyStreamResult(method)
 				bg.Var().Id("response").Id(responseStructName(r.contract.Name, method.Name))

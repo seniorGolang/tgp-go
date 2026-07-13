@@ -8,11 +8,11 @@
 
 При запуске пайплайна можно передать плагину опции:
 
-| Опция | Тип | Описание |
-|-------|-----|----------|
+| Опция           | Тип    | Описание                                                                                                                                |
+| --------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `contracts-dir` | строка | Папка с контрактами. По умолчанию `contracts`. Читаются только `.go` файлы **в самой этой папке** (вложенные папки не просматриваются). |
-| `contracts` | строка | Список имён контрактов через запятую, чтобы обрабатывать только их (например: `UserService,OrderService`). |
-| `no-cache` | bool | Не использовать кэш — каждый раз разбирать проект заново. |
+| `contracts`     | строка | Список имён контрактов через запятую, чтобы обрабатывать только их (например: `UserService,OrderService`).                              |
+| `no-cache`      | bool   | Не использовать кэш — каждый раз разбирать проект заново.                                                                               |
 
 ## Кэш
 
@@ -46,10 +46,12 @@
 
 ### Значения с пробелами или спецсимволами
 
-Используйте обратные кавычки:
+Используйте обратные кавычки — иначе `TagScanner` возьмёт только первое слово значения:
 
 ```go
 // @tg http-path=`/api/v1/users/:id`
+// @tg summary=`Custom fiber handler`
+// @tg desc=`Bearer token from Authorization header`
 ```
 
 ### Подстановка из файла
@@ -65,88 +67,130 @@
 
 1. **Пакет** — действует на все интерфейсы и методы в пакете.
 2. **Интерфейс** — на все методы интерфейса.
-3. **Метод** — только на этот метод.
-4. **Поле/параметр** — на поле структуры или параметр/результат метода.
+3. **Метод** — только на этот метод (включая sub-аннотации для аргументов и результатов, см. ниже).
+4. **Поле/параметр** — комментарий перед полем структуры или перед параметром/результатом метода.
 
-**Приоритет:** метод переопределяет интерфейс, интерфейс — пакет.
+**Приоритет** (от более специфичного к общему):
+
+1. аннотация на **поле/параметре**;
+2. **sub-аннотация** на методе вида `<имяПеременной>.<ключ>`;
+3. аннотация на **методе**;
+4. аннотация на **интерфейсе**;
+5. аннотация на **пакете**.
+
+### Sub-аннотации на уровне метода
+
+На методе можно задавать аннотации для конкретного аргумента или результата через префикс `<имяПеременной>.`:
+
+```go
+// @tg token.required
+// @tg token.desc=Bearer token from Authorization header
+// @tg result.tags=`json:inline`
+GetProfile(ctx context.Context, token string) (profile Profile, err error)
+```
+
+Синтаксис: `// @tg <имяПеременной>.<аннотация>[=<значение>]`, где `<имяПеременной>` — имя аргумента или результата метода (как в сигнатуре).
+
+Поддерживаемые sub-ключи: `required`, `desc`, `format`, `example`, `enums`, `type`, `tags`, `log-skip`, `http-part-name`, `http-part-content`.
+
+Специальный sub-ключ **`tags`** задаёт теги сериализации (через `|`):
+
+| Значение в `tags`      | Назначение                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| `json:inline`          | Развернуть поле/результат внутрь родительского JSON-объекта (для встраиваемых типов) |
+| `json:<имя>,omitempty` | Переопределить `json`-тег (в т.ч. `omitempty`) для exchange-структур                 |
+| `form:<имя>`           | Имя поля при `application/x-www-form-urlencoded`                                     |
+| `dumper:hide`          | Не выводить значение в логах                                                         |
+
+Примеры:
+
+```go
+// @tg filter.tags=`form:filter`
+// @tg user.tags=dumper:hide
+// @tg result.tags=`json:inline`
+```
+
+Sub-аннотации на методе **перекрываются** аннотациями, заданными непосредственно на поле или параметре.
 
 ## Список аннотаций
 
 ### Уровень пакета
 
-| Аннотация | Описание | Пример |
-|-----------|----------|--------|
-| `log` | Логирование запросов по пакету | `// @tg log` |
-| `trace` | Трассировка запросов по пакету | `// @tg trace` |
-| `metrics` | Сбор метрик по пакету | `// @tg metrics` |
-| `http-prefix=<префикс>` | Префикс URL для методов пакета | `// @tg http-prefix=api/v1` |
-| `packageJSON=<пакет>` | Другой JSON-кодек (по умолчанию `encoding/json`) | `// @tg packageJSON=...` |
-| `uuidPackage=<пакет>` | Пакет для UUID (по умолчанию `github.com/google/uuid`) | `// @tg uuidPackage=...` |
-| `swaggerTags=<тег1,тег2>` | Теги в OpenAPI | `// @tg swaggerTags=users,api` |
-| `security=<схемы>` | Глобальные схемы авторизации в OpenAPI (`http`, `apiKey`, `oauth2`, `openId`) | `// @tg security=\`http:bearer\`` |
-| `servers=<адрес>;<имя>` | Серверы в OpenAPI | `// @tg servers=https://api.example.com;Production` |
-| `version=<версия>` | Версия в документации | `// @tg version=1.0.0` |
-| `title=<заголовок>` | Заголовок OpenAPI | `// @tg title=My API` |
-| `author=<автор>` | Автор NPM-пакета (JS-клиенты) | `// @tg author=John Doe` |
-| `npmRegistry=<адрес>` | Адрес NPM-репозитория | `// @tg npmRegistry=...` |
-| `npmName=<имя>` | Имя NPM-пакета | `// @tg npmName=@myorg/my-api-client` |
-| `npmPrivate=<true\|false>` | Приватность NPM-пакета | `// @tg npmPrivate=true` |
-| `license=<лицензия>` | Лицензия NPM-пакета | `// @tg license=MIT` |
+| Аннотация                  | Описание                                                                      | Пример                                              |
+| -------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------- |
+| `log`                      | Логирование запросов по пакету                                                | `// @tg log`                                        |
+| `trace`                    | Трассировка запросов по пакету                                                | `// @tg trace`                                      |
+| `metrics`                  | Сбор метрик по пакету                                                         | `// @tg metrics`                                    |
+| `http-prefix=<префикс>`    | Префикс URL для методов пакета                                                | `// @tg http-prefix=api/v1`                         |
+| `packageJSON=<пакет>`      | Другой JSON-кодек (по умолчанию `encoding/json`)                              | `// @tg packageJSON=...`                            |
+| `uuidPackage=<пакет>`      | Пакет для UUID (по умолчанию `github.com/google/uuid`)                        | `// @tg uuidPackage=...`                            |
+| `swaggerTags=<тег1,тег2>`  | Теги в OpenAPI                                                                | `// @tg swaggerTags=users,api`                      |
+| `security=<схемы>`         | Глобальные схемы авторизации в OpenAPI (`http`, `apiKey`, `oauth2`, `openId`) | `// @tg security=\`http:bearer\``                   |
+| `servers=<адрес>;<имя>`    | Серверы в OpenAPI                                                             | `// @tg servers=https://api.example.com;Production` |
+| `version=<версия>`         | Версия в документации                                                         | `// @tg version=1.0.0`                              |
+| `title=<заголовок>`        | Заголовок OpenAPI                                                             | `// @tg title=My API`                               |
+| `author=<автор>`           | Автор NPM-пакета (JS-клиенты)                                                 | `// @tg author=John Doe`                            |
+| `npmRegistry=<адрес>`      | Адрес NPM-репозитория                                                         | `// @tg npmRegistry=...`                            |
+| `npmName=<имя>`            | Имя NPM-пакета                                                                | `// @tg npmName=@myorg/my-api-client`               |
+| `npmPrivate=<true\|false>` | Приватность NPM-пакета                                                        | `// @tg npmPrivate=true`                            |
+| `license=<лицензия>`       | Лицензия NPM-пакета                                                           | `// @tg license=MIT`                                |
 
 ### Уровень интерфейса
 
-| Аннотация | Описание | Пример |
-|-----------|----------|--------|
-| `jsonRPC-server` | Включить JSON-RPC 2.0 сервер для интерфейса | `// @tg jsonRPC-server` |
-| `http-server` | Включить HTTP-сервер для интерфейса | `// @tg http-server` |
-| `log` | Логирование запросов по интерфейсу | `// @tg log` |
-| `trace` | Трассировка по интерфейсу | `// @tg trace` |
-| `metrics` | Метрики по интерфейсу | `// @tg metrics` |
-| `http-prefix=<префикс>` | Префикс URL для методов интерфейса | `// @tg http-prefix=api/v1` |
-| `swaggerTags=<тег1,тег2>` | Теги в OpenAPI | `// @tg swaggerTags=users,api` |
-| `tagOmitemptyAll` | Добавить `omitempty` ко всем полям запроса/ответа | `// @tg tagOmitemptyAll` |
-| `desc=<описание>` | Краткое описание интерфейса | `// @tg desc=User management service` |
+| Аннотация                  | Описание                                          | Пример                                           |
+| -------------------------- | ------------------------------------------------- | ------------------------------------------------ |
+| `jsonRPC-server`           | Включить JSON-RPC 2.0 сервер для интерфейса       | `// @tg jsonRPC-server`                          |
+| `http-server`              | Включить HTTP-сервер для интерфейса               | `// @tg http-server`                             |
+| `log`                      | Логирование запросов по интерфейсу                | `// @tg log`                                     |
+| `trace`                    | Трассировка по интерфейсу                         | `// @tg trace`                                   |
+| `metrics`                  | Метрики по интерфейсу                             | `// @tg metrics`                                 |
+| `http-prefix=<префикс>`    | Префикс URL для методов интерфейса                | `// @tg http-prefix=api/v1`                      |
+| `swaggerTags=<тег1,тег2>`  | Теги в OpenAPI                                    | `// @tg swaggerTags=users,api`                   |
+| `tagDesc.<тег>=<описание>` | Описание тега в OpenAPI                           | `// @tg tagDesc.users=Операции с пользователями` |
+| `tagOmitemptyAll`          | Добавить `omitempty` ко всем полям запроса/ответа | `// @tg tagOmitemptyAll`                         |
+| `desc=<описание>`          | Краткое описание интерфейса                       | `// @tg desc=User management service`            |
 
 ### Уровень метода
 
-| Аннотация | Описание | Пример |
-|-----------|----------|--------|
-| `http-method=<метод>` | HTTP-метод (GET, POST, PUT, PATCH, DELETE, OPTIONS) | `// @tg http-method=POST` |
-| `http-path=<путь>` | URL-путь метода, поддерживает параметры (`:id`) | `// @tg http-path=/users/:id` |
-| `http-success=<код>` | HTTP-код успеха (по умолчанию 200) | `// @tg http-success=201` |
-| `http-args=<переменная>\|<ключ>` | Связь параметра URL с аргументом метода | `// @tg http-args=id\|userId` |
-| `http-headers=<переменная>\|<заголовок>` | Связь заголовка с аргументом/результатом | `// @tg http-headers=token\|Authorization` |
-| `http-cookies=<переменная>\|<cookie>` | Связь cookie с аргументом/результатом | `// @tg http-cookies=session\|sessionId` |
-| `http-response=<модуль>:<метод>` | Свой обработчик ответа (go-fiber) | `// @tg http-response=handlers:CustomHandler` |
-| `handler=<модуль>:<метод>` | Полностью свой обработчик | `// @tg handler=handlers:CustomHandler` |
-| `requestContentType=<mime>` | MIME запроса (по умолчанию `application/json`) | `// @tg requestContentType=application/xml` |
-| `responseContentType=<mime>` | MIME ответа | `// @tg responseContentType=application/xml` |
-| `enableInlineSingle` | Inline для метода с одним возвращаемым значением | `// @tg enableInlineSingle` |
-| `http-multipart` | Режим multipart для запроса/ответа | `// @tg http-multipart` |
-| `http-part-name=<аргумент>\|<часть>` | Имя части в multipart | `// @tg http-part-name=body\|file1` |
-| `http-part-content=<аргумент>\|<mime>` | Content-Type части в multipart | `// @tg http-part-content=body\|image/png` |
-| `log-skip=<переменная>` | Не логировать указанные переменные | `// @tg log-skip=password` |
-| `deprecated` | Пометка метода как устаревшего в OpenAPI | `// @tg deprecated` |
-| `summary=<описание>` | Описание метода для OpenAPI | `// @tg summary=Creates a new user` |
-| `desc=<описание>` | Краткое описание метода | `// @tg desc=Create user endpoint` |
-| `swaggerTags=<тег1,тег2>` | Теги в OpenAPI (переопределяют интерфейс) | `// @tg swaggerTags=users` |
+| Аннотация                                | Описание                                                 | Пример                                             |
+| ---------------------------------------- | -------------------------------------------------------- | -------------------------------------------------- |
+| `http-method=<метод>`                    | HTTP-метод (GET, POST, PUT, PATCH, DELETE, OPTIONS)      | `// @tg http-method=POST`                          |
+| `http-path=<путь>`                       | URL-путь метода, поддерживает параметры (`:id`)          | `// @tg http-path=/users/:id`                      |
+| `http-success=<код>`                     | HTTP-код успеха (по умолчанию 200)                       | `// @tg http-success=201`                          |
+| `http-args=<переменная>\|<ключ>`         | Связь параметра URL с аргументом метода                  | `// @tg http-args=id\|userId`                      |
+| `http-headers=<переменная>\|<заголовок>` | Связь заголовка с аргументом/результатом                 | `// @tg http-headers=token\|Authorization`         |
+| `http-cookies=<переменная>\|<cookie>`    | Связь cookie с аргументом/результатом                    | `// @tg http-cookies=session\|sessionId`           |
+| `http-response=<модуль>:<метод>`         | Свой обработчик ответа (go-fiber)                        | `// @tg http-response=handlers:CustomHandler`      |
+| `handler=<модуль>:<метод>`               | Полностью свой обработчик                                | `// @tg handler=handlers:CustomHandler`            |
+| `requestContentType=<mime>`              | MIME запроса (по умолчанию `application/json`)           | `// @tg requestContentType=application/xml`        |
+| `responseContentType=<mime>`             | MIME ответа                                              | `// @tg responseContentType=application/xml`       |
+| `enableInlineSingle`                     | Inline для метода с одним возвращаемым значением         | `// @tg enableInlineSingle`                        |
+| `http-multipart`                         | Режим multipart для запроса/ответа                       | `// @tg http-multipart`                            |
+| `http-part-name=<аргумент>\|<часть>`     | Имя части в multipart                                    | `// @tg http-part-name=body\|file1`                |
+| `http-part-content=<аргумент>\|<mime>`   | Content-Type части в multipart                           | `// @tg http-part-content=body\|image/png`         |
+| `log-skip=<переменная>`                  | Не логировать указанные переменные                       | `// @tg log-skip=password`                         |
+| `deprecated`                             | Пометка метода как устаревшего в OpenAPI                 | `// @tg deprecated`                                |
+| `summary=<описание>`                     | Описание метода для OpenAPI                              | `// @tg summary=Creates a new user`                |
+| `desc=<описание>`                        | Краткое описание метода                                  | `// @tg desc=Create user endpoint`                 |
+| `requestBodyDesc=<описание>`             | Описание тела запроса в OpenAPI                          | `// @tg requestBodyDesc=Payload for user creation` |
+| `swaggerTags=<тег1,тег2>`                | Теги в OpenAPI (переопределяют интерфейс)                | `// @tg swaggerTags=users`                         |
+| `<переменная>.<аннотация>`               | Sub-аннотация для аргумента/результата (см. раздел выше) | `// @tg token.required`                            |
 
 ### Уровень поля/параметра
 
-Комментарии перед полем структуры или параметром/результатом метода:
+Комментарии перед полем структуры или параметром/результатом метода. Те же ключи можно задать как sub-аннотации на методе (`// @tg fieldName.required`); прямой комментарий на поле/параметре имеет приоритет.
 
-| Аннотация | Описание | Пример |
-|-----------|----------|--------|
-| `desc=<описание>` | Описание поля | `// @tg desc=User identifier` |
-| `type=<тип>` | Тип в OpenAPI | `// @tg type=string` |
-| `enums=val1,val2` | Допустимые значения | `// @tg enums=active,inactive,pending` |
-| `format=<формат>` | Формат в OpenAPI (uuid, email, date-time и т.д.) | `// @tg format=uuid` |
-| `required` | Поле обязательно | `// @tg required` |
-| `example=<значение>` | Пример для документации | `// @tg example=550e8400-...` |
-| `<переменная>.tags=<тег>:<значение>` | Теги (напр. `dumper:hide` для логов) | `// @tg user.tags=dumper:hide` |
-| `http-part-name=<имя>` | Имя части в multipart (для `io.Reader`/`io.ReadCloser`) | `// @tg http-part-name=file1` |
-| `http-part-content=<mime>` | Content-Type части в multipart | `// @tg http-part-content=image/png` |
-| `log-skip` | Не логировать это поле | `// @tg log-skip` |
+| Аннотация                  | Описание                                                | Пример                                 |
+| -------------------------- | ------------------------------------------------------- | -------------------------------------- |
+| `desc=<описание>`          | Описание поля                                           | `// @tg desc=User identifier`          |
+| `type=<тип>`               | Тип в OpenAPI                                           | `// @tg type=string`                   |
+| `enums=val1,val2`          | Допустимые значения                                     | `// @tg enums=active,inactive,pending` |
+| `format=<формат>`          | Формат в OpenAPI (uuid, email, date-time и т.д.)        | `// @tg format=uuid`                   |
+| `required`                 | Поле обязательно (см. также правила вывода в swagger)   | `// @tg required`                      |
+| `example=<значение>`       | Пример для документации                                 | `// @tg example=550e8400-...`          |
+| `http-part-name=<имя>`     | Имя части в multipart (для `io.Reader`/`io.ReadCloser`) | `// @tg http-part-name=file1`          |
+| `http-part-content=<mime>` | Content-Type части в multipart                          | `// @tg http-part-content=image/png`   |
+| `log-skip`                 | Не логировать это поле                                  | `// @tg log-skip`                      |
 
 ## Примеры контрактов
 
@@ -176,6 +220,20 @@ type AuthService interface {
 // @tg http-headers=token|Authorization
 // @tg http-cookies=session|sessionId
 Login(ctx context.Context, username string, password string) (token string, session string, err error)
+}
+```
+
+### Sub-аннотации аргументов на методе
+
+```go
+// @tg http-server
+type AuthService interface {
+// @tg http-method=GET
+// @tg http-path=/profile
+// @tg http-headers=token|Authorization|explicit
+// @tg token.required
+// @tg token.desc=Bearer token
+GetProfile(ctx context.Context, token string) (profile Profile, err error)
 }
 ```
 
@@ -296,12 +354,12 @@ Method(ctx context.Context, string, int) (string, int, error)
 
 ```json
 {
-  "id": 1,
-  "jsonrpc": "2.0",
-  "method": "userService.getUser",
-  "params": {
-    "id": "123"
-  }
+	"id": 1,
+	"jsonrpc": "2.0",
+	"method": "userService.getUser",
+	"params": {
+		"id": "123"
+	}
 }
 ```
 
@@ -309,14 +367,14 @@ Method(ctx context.Context, string, int) (string, int, error)
 
 ```json
 {
-  "id": 1,
-  "jsonrpc": "2.0",
-  "result": {
-    "user": {
-      "id": "123",
-      "name": "John Doe"
-    }
-  }
+	"id": 1,
+	"jsonrpc": "2.0",
+	"result": {
+		"user": {
+			"id": "123",
+			"name": "John Doe"
+		}
+	}
 }
 ```
 

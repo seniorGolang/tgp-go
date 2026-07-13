@@ -370,31 +370,8 @@ func convertMethod(methodName string, funcType *ast.FuncType, docs []string, con
 		}
 	}
 
-	method.Handler = extractHandlerInfo(method.Annotations)
+	method.Handler = model.HandlerInfoFromAnnotations(method.Annotations)
 
-	return
-}
-
-func extractHandlerInfo(methodTags tags.DocTags) (handlerInfo *model.HandlerInfo) {
-
-	var handlerValue any
-	var exists bool
-	if handlerValue, exists = methodTags["handler"]; !exists {
-		if handlerValue, exists = methodTags["http-response"]; !exists {
-			return
-		}
-	}
-
-	tokens := fmt.Sprintf("%v", handlerValue)
-	parts := strings.Split(tokens, ":")
-	if len(parts) != 2 {
-		return
-	}
-
-	handlerInfo = &model.HandlerInfo{
-		PkgPath: parts[0],
-		Name:    parts[1],
-	}
 	return
 }
 
@@ -727,8 +704,8 @@ func convertTypeFromAST(astType ast.Expr, pkgPath string, imports map[string]str
 				info.TypeID = typeID
 				if _, exists := project.Types[typeID]; !exists {
 					processingSet := make(map[string]bool)
-					coreType := convertTypeFromGoTypes(typ, importPkgPath, importPkgInfo.Imports, project, loader, processingSet)
-					if coreType != nil {
+					var coreType *model.Type
+					if coreType, _ = convertTypeFromGoTypes(typ, importPkgPath, importPkgInfo.Imports, project, loader, processingSet); coreType != nil {
 						detectInterfaces(typ, coreType, project, loader)
 						detectParseFromString(typ, coreType, project, loader)
 						project.Types[typeID] = coreType
@@ -742,8 +719,8 @@ func convertTypeFromAST(astType ast.Expr, pkgPath string, imports map[string]str
 											basePkgPath := named.Obj().Pkg().Path()
 											basePkgInfo, ok := loader.GetPackage(basePkgPath)
 											if ok && basePkgInfo != nil {
-												baseCoreType := convertTypeFromGoTypes(named, basePkgPath, basePkgInfo.Imports, project, loader, processingSet)
-												if baseCoreType != nil {
+												var baseCoreType *model.Type
+												if baseCoreType, _ = convertTypeFromGoTypes(named, basePkgPath, basePkgInfo.Imports, project, loader, processingSet); baseCoreType != nil {
 													project.Types[baseTypeID] = baseCoreType
 												}
 											}
@@ -1017,7 +994,9 @@ func ensureTypeInProject(typeID string, typ types.Type, pkgPath string, imports 
 		imports = make(map[string]string)
 	}
 	processingSet := make(map[string]bool)
-	coreType = convertTypeFromGoTypes(typ, pkgPath, imports, project, loader, processingSet)
+	if coreType, err = convertTypeFromGoTypes(typ, pkgPath, imports, project, loader, processingSet); err != nil {
+		return nil, err
+	}
 	if coreType == nil {
 		return nil, nil
 	}

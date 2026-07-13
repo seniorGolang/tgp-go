@@ -106,11 +106,11 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 					if !r.methodIsHTTP(method) {
 						continue
 					}
-					if model.IsAnnotationSet(r.project, r.contract, method, nil, TagHandler) {
+					if handlerValue := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHandler, ""); handlerValue != "" && strings.Contains(handlerValue, ":") {
 						handlerQual := r.methodHandlerQual(srcFile, method)
 						bg.Id("route").Dot(toCamel(r.methodHTTPMethod(method))).
 							Call(Lit(r.methodHTTPPath(method)), Func().Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).Params(Err().Error()).Block(
-								Return().Add(handlerQual).Call(Id(VarNameFtx), Id("http").Dot("base")),
+								Return(handlerQual.Call(Id(VarNameFtx), Id("http").Dot("base"))),
 							))
 						continue
 					}

@@ -29,6 +29,12 @@ func TagScanner(tagString string) (tags map[string]string, err error) {
 	tags = make(map[string]string)
 
 	setTag := func(k string, v string) {
+		if v == "" {
+			if _, ok := tags[k]; !ok {
+				tags[k] = ""
+			}
+			return
+		}
 		if prev, ok := tags[k]; ok && prev != "" {
 			tags[k] = prev + "," + v
 		} else {

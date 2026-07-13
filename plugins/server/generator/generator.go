@@ -34,6 +34,9 @@ func GenerateServer(project *model.Project, contractID string, outDir string) (e
 	if err = validate.Contract(contract, project); err != nil {
 		return fmt.Errorf("validate contract: %w", err)
 	}
+	if err = validateServerContract(project, contract); err != nil {
+		return fmt.Errorf("validate server annotations: %w", err)
+	}
 
 	resetStats()
 	setupCacheLogger()
@@ -108,6 +111,15 @@ func GenerateTransportFiles(project *model.Project, outDir string, contracts ...
 		}
 		gen.project = filteredProject
 		gen.transportRenderer = renderer.NewTransportRenderer(filteredProject, outDir)
+	}
+
+	for _, contract := range gen.project.Contracts {
+		if err = validate.Contract(contract, gen.project); err != nil {
+			return fmt.Errorf("validate contract %q: %w", contract.Name, err)
+		}
+		if err = validateServerContract(gen.project, contract); err != nil {
+			return fmt.Errorf("validate server annotations for %q: %w", contract.Name, err)
+		}
 	}
 
 	if err = gen.generateTransport(); err != nil {

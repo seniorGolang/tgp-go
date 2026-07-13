@@ -3,5 +3,5 @@
 
 package main
 
-//go:generate go run -tags pluginInfo . ../../dist/clientTs.json
-//go:generate env GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o ../../dist/clientTs.tgp .
+//go:generate go run -tags pluginInfo . ../../dist/client-ts.json
+//go:generate env GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o ../../dist/client-ts.tgp .

@@ -39,7 +39,7 @@ func TestRenderHTTPClient_optionalQueryParamSkipsUndefined(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	renderer := NewClientRenderer(project, dir)
+	renderer := NewClientRenderer(project, dir, false, "")
 	if err := renderer.RenderHTTPClientClass(contract); err != nil {
 		t.Fatalf("RenderHTTPClientClass: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestRenderHTTPClient_formBodyUsesFormFieldName(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	renderer := NewClientRenderer(project, dir)
+	renderer := NewClientRenderer(project, dir, false, "")
 	if err := renderer.RenderHTTPClientClass(contract); err != nil {
 		t.Fatalf("RenderHTTPClientClass: %v", err)
 	}

@@ -17,24 +17,29 @@ func (r *ClientRenderer) RenderTsConfig() (err error) {
 	outDir := r.outDir
 
 	// Структура для tsconfig.json
+	compilerOptions := map[string]any{
+		"target":                           "ES2020",
+		"module":                           "ES2020",
+		"lib":                              []string{"ES2020", "DOM"},
+		"moduleResolution":                 "bundler",
+		"strict":                           true,
+		"esModuleInterop":                  true,
+		"skipLibCheck":                     true,
+		"resolveJsonModule":                true,
+		"allowSyntheticDefaultImports":     true,
+		"forceConsistentCasingInFileNames": true,
+		"declaration":                      true,
+		"declarationMap":                   true,
+		"sourceMap":                        true,
+		"noUnusedLocals":                   true,
+		"noUnusedParameters":               true,
+	}
+	if r.emitDist {
+		compilerOptions["outDir"] = "dist"
+		compilerOptions["rootDir"] = "."
+	}
 	tsConfig := map[string]any{
-		"compilerOptions": map[string]any{
-			"target":                           "ES2020",
-			"module":                           "ES2020",
-			"lib":                              []string{"ES2020", "DOM"},
-			"moduleResolution":                 "bundler",
-			"strict":                           true,
-			"esModuleInterop":                  true,
-			"skipLibCheck":                     true,
-			"resolveJsonModule":                true,
-			"allowSyntheticDefaultImports":     true,
-			"forceConsistentCasingInFileNames": true,
-			"declaration":                      true,
-			"declarationMap":                   true,
-			"sourceMap":                        true,
-			"noUnusedLocals":                   true,
-			"noUnusedParameters":               true,
-		},
+		"compilerOptions": compilerOptions,
 		"include": []string{
 			"**/*.ts",
 		},

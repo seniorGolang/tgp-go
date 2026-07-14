@@ -163,7 +163,7 @@ func (r *transportRenderer) serverNewFunc() (c Code) {
 			bg.Line()
 			if r.hasJsonRPC() {
 				bg.Id("initJsonRPCMethodMap").Call(Id("srv"))
-				bg.Id("srv").Dot("srvHTTP").Dot("Post").Call(Lit(r.generalBatchPath()), Id("srv").Dot("serveBatch"))
+				bg.Id("srv").Dot("srvHTTP").Dot("Post").Call(Lit("/"), Id("srv").Dot("serveBatch"))
 			}
 			bg.Return()
 		})

@@ -128,22 +128,3 @@ func (r *ClientRenderer) jsonRPCWireMethod(contract *model.Contract, method *mod
 	}
 	return model.JsonRPCWireMethod(contract.Name, method.Name)
 }
-
-func (r *ClientRenderer) jsonRPCHTTPPrefix() (prefix string) {
-
-	for _, contract := range r.project.Contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-			return model.GetAnnotationValue(r.project, contract, nil, nil, model.TagHttpPrefix, "")
-		}
-	}
-	return ""
-}
-
-func (r *ClientRenderer) emitJoinEndpointPrefix(bg *Group, endpointVar string, prefix string) {
-
-	if prefix == "" {
-		return
-	}
-	trimmedPrefix := strings.Trim(prefix, "/")
-	bg.Id(endpointVar).Op("=").Qual(PackageStrings, "TrimRight").Call(Id(endpointVar), Lit("/")).Op("+").Lit("/").Op("+").Lit(trimmedPrefix)
-}

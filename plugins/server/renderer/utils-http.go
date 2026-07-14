@@ -19,33 +19,6 @@ func (r *contractRenderer) batchPath() (path string) {
 	return model.JoinHTTPPath(prefix, pathValue)
 }
 
-func (r *transportRenderer) generalBatchPath() (path string) {
-
-	var seen map[string]struct{}
-	for _, c := range r.contractsSorted() {
-		if !model.IsAnnotationSet(r.project, c, nil, nil, model.TagServerJsonRPC) {
-			continue
-		}
-		p := model.GetAnnotationValue(r.project, c, nil, nil, model.TagHttpPrefix, "")
-		if p == "" {
-			continue
-		}
-		if seen == nil {
-			seen = make(map[string]struct{})
-		}
-		seen[p] = struct{}{}
-	}
-	if len(seen) != 1 {
-		return "/"
-	}
-	var single string
-	for p := range seen {
-		single = p
-		break
-	}
-	return model.JoinHTTPPath(single, "/")
-}
-
 func (r *contractRenderer) methodHTTPMethod(method *model.Method) (httpMethod string) {
 
 	m := model.GetHTTPMethod(r.project, r.contract, method)

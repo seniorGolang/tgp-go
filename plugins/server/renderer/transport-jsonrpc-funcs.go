@@ -276,7 +276,7 @@ func (r *transportRenderer) serveBatchFunc() (c Code) {
 				ig.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded")))
 			})
 			bg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-				Id("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit(r.generalBatchPath()), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
+				Id("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("/"), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
 			)
 			bg.If(Id("single")).BlockFunc(func(ig *Group) {
 				ig.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("requests").Op("[").Lit(0).Op("]")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(vg *Group) {

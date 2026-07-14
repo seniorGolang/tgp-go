@@ -85,15 +85,9 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 		constructor.Block(func(cg *tsg.Group) {
 			cg.Add(tsg.NewStatement().This().Dot("endpoint").Op("=").Id("endpoint").Semicolon())
 
-			rpcURLEndpoint := tsg.NewStatement().Id("endpoint")
-			if r.HasJsonRPC() {
-				r.emitJoinEndpointPrefixTS(cg, "endpoint", r.jsonRPCHTTPPrefix(), "rpcURL")
-				rpcURLEndpoint = tsg.NewStatement().Id("rpcURL")
-			}
-
 			// Объединяем опции
 			cg.Add(tsg.NewStatement().Const("defaultOptions").Colon().Id("ClientOptions").Op("=").Values(func(og *tsg.Group) {
-				og.Add(tsg.NewStatement().Id("url").Colon().Add(rpcURLEndpoint))
+				og.Add(tsg.NewStatement().Id("url").Colon().Id("endpoint"))
 				if r.clientIdentity {
 					og.Add(tsg.NewStatement().Id("clientName").Colon().Id("resolveDefaultClientName").Call())
 				}

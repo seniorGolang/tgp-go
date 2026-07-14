@@ -89,3 +89,16 @@ func JSONRPCContractPrefix(project *Project, contract *Contract) (prefix string)
 
 	return NormalizeHTTPPrefix(GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, ""))
 }
+
+// JSONRPCServiceBatchPath — POST-путь batch эндпоинта контракта (prefix + http-path|/name).
+func JSONRPCServiceBatchPath(project *Project, contract *Contract) (servicePath string) {
+
+	if contract == nil {
+		return "/"
+	}
+
+	prefix := GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, "")
+	pathValue := GetAnnotationValue(project, contract, nil, nil, TagHttpPath, "/"+LowerCamel(contract.Name))
+
+	return JoinHTTPPath(prefix, pathValue)
+}

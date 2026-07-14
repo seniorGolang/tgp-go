@@ -262,6 +262,24 @@ func TestRenderTransportJsonRPC_MethodMapsScopedByPrefix(t *testing.T) {
 	if strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v1"]["catalog.list"]`) {
 		t.Fatalf("catalog.list must not appear on /api/v1, got:\n%s", source)
 	}
+	if !strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v1/users"]["get"] = handler`) {
+		t.Fatalf("expected short method get on service batch path /api/v1/users, got:\n%s", source)
+	}
+	if !strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v2/catalog"]["list"] = handler`) {
+		t.Fatalf("expected short method list on service batch path /api/v2/catalog, got:\n%s", source)
+	}
+	if strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v1/users"]["users.get"]`) {
+		t.Fatalf("service path must not register qualified users.get, got:\n%s", source)
+	}
+	if strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v2/catalog"]["catalog.list"]`) {
+		t.Fatalf("service path must not register qualified catalog.list, got:\n%s", source)
+	}
+	if strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v1/users"]["list"]`) {
+		t.Fatalf("catalog list must not appear on users service path, got:\n%s", source)
+	}
+	if strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v2/catalog"]["get"]`) {
+		t.Fatalf("users get must not appear on catalog service path, got:\n%s", source)
+	}
 }
 
 func assertSingleWithLogAssignment(t *testing.T, source string, field string) {

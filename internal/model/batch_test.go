@@ -146,3 +146,47 @@ func TestJSONRPCContractPrefix(t *testing.T) {
 		t.Fatalf("JSONRPCContractPrefix(nil) = %q, want /", got)
 	}
 }
+
+func TestJSONRPCServiceBatchPath(t *testing.T) {
+
+	cases := []struct {
+		name string
+		c    *Contract
+		want string
+	}{
+		{name: "nil", c: nil, want: "/"},
+		{
+			name: "default path",
+			c: &Contract{
+				Name: "Rpc",
+				Annotations: tags.DocTags{
+					TagHttpPrefix: "api/v1",
+				},
+			},
+			want: "/api/v1/rpc",
+		},
+		{
+			name: "explicit http-path",
+			c: &Contract{
+				Name: "ABACV2",
+				Annotations: tags.DocTags{
+					TagHttpPrefix: "api/v2",
+					TagHttpPath:   "abac",
+				},
+			},
+			want: "/api/v2/abac",
+		},
+		{
+			name: "empty prefix",
+			c: &Contract{
+				Name: "RootRPC",
+			},
+			want: "/rootRPC",
+		},
+	}
+	for _, tc := range cases {
+		if got := JSONRPCServiceBatchPath(nil, tc.c); got != tc.want {
+			t.Fatalf("%s: JSONRPCServiceBatchPath = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

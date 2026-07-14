@@ -13,10 +13,7 @@ import (
 
 func (r *contractRenderer) batchPath() (path string) {
 
-	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPrefix, "")
-	pathValue := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPath, "/"+toLowerCamel(r.contract.Name))
-
-	return model.JoinHTTPPath(prefix, pathValue)
+	return model.JSONRPCServiceBatchPath(r.project, r.contract)
 }
 
 func (r *contractRenderer) methodHTTPMethod(method *model.Method) (httpMethod string) {

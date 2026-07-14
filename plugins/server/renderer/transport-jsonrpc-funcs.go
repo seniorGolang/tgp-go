@@ -76,7 +76,17 @@ func (r *transportRenderer) initJsonRPCMethodMaps() (c Code) {
 				if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
 					continue
 				}
+				servicePath := model.JSONRPCServiceBatchPath(r.project, contract)
+				bg.If(Id("srv").Dot("jsonRPCMethodMaps").Index(Lit(servicePath)).Op("==").Nil()).Block(
+					Id("srv").Dot("jsonRPCMethodMaps").Index(Lit(servicePath)).Op("=").Make(Map(String()).Id("methodJsonRPC")),
+				)
+			}
+			for _, contract := range r.contractsSorted() {
+				if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+					continue
+				}
 				contractPrefix := model.JSONRPCContractPrefix(r.project, contract)
+				servicePath := model.JSONRPCServiceBatchPath(r.project, contract)
 				bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).BlockFunc(func(ib *Group) {
 					for _, method := range methodsSorted(contract.Methods) {
 						if !r.methodIsJsonRPCForContract(contract, method) {
@@ -99,6 +109,7 @@ func (r *transportRenderer) initJsonRPCMethodMaps() (c Code) {
 								}
 								mb.Id("srv").Dot("jsonRPCMethodMaps").Index(Lit(mount)).Index(Lit(methodKey)).Op("=").Id("handler")
 							}
+							mb.Id("srv").Dot("jsonRPCMethodMaps").Index(Lit(servicePath)).Index(Lit(methodLCName)).Op("=").Id("handler")
 						})
 					}
 				})

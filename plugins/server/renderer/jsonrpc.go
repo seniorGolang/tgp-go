@@ -57,7 +57,6 @@ func (r *contractRenderer) RenderJsonRPC() (err error) {
 	}
 	srcFile.Add(r.serveMethodFunc(jsonPkg))
 	srcFile.Add(r.serviceServeBatchFunc(jsonPkg))
-	srcFile.Add(r.serviceSingleBatchFunc(typeGen))
 
 	err = srcFile.Save(path.Join(r.outDir, strings.ToLower(r.contract.Name)+"-jsonrpc.go"))
 	return
@@ -188,6 +187,7 @@ func (r *contractRenderer) serveMethodFunc(jsonPkg string) (c Code) {
 func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	servicePath := r.batchPath()
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("serveBatch").
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
@@ -197,6 +197,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 			bg.Var().Id("single").Bool()
 			bg.Var().Id("requests").Op("[]").Id("baseJsonRPC")
 			bg.Id("clientID").Op(":=").Qual(srvctxPkgPath, "GetClientID").Call(Id(VarNameFtx).Dot("UserContext").Call())
+			bg.Id("methods").Op(":=").Id("http").Dot("srv").Dot("jsonRPCMethodMaps").Index(Lit(servicePath))
 			bg.Id("methodHTTP").Op(":=").Id(VarNameFtx).Dot("Method").Call()
 			bg.If(Id("methodHTTP").Op("!=").Qual(PackageFiber, "MethodPost")).BlockFunc(func(ig *Group) {
 				ig.Id(VarNameFtx).Dot("Response").Call().Dot("SetStatusCode").Call(Qual(PackageFiber, "StatusMethodNotAllowed"))
@@ -263,7 +264,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 				ig.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded")))
 			})
 			bg.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-				Id("http").Dot("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit(r.batchPath()), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
+				Id("http").Dot("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit(servicePath), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
 			)
 			bg.If(Id("single")).BlockFunc(func(ig *Group) {
 				ig.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("requests").Op("[").Lit(0).Op("]")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(vg *Group) {
@@ -277,8 +278,8 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 						Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("ok"), Id("clientID")).Dot("Inc").Call(),
 					),
 				).Call()
-				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("http").Dot("doSingleBatch").
-					Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("requests").Op("[").Lit(0).Op("]")),
+				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("http").Dot("srv").Dot("doSingleBatch").
+					Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("requests").Op("[").Lit(0).Op("]"), Id("methods")),
 				))
 			})
 			bg.Defer().Func().Params().Block(
@@ -287,42 +288,8 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 				),
 			).Call()
 			bg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("http").Dot("srv").Dot("doBatch").
-				Call(Id(VarNameFtx), Id("requests"), Id("http").Dot("srv").Dot("jsonRPCMethodMaps").Index(Lit("/"))),
+				Call(Id(VarNameFtx), Id("requests"), Id("methods")),
 			))
-		})
-}
-
-func (r *contractRenderer) serviceSingleBatchFunc(typeGen *types.Generator) (c Code) {
-
-	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
-		Id("doSingleBatch").
-		Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("request").Id("baseJsonRPC")).
-		Params(Id("response").Op("*").Id("baseJsonRPC")).
-		BlockFunc(func(bg *Group) {
-			bg.Line()
-			bg.Var().Err().Error()
-			bg.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("request")).Op(";").Err().Op("!=").Nil()).Block(
-				Return(Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("invalidRequestError"), Lit("invalid JSON-RPC request: ").Op("+").Err().Dot("Error").Call(), Nil())),
-			)
-			bg.If(Id(VarNameCtx).Dot("Err").Call().Op("!=").Nil()).Block(
-				Return(Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("invalidRequestError"), Lit("request context cancelled"), Nil())),
-			)
-			bg.Id("methodNameOrigin").Op(":=").Id("request").Dot("Method")
-			bg.Id("method").Op(":=").Id("toLowercaseMethod").Call(Id("request").Dot("Method"))
-			bg.Switch(Id("method")).BlockFunc(func(sg *Group) {
-				for _, method := range r.contract.Methods {
-					if !r.methodIsJsonRPC(method) {
-						continue
-					}
-					methodNameLC := strings.ToLower(method.Name)
-					sg.Case(Lit(methodNameLC)).Block(
-						Return(Id("http").Dot(toLowerCamel(method.Name)+"WithContext").Call(Id(VarNameCtx), Id("request"))),
-					)
-				}
-				sg.Default().BlockFunc(func(dg *Group) {
-					dg.Return(Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("methodNotFoundError"), Lit("invalid method '").Op("+").Id("methodNameOrigin").Op("+").Lit("'"), Nil()))
-				})
-			})
 		})
 }
 

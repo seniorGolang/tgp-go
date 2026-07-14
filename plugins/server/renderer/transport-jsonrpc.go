@@ -77,8 +77,9 @@ func (r *transportRenderer) renderJsonRPCFunctions(srcFile *GoFile) {
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requestBase").Id("baseJsonRPC")).
 		Params(Id("responseBase").Op("*").Id("baseJsonRPC"))
 	srcFile.Line()
-	srcFile.Line().Add(r.initJsonRPCMethodMap())
+	srcFile.Line().Add(r.initJsonRPCMethodMaps())
 	srcFile.Line()
+	srcFile.Add(r.batchHandlerFunc())
 	srcFile.Add(r.serveBatchFunc())
 	srcFile.Add(r.batchFunc())
 	srcFile.Add(r.singleBatchFunc())

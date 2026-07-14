@@ -287,7 +287,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 				),
 			).Call()
 			bg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("http").Dot("srv").Dot("doBatch").
-				Call(Id(VarNameFtx), Id("requests")),
+				Call(Id(VarNameFtx), Id("requests"), Id("http").Dot("srv").Dot("jsonRPCMethodMaps").Index(Lit("/"))),
 			))
 		})
 }

@@ -129,7 +129,7 @@ func (r *transportRenderer) transportServerType() Code {
 		if r.hasJsonRPC() {
 			bg.Line().Id("maxBatchSize").Int()
 			bg.Id("maxParallelBatch").Int()
-			bg.Id("jsonRPCMethodMap").Map(String()).Id("methodJsonRPC").Line()
+			bg.Id("jsonRPCMethodMaps").Map(String()).Map(String()).Id("methodJsonRPC").Line()
 		}
 		for _, contract := range r.contractsSorted() {
 			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||

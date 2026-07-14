@@ -106,7 +106,7 @@ func TestRenderTransportServer_WithLogKeepsHTTPOnlyAndJsonRPCOnlyContracts(t *te
 	}
 }
 
-func TestRenderTransportServer_GeneralBatchAlwaysRoot(t *testing.T) {
+func TestRenderTransportServer_JSONRPCBatchMountsByPrefix(t *testing.T) {
 
 	project := &model.Project{
 		ModulePath: "example",
@@ -118,7 +118,7 @@ func TestRenderTransportServer_GeneralBatchAlwaysRoot(t *testing.T) {
 				ID:      "ABACV2",
 				Annotations: tags.DocTags{
 					model.TagServerJsonRPC: "",
-					model.TagHttpPrefix:    "v2",
+					model.TagHttpPrefix:    "api/v2",
 					model.TagHttpPath:      "abac",
 				},
 				Methods: []*model.Method{
@@ -140,7 +140,7 @@ func TestRenderTransportServer_GeneralBatchAlwaysRoot(t *testing.T) {
 				ID:      "Users",
 				Annotations: tags.DocTags{
 					model.TagServerJsonRPC: "",
-					model.TagHttpPrefix:    "v3",
+					model.TagHttpPrefix:    "api/v1",
 				},
 				Methods: []*model.Method{
 					{
@@ -170,17 +170,97 @@ func TestRenderTransportServer_GeneralBatchAlwaysRoot(t *testing.T) {
 	}
 	source := string(content)
 
-	want := `srv.srvHTTP.Post("/", srv.serveBatch)`
-	if !strings.Contains(source, want) {
-		t.Fatalf("expected general batch registration %q, got:\n%s", want, source)
-	}
-	for _, bad := range []string{
-		`srv.srvHTTP.Post("/v2", srv.serveBatch)`,
-		`srv.srvHTTP.Post("/v3", srv.serveBatch)`,
-	} {
-		if strings.Contains(source, bad) {
-			t.Fatalf("must not register general batch on prefix path %q, got:\n%s", bad, source)
+	for _, mount := range []string{"/", "/api", "/api/v1", "/api/v2"} {
+		want := `srv.srvHTTP.Post("` + mount + `", srv.batchHandler("` + mount + `"))`
+		if !strings.Contains(source, want) {
+			t.Fatalf("expected batch registration %q, got:\n%s", want, source)
 		}
+	}
+}
+
+func TestRenderTransportJsonRPC_MethodMapsScopedByPrefix(t *testing.T) {
+
+	project := &model.Project{
+		ModulePath: "example",
+		Types:      map[string]*model.Type{},
+		Contracts: []*model.Contract{
+			{
+				Name:    "Users",
+				PkgPath: "example/contracts",
+				ID:      "Users",
+				Annotations: tags.DocTags{
+					model.TagServerJsonRPC: "",
+					model.TagHttpPrefix:    "api/v1",
+				},
+				Methods: []*model.Method{
+					{
+						Name: "Get",
+						Args: []*model.Variable{
+							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+						},
+						Results: []*model.Variable{
+							{Name: "id", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+						},
+					},
+				},
+			},
+			{
+				Name:    "Catalog",
+				PkgPath: "example/contracts",
+				ID:      "Catalog",
+				Annotations: tags.DocTags{
+					model.TagServerJsonRPC: "",
+					model.TagHttpPrefix:    "api/v2",
+				},
+				Methods: []*model.Method{
+					{
+						Name: "List",
+						Args: []*model.Variable{
+							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+						},
+						Results: []*model.Variable{
+							{Name: "items", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+						},
+					},
+				},
+			},
+		},
+	}
+	dir := filepath.Join(t.TempDir(), "transport")
+
+	renderer := NewTransportRenderer(project, dir)
+	if err := renderer.RenderTransportJsonRPC(); err != nil {
+		t.Fatalf("RenderTransportJsonRPC: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, "jsonrpc.go"))
+	if err != nil {
+		t.Fatalf("read generated file: %v", err)
+	}
+	source := string(content)
+
+	if !strings.Contains(source, "func initJsonRPCMethodMaps(srv *Server)") {
+		t.Fatalf("expected initJsonRPCMethodMaps, got:\n%s", source)
+	}
+	if !strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v1"]["users.get"] = handler`) {
+		t.Fatalf("expected users.get on /api/v1 scope, got:\n%s", source)
+	}
+	if !strings.Contains(source, `srv.jsonRPCMethodMaps["/api"]["users.get"] = handler`) {
+		t.Fatalf("expected users.get on /api ancestor, got:\n%s", source)
+	}
+	if !strings.Contains(source, `srv.jsonRPCMethodMaps["/"]["users.get"] = handler`) {
+		t.Fatalf("expected users.get on /, got:\n%s", source)
+	}
+	if strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v2"]["users.get"]`) {
+		t.Fatalf("users.get must not appear on /api/v2, got:\n%s", source)
+	}
+	if !strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v2"]["catalog.list"] = handler`) {
+		t.Fatalf("expected catalog.list on /api/v2, got:\n%s", source)
+	}
+	if strings.Contains(source, `srv.jsonRPCMethodMaps["/api/v1"]["catalog.list"]`) {
+		t.Fatalf("catalog.list must not appear on /api/v1, got:\n%s", source)
 	}
 }
 

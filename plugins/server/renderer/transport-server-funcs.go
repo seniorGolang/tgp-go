@@ -162,8 +162,10 @@ func (r *transportRenderer) serverNewFunc() (c Code) {
 			)
 			bg.Line()
 			if r.hasJsonRPC() {
-				bg.Id("initJsonRPCMethodMap").Call(Id("srv"))
-				bg.Id("srv").Dot("srvHTTP").Dot("Post").Call(Lit("/"), Id("srv").Dot("serveBatch"))
+				bg.Id("initJsonRPCMethodMaps").Call(Id("srv"))
+				for _, mount := range model.JSONRPCBatchMounts(r.project) {
+					bg.Id("srv").Dot("srvHTTP").Dot("Post").Call(Lit(mount), Id("srv").Dot("batchHandler").Call(Lit(mount)))
+				}
 			}
 			bg.Return()
 		})

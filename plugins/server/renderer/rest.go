@@ -32,12 +32,16 @@ func (r *contractRenderer) RenderREST() (err error) {
 	srcFile.ImportName("io", "io")
 	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
 	for _, method := range r.contract.Methods {
-		if r.methodIsHTTP(method) && (r.methodRequestMultipart(method) || r.methodResponseMultipart(method)) {
-			srcFile.ImportName(PackageMime, "mime")
-			srcFile.ImportName(PackageMimeMultipart, "multipart")
-			srcFile.ImportName(PackageBytes, "bytes")
-			srcFile.ImportName(PackageNetTextproto, "textproto")
-			break
+		if !r.methodIsHTTP(method) || (!r.methodRequestMultipart(method) && !r.methodResponseMultipart(method)) {
+			continue
+		}
+		srcFile.ImportName(PackageMime, "mime")
+		srcFile.ImportName(PackageMimeMultipart, "multipart")
+		srcFile.ImportName(PackageBytes, "bytes")
+		srcFile.ImportName(PackageNetTextproto, "textproto")
+		srcFile.ImportName(PackageErrors, "errors")
+		if len(r.methodRequestBodyStreamArgs(method)) > 1 {
+			srcFile.ImportName(fmt.Sprintf("%s/stream", r.pkgPath(r.outDir)), "stream")
 		}
 	}
 	for _, method := range r.contract.Methods {
@@ -84,6 +88,9 @@ func (r *contractRenderer) RenderREST() (err error) {
 			continue
 		}
 		srcFile.Add(r.httpMethodFunc(typeGen, method))
+		if handlerValue := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHandler, ""); handlerValue != "" && strings.Contains(handlerValue, ":") {
+			continue
+		}
 		srcFile.Add(r.httpServeMethodFunc(&srcFile, typeGen, method, jsonPkg))
 	}
 

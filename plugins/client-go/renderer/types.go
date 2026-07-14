@@ -100,6 +100,7 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) (er
 		}
 
 		var typeCode Code
+		isAliasCode := false
 		switch {
 		case typ.Kind == model.TypeKindStruct:
 			typeCode = r.generateClientStruct(ctx, typeName, typ)
@@ -109,10 +110,12 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) (er
 			// Алиасы (type ID = string)
 			// ВАЖНО: алиасы всегда генерируем, чтобы сохранить семантику (type Alias = BaseType)
 			typeCode = r.generateClientAlias(ctx, typeName, typ)
+			isAliasCode = true
 		case typ.ImportPkgPath != "" && typ.TypeName != "":
-			// Именованные типы с базовым типом (type UserID int64, type Email string)
+			// Именованные типы с базовым типом (type UserID int64, type Email string, type StateDetails []State)
 			// Имеют Kind как базовый тип, но ImportPkgPath и TypeName указывают на именованный тип
 			typeCode = r.generateClientAlias(ctx, typeName, typ)
+			isAliasCode = true
 		default:
 			// Для остальных типов (массивы, мапы, встроенные базовые типы без имени) не генерируем
 			continue
@@ -125,10 +128,8 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) (er
 			typeCtx := context.WithValue(context.Background(), keyCode, typeFile) // nolint
 			typeCtx = context.WithValue(typeCtx, keyPackage, "dto")               // nolint
 
-			// ВАЖНО: перегенерируем typeCode с правильным контекстом для алиасов
-			// Это нужно для правильной установки ImportName в правильном файле
-			// Согласно JENNIFER_IMPORTS_GUIDE.md: ImportName должен вызываться с правильным srcFile в контексте
-			if typ.Kind == model.TypeKindAlias && typ.AliasOf != "" {
+			// Перегенерируем typeCode с typeFile в контексте, чтобы ImportName попал в нужный файл
+			if isAliasCode {
 				typeCode = r.generateClientAlias(typeCtx, typeName, typ)
 			}
 
@@ -307,41 +308,74 @@ func (r *ClientRenderer) generateClientMethod(ctx context.Context, method *model
 	return s
 }
 
-func (r *ClientRenderer) generateClientAlias(ctx context.Context, typeName string, typ *model.Type) Code {
+func (r *ClientRenderer) generateClientAlias(ctx context.Context, typeName string, typ *model.Type) (code Code) {
 
 	// Для алиасов всегда используем базовый тип через AliasOf
 	// Это позволяет сохранить семантику алиаса в клиенте (type Alias = BaseType)
 	if typ.AliasOf != "" {
 		baseType := r.fieldTypeForClient(ctx, typ.AliasOf, 0, false)
-		return Type().Id(typeName).Op("=").Add(baseType)
+		code = Type().Id(typeName).Op("=").Add(baseType)
+		return
 	}
 	if typ.UnderlyingTypeID != "" {
 		baseType := r.fieldTypeForClient(ctx, typ.UnderlyingTypeID, 0, false)
-		return Type().Id(typeName).Op("=").Add(baseType)
+		code = Type().Id(typeName).Op("=").Add(baseType)
+		return
 	}
 
 	if typ.Kind == model.TypeKindMap {
 		if typ.MapKey != nil && typ.MapValue != nil {
 			keyType := r.fieldTypeFromTypeRefForClient(ctx, typ.MapKey, false)
 			valueType := r.fieldTypeFromTypeRefForClient(ctx, typ.MapValue, false)
-			return Type().Id(typeName).Op("=").Map(keyType).Add(valueType)
+			code = Type().Id(typeName).Op("=").Map(keyType).Add(valueType)
+			return
 		}
-		return Type().Id(typeName).Op("=").Map(Id("string")).Id("any")
+		code = Type().Id(typeName).Op("=").Map(Id("string")).Id("any")
+		return
+	}
+
+	// Именованный слайс/массив: type StateDetails []State, type Hash [16]byte
+	if typ.Kind == model.TypeKindArray {
+		code = r.generateClientNamedArray(ctx, typeName, typ)
+		return
 	}
 
 	// Для именованных типов с базовым типом (type UserID int64) используем UnderlyingKind
 	if typ.UnderlyingKind != "" {
-		return Type().Id(typeName).Id(string(typ.UnderlyingKind))
+		code = Type().Id(typeName).Id(string(typ.UnderlyingKind))
+		return
 	}
 
-	// Fallback на базовый Kind (если UnderlyingKind не установлен, используем Kind)
-	// Но не для map типов - они уже обработаны выше
-	if typ.Kind != model.TypeKindMap {
-		return Type().Id(typeName).Id(string(typ.Kind))
+	// Kind как идентификатор допустим только для встроенных типов (string, int64, …)
+	if r.isBuiltinType(string(typ.Kind)) {
+		code = Type().Id(typeName).Id(string(typ.Kind))
+		return
 	}
 
-	// Если дошли сюда и это map, используем string для ключа и any для значения
-	return Type().Id(typeName).Op("=").Map(Id("string")).Id("any")
+	return
+}
+
+func (r *ClientRenderer) generateClientNamedArray(ctx context.Context, typeName string, typ *model.Type) (code Code) {
+
+	elem := &Statement{}
+	switch {
+	case typ.IsSlice:
+		elem.Index()
+	case typ.ArrayLen > 0:
+		elem.Index(Lit(typ.ArrayLen))
+	default:
+		elem.Index()
+	}
+
+	switch {
+	case typ.ArrayOfID != "":
+		elem.Add(r.fieldTypeForClient(ctx, typ.ArrayOfID, typ.ElementPointers, false))
+	default:
+		elem.Id("any")
+	}
+
+	code = Type().Id(typeName).Add(elem)
+	return
 }
 
 func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, numberOfPointers int, allowEllipsis bool) *Statement {

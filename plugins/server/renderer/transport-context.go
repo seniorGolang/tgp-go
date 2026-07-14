@@ -17,6 +17,11 @@ func (r *transportRenderer) RenderTransportContext() (err error) {
 	if err = r.pkgRenderTo("srvctx", r.outDir, newPkgTemplateData()); err != nil {
 		return
 	}
+	if r.hasHTTPServerContracts() {
+		if err = r.renderStreamPackage(); err != nil {
+			return fmt.Errorf("render stream package: %w", err)
+		}
+	}
 	contextPath := path.Join(r.outDir, "context.go")
 	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
 

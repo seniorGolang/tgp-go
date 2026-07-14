@@ -54,30 +54,12 @@ func (r *ClientRenderer) argsForRequestBody(contract *model.Contract, method *mo
 
 func (r *ClientRenderer) argPathMap(contract *model.Contract, method *model.Method) (out map[string]struct{}) {
 
-	out = make(map[string]struct{})
-	if urlPath := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpPath, ""); urlPath != "" {
-		for _, token := range strings.Split(urlPath, "/") {
-			token = strings.TrimSpace(token)
-			if !strings.HasPrefix(token, ":") {
-				continue
-			}
-			segmentName := strings.TrimPrefix(token, ":")
-			if arg := r.argByPathParamName(contract, method, segmentName); arg != nil {
-				out[arg.Name] = struct{}{}
-			}
-		}
-	}
-	return
+	return model.HTTPPathParamArgSet(r.project, contract, method)
 }
 
-func (r *ClientRenderer) argByPathParamName(contract *model.Contract, method *model.Method, pathSegmentName string) (v *model.Variable) {
+func (r *ClientRenderer) argByPathParamName(_ *model.Contract, method *model.Method, pathSegmentName string) (v *model.Variable) {
 
-	for _, arg := range method.Args {
-		if arg.Name == pathSegmentName || ToLowerCamel(arg.Name) == pathSegmentName {
-			return arg
-		}
-	}
-	return nil
+	return model.ArgByPathSegment(method, pathSegmentName)
 }
 
 func (r *ClientRenderer) argByName(method *model.Method, argName string) (v *model.Variable) {

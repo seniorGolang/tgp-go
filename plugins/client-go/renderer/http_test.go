@@ -119,6 +119,144 @@ func TestRenderHTTP_SkippedWithoutHTTPContracts(t *testing.T) {
 	}
 }
 
+func TestRenderServiceClient_ResultHeaderBodyModeDecodesAndReadsHeader(t *testing.T) {
+
+	project := annotationsResultHeaderProject("correlationId|X-Correlation-Id")
+	source := renderAnnotationsClientSource(t, project)
+	if !strings.Contains(source, "Decode(&_response_)") && !strings.Contains(source, "Decode(&_response_") {
+		t.Fatalf("body-mode ResultHeader must decode JSON body:\n%s", source)
+	}
+	if !strings.Contains(source, `Header.Get("X-Correlation-Id")`) {
+		t.Fatalf("body-mode ResultHeader must also read response header:\n%s", source)
+	}
+	if !strings.Contains(source, "CorrelationId") {
+		t.Fatalf("body-mode exchange must keep CorrelationId field:\n%s", source)
+	}
+}
+
+func TestRenderServiceClient_ResultHeaderExplicitSkipsBodyDecode(t *testing.T) {
+
+	project := annotationsResultHeaderProject("correlationId|X-Correlation-Id|explicit")
+	source := renderAnnotationsClientSource(t, project)
+	if strings.Contains(source, "Decode(&_response_)") || strings.Contains(source, "Decode(&_response_") {
+		t.Fatalf("explicit ResultHeader must skip body decode:\n%s", source)
+	}
+	if !strings.Contains(source, `Header.Get("X-Correlation-Id")`) {
+		t.Fatalf("explicit ResultHeader must read response header:\n%s", source)
+	}
+}
+
+func TestRenderServiceClient_EmptyResultsSkipsBodyDecode(t *testing.T) {
+
+	project := &model.Project{
+		ModulePath: "example",
+		Types:      map[string]*model.Type{},
+		Contracts: []*model.Contract{
+			{
+				Name:    "Http",
+				PkgPath: "example/contracts",
+				ID:      "Http",
+				Annotations: tags.DocTags{
+					model.TagServerHTTP: "",
+					model.TagHttpPrefix: "api/v1",
+				},
+				Methods: []*model.Method{
+					{
+						Name: "Delete",
+						Args: []*model.Variable{
+							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+							{Name: "id", TypeRef: model.TypeRef{TypeID: "string"}},
+						},
+						Results: []*model.Variable{
+							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+						},
+						Annotations: tags.DocTags{
+							model.TagHTTPMethod: "DELETE",
+							model.TagHttpPath:   "/item/:id",
+						},
+					},
+				},
+			},
+		},
+	}
+	dir := filepath.Join(t.TempDir(), "client")
+	renderer := NewClientRenderer(project, dir, "example", "client")
+	if err := renderer.RenderJsonRPCPackage(dir); err != nil {
+		t.Fatalf("RenderJsonRPCPackage: %v", err)
+	}
+	if err := renderer.RenderHTTP(); err != nil {
+		t.Fatalf("RenderHTTP: %v", err)
+	}
+	if err := renderer.RenderServiceClient(project.Contracts[0]); err != nil {
+		t.Fatalf("RenderServiceClient: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "http-client.go"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	source := string(content)
+	if strings.Contains(source, "Decode(&_response_)") || strings.Contains(source, "Decode(&_response_") {
+		t.Fatalf("Delete with no body results must skip decode:\n%s", source)
+	}
+}
+
+func annotationsResultHeaderProject(headerAnnotation string) (project *model.Project) {
+
+	return &model.Project{
+		ModulePath: "example",
+		Types:      map[string]*model.Type{},
+		Contracts: []*model.Contract{
+			{
+				Name:    "Annotations",
+				PkgPath: "example/contracts",
+				ID:      "Annotations",
+				Annotations: tags.DocTags{
+					model.TagServerHTTP: "",
+					model.TagHttpPrefix: "api/v1",
+				},
+				Methods: []*model.Method{
+					{
+						Name: "ResultHeader",
+						Args: []*model.Variable{
+							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+						},
+						Results: []*model.Variable{
+							{Name: "correlationId", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+						},
+						Annotations: tags.DocTags{
+							model.TagHTTPMethod: "GET",
+							model.TagHttpPath:   "/annotations/result-header",
+							model.TagHttpHeader: headerAnnotation,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func renderAnnotationsClientSource(t *testing.T, project *model.Project) (source string) {
+
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "client")
+	renderer := NewClientRenderer(project, dir, "example", "client")
+	if err := renderer.RenderJsonRPCPackage(dir); err != nil {
+		t.Fatalf("RenderJsonRPCPackage: %v", err)
+	}
+	if err := renderer.RenderHTTP(); err != nil {
+		t.Fatalf("RenderHTTP: %v", err)
+	}
+	if err := renderer.RenderServiceClient(project.Contracts[0]); err != nil {
+		t.Fatalf("RenderServiceClient: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "annotations-client.go"))
+	if err != nil {
+		t.Fatalf("read generated file: %v", err)
+	}
+	return string(content)
+}
+
 func httpClientTestProject() (project *model.Project) {
 
 	project = &model.Project{

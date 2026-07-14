@@ -201,12 +201,19 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
 				bg.Return()
 			default:
+				bodyResults := r.resultsForBody(contract, method)
 				excludeDefault := r.resultNamesExcludeFromBody(contract, method)
+				if len(bodyResults) == 0 && len(excludeDefault) == 0 {
+					bg.Return()
+					return
+				}
 				if len(excludeDefault) > 0 {
-					bg.Var().Id("_response_").Id(r.responseBodyStructName(contract, method))
-					jsonPkg := r.getPackageJSON(contract)
-					resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
-					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
+					if len(bodyResults) > 0 {
+						bg.Var().Id("_response_").Id(r.responseBodyStructName(contract, method))
+						jsonPkg := r.getPackageJSON(contract)
+						resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+						r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
+					}
 					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
 					fieldsResultBody := r.fieldsResultBody(contract, method)
 					for _, ret := range resultsWithoutErr {

@@ -266,42 +266,12 @@ func (g *generator) multipartResponseSchema(contract *model.Contract, method *mo
 
 func (g *generator) resultNamesExcludeFromBody(contract *model.Contract, method *model.Method) (out map[string]struct{}) {
 
-	out = make(map[string]struct{})
-	resultByName := func(name string) bool {
-		for _, r := range method.Results {
-			if r.Name == name && r.TypeID != "error" {
-				return true
-			}
-		}
-		return false
-	}
-	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")) {
-		if (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) && resultByName(it.Arg) {
-			out[it.Arg] = struct{}{}
-		}
-	}
-	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpCookies, "")) {
-		if (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) && resultByName(it.Arg) {
-			out[it.Arg] = struct{}{}
-		}
-	}
-	return
+	return model.HTTPResultNamesOmitFromExchangeBody(g.project, contract, method)
 }
 
 func (g *generator) resultsForBody(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	exclude := g.resultNamesExcludeFromBody(contract, method)
-	var list []*model.Variable
-	for _, r := range method.Results {
-		if r.TypeID == "error" || r.TypeID == typeIDIOReadCloser {
-			continue
-		}
-		if _, ok := exclude[r.Name]; ok {
-			continue
-		}
-		list = append(list, r)
-	}
-	return list
+	return model.HTTPResultsForExchangeBody(g.project, contract, method)
 }
 
 func (g *generator) responseBodyStructName(contract *model.Contract, method *model.Method) (s string) {
@@ -753,29 +723,27 @@ func (g *generator) appendArgMapRequestParameter(
 func (g *generator) addResponseHeaders(operation *types.Operation, contract *model.Contract, method *model.Method, successCode int) {
 
 	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(g.project, contract, method, nil, model.TagHttpHeader, "")) {
-		if it.Mode != model.ArgModeExplicit && it.Mode != model.ArgModeImplicit {
-			continue
-		}
 		for _, result := range method.Results {
-			if result.Name == it.Arg {
-				effective := model.EffectiveVariable(method, result)
-				schemaPtr := g.variableToSchema(effective, contract.PkgPath, false)
-				if schemaPtr == nil {
-					schemaPtr = &types.Schema{Type: "string"}
-				}
-				schema := *schemaPtr
-				successKey := fmt.Sprintf("%d", successCode)
-				if operation.Responses[successKey].Headers == nil {
-					response := operation.Responses[successKey]
-					response.Headers = make(map[string]types.Header)
-					operation.Responses[successKey] = response
-				}
-				operation.Responses[successKey].Headers[it.Key] = types.Header{
-					Description: descriptionFromVariable(effective),
-					Schema:      schema,
-				}
-				break
+			if result.Name != it.Arg || result.TypeID == "error" {
+				continue
 			}
+			effective := model.EffectiveVariable(method, result)
+			schemaPtr := g.variableToSchema(effective, contract.PkgPath, false)
+			if schemaPtr == nil {
+				schemaPtr = &types.Schema{Type: "string"}
+			}
+			schema := *schemaPtr
+			successKey := fmt.Sprintf("%d", successCode)
+			if operation.Responses[successKey].Headers == nil {
+				response := operation.Responses[successKey]
+				response.Headers = make(map[string]types.Header)
+				operation.Responses[successKey] = response
+			}
+			operation.Responses[successKey].Headers[it.Key] = types.Header{
+				Description: descriptionFromVariable(effective),
+				Schema:      schema,
+			}
+			break
 		}
 	}
 }

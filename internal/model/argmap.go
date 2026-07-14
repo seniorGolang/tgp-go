@@ -12,8 +12,9 @@ const (
 	ArgModeImplicit = "implicit"
 	ArgModeBody     = "body"
 
-	typeIDContext  = "context:Context"
-	typeIDIOReader = "io:Reader"
+	typeIDContext      = "context:Context"
+	typeIDIOReader     = "io:Reader"
+	typeIDIOReadCloser = "io:ReadCloser"
 )
 
 func isContextArg(arg *Variable) (ok bool) {
@@ -173,7 +174,7 @@ func HTTPImplicitArgSet(mappings HTTPArgMappings) (implicitArgs map[string]struc
 }
 
 // HTTPExcludeFromExchangeRequestSet returns set of аргументов, которые должны
-// быть исключены из exchange-структуры запроса (explicit и implicit).
+// быть исключены из JSON body exchange-структуры запроса (explicit/implicit + path).
 func HTTPExcludeFromExchangeRequestSet(mappings HTTPArgMappings) (excludeArgs map[string]struct{}) {
 
 	excludeArgs = make(map[string]struct{})
@@ -200,6 +201,17 @@ func HTTPExcludeFromExchangeRequestSet(mappings HTTPArgMappings) (excludeArgs ma
 	}
 
 	return excludeArgs
+}
+
+// HTTPOmitFromRequestJSON объединяет explicit/implicit exclude с path-параметрами (json:"-").
+func HTTPOmitFromRequestJSON(project *Project, contract *Contract, method *Method) (omit map[string]struct{}) {
+
+	omit = HTTPExcludeFromExchangeRequestSet(BuildHTTPArgMappings(project, contract, method))
+	for argName := range HTTPPathParamArgSet(project, contract, method) {
+		omit[argName] = struct{}{}
+	}
+
+	return omit
 }
 
 func HTTPHeaderArgMapForRequest(project *Project, contract *Contract, method *Method) (headerMap map[string]string) {
@@ -258,12 +270,40 @@ func HTTPArgQueryMapForRequest(project *Project, contract *Contract, method *Met
 	return queryMap
 }
 
+// ArgByPathSegment ищет аргумент метода по имени сегмента http-path (:name): exact или LowerCamel.
+func ArgByPathSegment(method *Method, segmentName string) (variable *Variable) {
+
+	if method == nil || segmentName == "" {
+		return nil
+	}
+
+	segmentName = strings.TrimPrefix(strings.TrimSpace(segmentName), "!")
+	for _, arg := range method.Args {
+		if arg.Name == segmentName || LowerCamel(arg.Name) == segmentName {
+			return arg
+		}
+	}
+
+	return nil
+}
+
 // HTTPPathParamArgSet returns argument names bound to :segments in http-path.
 func HTTPPathParamArgSet(project *Project, contract *Contract, method *Method) (pathArgs map[string]struct{}) {
 
 	pathArgs = make(map[string]struct{})
+	for argName := range HTTPPathParamArgMap(project, contract, method) {
+		pathArgs[argName] = struct{}{}
+	}
+
+	return pathArgs
+}
+
+// HTTPPathParamArgMap возвращает arg.Name → имя сегмента пути для Fiber Params / client escape.
+func HTTPPathParamArgMap(project *Project, contract *Contract, method *Method) (pathMap map[string]string) {
+
+	pathMap = make(map[string]string)
 	if project == nil || contract == nil || method == nil {
-		return pathArgs
+		return pathMap
 	}
 
 	urlPath := GetAnnotationValue(project, contract, method, nil, TagHttpPath, "")
@@ -273,12 +313,12 @@ func HTTPPathParamArgSet(project *Project, contract *Contract, method *Method) (
 			continue
 		}
 		segmentName := strings.TrimPrefix(token, ":")
-		if arg := argByName(method, segmentName); arg != nil {
-			pathArgs[arg.Name] = struct{}{}
+		if arg := ArgByPathSegment(method, segmentName); arg != nil {
+			pathMap[arg.Name] = segmentName
 		}
 	}
 
-	return pathArgs
+	return pathMap
 }
 
 // HTTPArgsFromRequestBody returns arguments populated from the JSON request body.
@@ -343,20 +383,59 @@ func HTTPAllowsEmptyRequestBody(project *Project, contract *Contract, method *Me
 	return strings.EqualFold(GetHTTPMethod(project, contract, method), "GET")
 }
 
-// HTTPResultNamesExcludeFromBody возвращает имена результатов, которые берутся из заголовка или cookie ответа (любой mode).
+// HTTPResultNamesExcludeFromBody — results, которых нет в JSON body ответа клиента:
+// только mode explicit/implicit. Mode body (default) остаётся в теле (как на server).
 func HTTPResultNamesExcludeFromBody(project *Project, contract *Contract, method *Method) (names map[string]struct{}) {
 
-	mappings := BuildHTTPArgMappings(project, contract, method)
+	return HTTPResultNamesOmitFromExchangeBody(project, contract, method)
+}
 
+// HTTPResultNamesOmitFromExchangeBody — результаты без поля в JSON body (server/swagger/client):
+// только explicit/implicit. Body-mode остаётся в JSON; server может ещё писать header/cookie.
+func HTTPResultNamesOmitFromExchangeBody(project *Project, contract *Contract, method *Method) (names map[string]struct{}) {
+
+	return httpResultNamesFromHeaderCookie(project, contract, method)
+}
+
+// HTTPResultsForExchangeBody — results для JSON body на server/swagger (без error, io.ReadCloser и omit transport-only).
+func HTTPResultsForExchangeBody(project *Project, contract *Contract, method *Method) (results []*Variable) {
+
+	if method == nil {
+		return nil
+	}
+
+	exclude := HTTPResultNamesOmitFromExchangeBody(project, contract, method)
+	for _, res := range method.Results {
+		if res.TypeID == "error" || res.TypeID == typeIDIOReadCloser {
+			continue
+		}
+		if _, ok := exclude[res.Name]; ok {
+			continue
+		}
+		results = append(results, res)
+	}
+
+	return results
+}
+
+func httpResultNamesFromHeaderCookie(project *Project, contract *Contract, method *Method) (names map[string]struct{}) {
+
+	mappings := BuildHTTPArgMappings(project, contract, method)
 	names = make(map[string]struct{})
 
 	for _, it := range mappings.HeaderItems {
+		if it.Mode != ArgModeExplicit && it.Mode != ArgModeImplicit {
+			continue
+		}
 		if resultByName(method, it.Arg) != nil {
 			names[it.Arg] = struct{}{}
 		}
 	}
 
 	for _, it := range mappings.CookieItems {
+		if it.Mode != ArgModeExplicit && it.Mode != ArgModeImplicit {
+			continue
+		}
 		if resultByName(method, it.Arg) != nil {
 			names[it.Arg] = struct{}{}
 		}
@@ -426,25 +505,32 @@ func HTTPIsArgInCookie(project *Project, contract *Contract, method *Method, arg
 // argByName ищет аргумент метода по имени.
 func argByName(method *Method, argName string) (variable *Variable) {
 
-	argName = strings.TrimPrefix(argName, "!")
+	if method == nil {
+		return nil
+	}
 
-	for _, variable = range method.Args {
-		if variable.Name == argName {
-			return variable
+	argName = strings.TrimPrefix(argName, "!")
+	for _, arg := range method.Args {
+		if arg.Name == argName {
+			return arg
 		}
 	}
 
-	return
+	return nil
 }
 
-// resultByName ищет результат метода по имени.
+// resultByName ищет результат метода по имени (не error).
 func resultByName(method *Method, resultName string) (variable *Variable) {
 
-	for _, variable = range method.Results {
-		if variable.Name == resultName {
-			return variable
+	if method == nil {
+		return nil
+	}
+
+	for _, res := range method.Results {
+		if res.Name == resultName && res.TypeID != "error" {
+			return res
 		}
 	}
 
-	return
+	return nil
 }

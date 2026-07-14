@@ -123,18 +123,60 @@ func TestGenerateClient_passesTypeScriptCheck_withoutClientIdentity(t *testing.T
 	runTscCheck(t, dir)
 }
 
-func TestGenerateClient_exchangeRequestMarksOptionalPointerFields(t *testing.T) {
+func TestGenerateClient_httpGetOmitsContentTypeWithoutBody(t *testing.T) {
 
 	dir := t.TempDir()
-	if err := GenerateClient(tscTestProject(), dir, Options{ClientIdentity: true}); err != nil {
+	if err := GenerateClient(tscTestProject(), dir, Options{ClientIdentity: false}); err != nil {
 		t.Fatalf("GenerateClient: %v", err)
 	}
-	content, err := os.ReadFile(filepath.Join(dir, "annotations-exchange.ts"))
+	content, err := os.ReadFile(filepath.Join(dir, "annotations-http.ts"))
 	if err != nil {
-		t.Fatalf("read annotations-exchange.ts: %v", err)
+		t.Fatalf("read annotations-http.ts: %v", err)
 	}
 	source := string(content)
-	if !strings.Contains(source, "filter?:") {
-		t.Fatalf("expected optional filter in exchange request, got:\n%s", source)
+
+	headerRequiredIdx := strings.Index(source, "public async headerRequired")
+	resultHeaderIdx := strings.Index(source, "public async resultHeader")
+	if headerRequiredIdx < 0 || resultHeaderIdx < 0 {
+		t.Fatalf("expected headerRequired and resultHeader methods")
+	}
+	headerRequiredBlock := source[headerRequiredIdx:resultHeaderIdx]
+	if strings.Contains(headerRequiredBlock, `"Content-Type"`) {
+		t.Fatalf("GET without body must not set Content-Type, got:\n%s", headerRequiredBlock)
+	}
+	if !strings.Contains(headerRequiredBlock, `"Accept"`) {
+		t.Fatalf("GET must still set Accept")
+	}
+}
+
+func TestGenerateClient_resultHeaderBodyModeReadsJSONAndHeader(t *testing.T) {
+
+	dir := t.TempDir()
+	if err := GenerateClient(tscTestProject(), dir, Options{ClientIdentity: false}); err != nil {
+		t.Fatalf("GenerateClient: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "annotations-http.ts"))
+	if err != nil {
+		t.Fatalf("read annotations-http.ts: %v", err)
+	}
+	source := string(content)
+	resultHeaderIdx := strings.Index(source, "public async resultHeader")
+	if resultHeaderIdx < 0 {
+		t.Fatal("expected resultHeader method")
+	}
+	block := source[resultHeaderIdx:]
+	if !strings.Contains(block, ".json()") {
+		t.Fatalf("body-mode resultHeader must parse JSON body:\n%s", block)
+	}
+	if !strings.Contains(block, "X-Correlation-Id") {
+		t.Fatalf("body-mode resultHeader must read X-Correlation-Id header:\n%s", block)
+	}
+	if strings.Contains(block, `!== ""`) || strings.Contains(block, `!= null &&`) {
+		t.Fatalf("header must always override body (including empty), got guard:\n%s", block)
+	}
+	bodyAssign := strings.Index(block, "mergedResult.correlationId = _responseData_")
+	headerAssign := strings.Index(block, `parseFormValue(_response_.headers.get("X-Correlation-Id")`)
+	if bodyAssign < 0 || headerAssign < 0 || bodyAssign > headerAssign {
+		t.Fatalf("expected body assign then unconditional header assign:\n%s", block)
 	}
 }

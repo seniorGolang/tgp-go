@@ -517,18 +517,7 @@ func (r *ClientRenderer) resultNamesExcludeFromBody(contract *model.Contract, me
 
 func (r *ClientRenderer) resultsForBody(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	exclude := r.resultNamesExcludeFromBody(contract, method)
-	var list []*model.Variable
-	for _, res := range r.resultsWithoutError(method) {
-		if res.TypeID == TypeIDIOReadCloser {
-			continue
-		}
-		if _, ok := exclude[res.Name]; ok {
-			continue
-		}
-		list = append(list, res)
-	}
-	return list
+	return model.HTTPResultsForExchangeBody(r.project, contract, method)
 }
 
 func (r *ClientRenderer) ContractKeys() (out []string) {

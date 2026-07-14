@@ -105,9 +105,8 @@ type exchangeField struct {
 func (r *contractRenderer) fieldsArgument(method *model.Method) []exchangeField {
 
 	vars := argsWithoutContext(method)
-	mappings := model.BuildHTTPArgMappings(r.project, r.contract, method)
-	excludeSet := model.HTTPExcludeFromExchangeRequestSet(mappings)
-	return r.varsToFields(vars, method.Annotations, excludeSet)
+	omitSet := model.HTTPOmitFromRequestJSON(r.project, r.contract, method)
+	return r.varsToFields(vars, method.Annotations, omitSet)
 }
 
 func (r *contractRenderer) fieldsResult(method *model.Method) []exchangeField {

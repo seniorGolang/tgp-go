@@ -158,49 +158,17 @@ func usedCookieNamesForRequestOverlay(project *model.Project, contract *model.Co
 
 func (r *contractRenderer) argPathMap(method *model.Method) (out map[string]string) {
 
-	out = make(map[string]string)
-	if urlPath := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpPath, ""); urlPath != "" {
-		urlTokens := strings.Split(urlPath, "/")
-		for _, token := range urlTokens {
-			if strings.HasPrefix(token, ":") {
-				arg := strings.TrimSpace(strings.TrimPrefix(token, ":"))
-				out[arg] = arg
-			}
-		}
-	}
-	return
+	return model.HTTPPathParamArgMap(r.project, r.contract, method)
 }
 
 func (r *contractRenderer) resultNamesExcludeFromBody(method *model.Method) (out map[string]struct{}) {
 
-	out = make(map[string]struct{})
-	for _, it := range r.headerEntries(method) {
-		if (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) && r.resultByName(method, it.Arg) != nil {
-			out[it.Arg] = struct{}{}
-		}
-	}
-	for _, it := range r.cookieEntries(method) {
-		if (it.Mode == model.ArgModeExplicit || it.Mode == model.ArgModeImplicit) && r.resultByName(method, it.Arg) != nil {
-			out[it.Arg] = struct{}{}
-		}
-	}
-	return
+	return model.HTTPResultNamesOmitFromExchangeBody(r.project, r.contract, method)
 }
 
 func (r *contractRenderer) resultsForBody(method *model.Method) (out []*model.Variable) {
 
-	exclude := r.resultNamesExcludeFromBody(method)
-	var list []*model.Variable
-	for _, res := range resultsWithoutError(method) {
-		if res.TypeID == TypeIDIOReadCloser {
-			continue
-		}
-		if _, ok := exclude[res.Name]; ok {
-			continue
-		}
-		list = append(list, res)
-	}
-	return list
+	return model.HTTPResultsForExchangeBody(r.project, r.contract, method)
 }
 
 func (r *contractRenderer) argByName(method *model.Method, argName string) (v *model.Variable) {
@@ -346,7 +314,20 @@ func (r *contractRenderer) varValueFromMethodMap(annotationValue string, varName
 	return ""
 }
 
-func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement) *Statement {
+func (r *contractRenderer) appendPresentBinding(block *Statement, bytePresence bool, rawVarName string, src Code, body func(bg *Group)) {
+
+	if bytePresence {
+		bytesVar := rawVarName + "b"
+		block.If(Id(bytesVar).Op(":=").Add(src).Op(";").Id(bytesVar).Op("!=").Nil()).BlockFunc(func(bg *Group) {
+			bg.Id(rawVarName).Op(":=").String().Call(Id(bytesVar))
+			body(bg)
+		}).Line()
+		return
+	}
+	block.If(Id(rawVarName).Op(":=").Add(src).Op(";").Id(rawVarName).Op("!=").Lit("")).BlockFunc(body).Line()
+}
+
+func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement, bytePresence bool) *Statement {
 
 	block := Line()
 	if len(varMap) != 0 {
@@ -473,31 +454,7 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 			}
 
 			if fieldTypeID == "string" && !fieldIsSlice {
-				block.If(Id(rawVarName).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarName).Op("!=").Lit("")).
-					BlockFunc(func(bg *Group) {
-						var reqID *Statement
-						if len(argTokens) == 1 {
-							reqID = getTarget(arg)
-						} else {
-							reqID = Id("request").Dot(r.requestStructFieldName(method, arg))
-							for _, token := range argTokens[1:] {
-								reqID = reqID.Dot(toCamel(token))
-							}
-						}
-						if fieldNumberOfPointers == 0 {
-							bg.Add(reqID.Op("=").Id(rawVarName))
-						} else {
-							bg.Add(reqID.Op("=").Op("&").Id(rawVarName))
-						}
-					}).Line()
-				continue
-			}
-
-			typeForArg, ok := r.project.Types[arg.TypeID]
-			useConverterTarget := ok && typeForArg != nil && (typeForArg.ParseFromString != nil || converter.HasBuiltinScalarBase(r.project, arg.TypeID))
-
-			block.If(Id(rawVarName).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarName).Op("!=").Lit("")).
-				BlockFunc(func(bg *Group) {
+				r.appendPresentBinding(block, bytePresence, rawVarName, srcCode(srcName), func(bg *Group) {
 					var reqID *Statement
 					if len(argTokens) == 1 {
 						reqID = getTarget(arg)
@@ -507,33 +464,55 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 							reqID = reqID.Dot(toCamel(token))
 						}
 					}
-					if useConverterTarget {
-						bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarName), fieldVar, reqID, errBody(argVarName, srcName)))
+					if fieldNumberOfPointers == 0 {
+						bg.Add(reqID.Op("=").Id(rawVarName))
 					} else {
-						if typ != nil && typ.ImportPkgPath != "" {
-							typeParts := strings.Split(argTypeName, ".")
-							if len(typeParts) > 1 {
-								bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
-							} else {
-								bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
-							}
-						} else {
-							bg.Var().Id(argVarName).Id(argTypeName)
-						}
-						bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarName), fieldVar, Id(argVarName), errBody(argVarName, srcName)))
-						argID := Id(argVarName)
-						if fieldNumberOfPointers > 0 {
-							argID = Op("&").Add(argID)
-						}
-						bg.Add(reqID.Op("=").Add(argID))
+						bg.Add(reqID.Op("=").Op("&").Id(rawVarName))
 					}
-				}).Line()
+				})
+				continue
+			}
+
+			typeForArg, ok := r.project.Types[arg.TypeID]
+			useConverterTarget := ok && typeForArg != nil && (typeForArg.ParseFromString != nil || converter.HasBuiltinScalarBase(r.project, arg.TypeID))
+
+			r.appendPresentBinding(block, bytePresence, rawVarName, srcCode(srcName), func(bg *Group) {
+				var reqID *Statement
+				if len(argTokens) == 1 {
+					reqID = getTarget(arg)
+				} else {
+					reqID = Id("request").Dot(r.requestStructFieldName(method, arg))
+					for _, token := range argTokens[1:] {
+						reqID = reqID.Dot(toCamel(token))
+					}
+				}
+				if useConverterTarget {
+					bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarName), fieldVar, reqID, errBody(argVarName, srcName)))
+				} else {
+					if typ != nil && typ.ImportPkgPath != "" {
+						typeParts := strings.Split(argTypeName, ".")
+						if len(typeParts) > 1 {
+							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
+						} else {
+							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
+						}
+					} else {
+						bg.Var().Id(argVarName).Id(argTypeName)
+					}
+					bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarName), fieldVar, Id(argVarName), errBody(argVarName, srcName)))
+					argID := Id(argVarName)
+					if fieldNumberOfPointers > 0 {
+						argID = Op("&").Add(argID)
+					}
+					bg.Add(reqID.Op("=").Add(argID))
+				}
+			})
 		}
 	}
 	return block
 }
 
-func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, orderedArgs []string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement) *Statement {
+func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, orderedArgs []string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement, bytePresence bool) *Statement {
 
 	block := Line()
 	if len(varMap) != 0 {
@@ -674,31 +653,7 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 			}
 
 			if fieldTypeID == "string" && !fieldIsSlice {
-				block.If(Id(rawVarNameOrdered).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarNameOrdered).Op("!=").Lit("")).
-					BlockFunc(func(bg *Group) {
-						var reqID *Statement
-						if len(argTokens) == 1 {
-							reqID = getTarget(arg)
-						} else {
-							reqID = Id("request").Dot(r.requestStructFieldName(method, arg))
-							for _, token := range argTokens[1:] {
-								reqID = reqID.Dot(toCamel(token))
-							}
-						}
-						if fieldNumberOfPointers == 0 {
-							bg.Add(reqID.Op("=").Id(rawVarNameOrdered))
-						} else {
-							bg.Add(reqID.Op("=").Op("&").Id(rawVarNameOrdered))
-						}
-					}).Line()
-				continue
-			}
-
-			typeForArgOrdered, ok := r.project.Types[arg.TypeID]
-			useConverterTargetOrdered := ok && typeForArgOrdered != nil && (typeForArgOrdered.ParseFromString != nil || converter.HasBuiltinScalarBase(r.project, arg.TypeID))
-
-			block.If(Id(rawVarNameOrdered).Op(":=").Add(srcCode(srcName)).Op(";").Id(rawVarNameOrdered).Op("!=").Lit("")).
-				BlockFunc(func(bg *Group) {
+				r.appendPresentBinding(block, bytePresence, rawVarNameOrdered, srcCode(srcName), func(bg *Group) {
 					var reqID *Statement
 					if len(argTokens) == 1 {
 						reqID = getTarget(arg)
@@ -708,27 +663,49 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 							reqID = reqID.Dot(toCamel(token))
 						}
 					}
-					if useConverterTargetOrdered {
-						bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarNameOrdered), fieldVarOrdered, reqID, errBody(argVarName, srcName)))
+					if fieldNumberOfPointers == 0 {
+						bg.Add(reqID.Op("=").Id(rawVarNameOrdered))
 					} else {
-						if typ != nil && typ.ImportPkgPath != "" {
-							typeParts := strings.Split(argTypeName, ".")
-							if len(typeParts) > 1 {
-								bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
-							} else {
-								bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
-							}
-						} else {
-							bg.Var().Id(argVarName).Id(argTypeName)
-						}
-						bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarNameOrdered), fieldVarOrdered, Id(argVarName), errBody(argVarName, srcName)))
-						argID := Id(argVarName)
-						if fieldNumberOfPointers > 0 {
-							argID = Op("&").Add(argID)
-						}
-						bg.Add(reqID.Op("=").Add(argID))
+						bg.Add(reqID.Op("=").Op("&").Id(rawVarNameOrdered))
 					}
-				}).Line()
+				})
+				continue
+			}
+
+			typeForArgOrdered, ok := r.project.Types[arg.TypeID]
+			useConverterTargetOrdered := ok && typeForArgOrdered != nil && (typeForArgOrdered.ParseFromString != nil || converter.HasBuiltinScalarBase(r.project, arg.TypeID))
+
+			r.appendPresentBinding(block, bytePresence, rawVarNameOrdered, srcCode(srcName), func(bg *Group) {
+				var reqID *Statement
+				if len(argTokens) == 1 {
+					reqID = getTarget(arg)
+				} else {
+					reqID = Id("request").Dot(r.requestStructFieldName(method, arg))
+					for _, token := range argTokens[1:] {
+						reqID = reqID.Dot(toCamel(token))
+					}
+				}
+				if useConverterTargetOrdered {
+					bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarNameOrdered), fieldVarOrdered, reqID, errBody(argVarName, srcName)))
+				} else {
+					if typ != nil && typ.ImportPkgPath != "" {
+						typeParts := strings.Split(argTypeName, ".")
+						if len(typeParts) > 1 {
+							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, typeParts[1])
+						} else {
+							bg.Var().Id(argVarName).Qual(typ.ImportPkgPath, argTypeName)
+						}
+					} else {
+						bg.Var().Id(argVarName).Id(argTypeName)
+					}
+					bg.Add(r.argToTypeConverter(srcFile, typeGen, Id(rawVarNameOrdered), fieldVarOrdered, Id(argVarName), errBody(argVarName, srcName)))
+					argID := Id(argVarName)
+					if fieldNumberOfPointers > 0 {
+						argID = Op("&").Add(argID)
+					}
+					bg.Add(reqID.Op("=").Add(argID))
+				}
+			})
 		}
 	}
 	return block
@@ -782,6 +759,7 @@ func (r *contractRenderer) urlArgs(srcFile *GoFile, typeGen *types.Generator, me
 		func(arg *model.Variable) *Statement {
 			return Id("request").Dot(r.requestStructFieldName(method, arg))
 		},
+		false,
 	)
 }
 
@@ -810,12 +788,13 @@ func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, 
 	}
 	return r.argFromStringOrdered(srcFile, typeGen, method, "queryParam", queryParams, orderedArgs,
 		func(srcName string) Code {
-			return Id(VarNameFtx).Dot("Query").Call(Lit(srcName))
+			return Id(VarNameFtx).Dot("Request").Call().Dot("URI").Call().Dot("QueryArgs").Call().Dot("Peek").Call(Lit(srcName))
 		},
 		errBody,
 		func(arg *model.Variable) *Statement {
 			return Id("request").Dot(r.requestStructFieldName(method, arg))
 		},
+		true,
 	)
 }
 
@@ -823,12 +802,13 @@ func (r *contractRenderer) httpArgHeaders(srcFile *GoFile, typeGen *types.Genera
 
 	return r.argFromString(srcFile, typeGen, method, "header", r.varHeaderMapTransportForRequest(method),
 		func(srcName string) Code {
-			return Id(VarNameFtx).Dot("Get").Call(Lit(srcName))
+			return Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Lit(srcName))
 		},
 		errBody,
 		func(arg *model.Variable) *Statement {
 			return Id("request").Dot(r.requestStructFieldName(method, arg))
 		},
+		true,
 	)
 }
 
@@ -836,12 +816,13 @@ func (r *contractRenderer) httpArgHeadersBodyMode(srcFile *GoFile, typeGen *type
 
 	return r.argFromString(srcFile, typeGen, method, "header", r.varHeaderMapBodyModeForRequest(method),
 		func(srcName string) Code {
-			return Id(VarNameFtx).Dot("Get").Call(Lit(srcName))
+			return Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Lit(srcName))
 		},
 		errBody,
 		func(arg *model.Variable) *Statement {
 			return Id("request").Dot(r.requestStructFieldName(method, arg))
 		},
+		true,
 	)
 }
 
@@ -886,8 +867,8 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 	getTarget := func(arg *model.Variable) *Statement {
 		return Id("request").Dot(r.requestStructFieldName(method, arg))
 	}
-	inner.Add(r.argFromString(srcFile, typeGen, method, "header", headerMap, overlayFromMap, errBody, getTarget))
-	inner.Add(r.argFromString(srcFile, typeGen, method, "cookie", cookieMap, overlayFromMap, errBody, getTarget))
+	inner.Add(r.argFromString(srcFile, typeGen, method, "header", headerMap, overlayFromMap, errBody, getTarget, false))
+	inner.Add(r.argFromString(srcFile, typeGen, method, "cookie", cookieMap, overlayFromMap, errBody, getTarget, false))
 	var block *Statement
 	if overlayAsStruct {
 		block = Id("getterVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
@@ -908,12 +889,13 @@ func (r *contractRenderer) httpCookies(srcFile *GoFile, typeGen *types.Generator
 
 	return r.argFromString(srcFile, typeGen, method, "cookie", r.varCookieMapTransportForRequest(method),
 		func(srcName string) Code {
-			return Id(VarNameFtx).Dot("Cookies").Call(Lit(srcName))
+			return Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Cookie").Call(Lit(srcName))
 		},
 		errBody,
 		func(arg *model.Variable) *Statement {
 			return Id("request").Dot(r.requestStructFieldName(method, arg))
 		},
+		true,
 	)
 }
 
@@ -921,12 +903,13 @@ func (r *contractRenderer) httpCookiesBodyMode(srcFile *GoFile, typeGen *types.G
 
 	return r.argFromString(srcFile, typeGen, method, "cookie", r.varCookieMapBodyModeForRequest(method),
 		func(srcName string) Code {
-			return Id(VarNameFtx).Dot("Cookies").Call(Lit(srcName))
+			return Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Cookie").Call(Lit(srcName))
 		},
 		errBody,
 		func(arg *model.Variable) *Statement {
 			return Id("request").Dot(r.requestStructFieldName(method, arg))
 		},
+		true,
 	)
 }
 

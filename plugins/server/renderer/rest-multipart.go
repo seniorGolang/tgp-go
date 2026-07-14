@@ -33,77 +33,59 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Co
 	)
 	st.Line().Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
 	st.Line().Id("mr").Op(":=").Qual(PackageMimeMultipart, "NewReader").Call(Id("bodyStream"), Id("boundary"))
-	if len(streamArgs) > 1 {
-		st.Line().Id("partBodies").Op(":=").Make(Map(String()).Index().Byte())
-		st.Line().Id("partContentTypes").Op(":=").Make(Map(String()).String())
-	}
+
 	if len(streamArgs) == 1 {
 		st.Line().Id("request").Dot(r.requestStructFieldName(method, streamArgs[0])).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
 		st.Line().Var().Id("found").Bool()
-	}
-	st.Line().Var().Id("p").Op("*").Qual(PackageMimeMultipart, "Part")
-	st.Line().For().BlockFunc(func(fg *Group) {
-		fg.List(Id("p"), Err()).Op("=").Id("mr").Dot("NextPart").Call()
-		fg.If(Qual("errors", "Is").Call(Err(), Qual("io", "EOF"))).Block(Break())
-		fg.If(Err().Op("!=").Nil()).Block(
-			Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
-			Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("multipart read error"))),
-		)
-		fg.Id("partName").Op(":=").Id("p").Dot("FormName").Call()
-		fg.Id("partContentType").Op(":=").Id("p").Dot("Header").Dot("Get").Call(Lit("Content-Type"))
-		cases := make([]Code, 0, len(streamArgs)+1)
-		for _, arg := range streamArgs {
+		st.Line().Var().Id("p").Op("*").Qual(PackageMimeMultipart, "Part")
+		st.Line().For().BlockFunc(func(fg *Group) {
+			fg.List(Id("p"), Err()).Op("=").Id("mr").Dot("NextPart").Call()
+			fg.If(Qual("errors", "Is").Call(Err(), Qual("io", "EOF"))).Block(Break())
+			fg.If(Err().Op("!=").Nil()).Block(
+				Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
+				Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("multipart read error"))),
+			)
+			fg.Id("partName").Op(":=").Id("p").Dot("FormName").Call()
+			fg.Id("partContentType").Op(":=").Id("p").Dot("Header").Dot("Get").Call(Lit("Content-Type"))
+			arg := streamArgs[0]
 			partName := r.streamPartName(method, arg)
 			expectedContent := r.streamPartContent(method, arg)
 			fieldName := r.requestStructFieldName(method, arg)
-			var caseBlock []Code
-			if expectedContent != "" {
-				caseBlock = append(caseBlock, If(Id("partContentType").Op("!=").Lit(expectedContent)).BlockFunc(func(mg *Group) {
-					for _, a := range streamArgs {
-						mg.Id("request").Dot(r.requestStructFieldName(method, a)).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
+			fg.Switch(Id("partName")).Block(
+				Case(Lit(partName)).BlockFunc(func(cg *Group) {
+					if expectedContent != "" {
+						cg.If(Id("partContentType").Op("!=").Lit(expectedContent)).Block(
+							Id("request").Dot(fieldName).Op("=").Qual(PackageBytes, "NewReader").Call(Nil()),
+							Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
+							Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("part ").Op("+").Lit(partName).Op("+").Lit(": invalid content-type"))),
+						)
 					}
-					mg.Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest"))
-					mg.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("part ").Op("+").Lit(partName).Op("+").Lit(": invalid content-type")))
-				}))
-			}
-			if len(streamArgs) == 1 {
-				caseBlock = append(caseBlock, Id("request").Dot(fieldName).Op("=").Id("p"))
-				caseBlock = append(caseBlock, Id("found").Op("=").True())
-				caseBlock = append(caseBlock, Break())
-			} else {
-				caseBlock = append(caseBlock, List(Id("body"), Id("_")).Op(":=").Qual("io", "ReadAll").Call(Id("p")))
-				caseBlock = append(caseBlock, Id("partBodies").Index(Id("partName")).Op("=").Id("body"))
-				caseBlock = append(caseBlock, Id("partContentTypes").Index(Id("partName")).Op("=").Id("partContentType"))
-			}
-			cases = append(cases, Case(Lit(partName)).Block(caseBlock...))
-		}
-		fg.Switch(Id("partName")).Block(append(cases, Default().Block(List(Id("_"), Id("_")).Op("=").Qual("io", "Copy").Call(Qual("io", "Discard"), Id("p"))))...)
-		if len(streamArgs) == 1 {
+					cg.Id("request").Dot(fieldName).Op("=").Id("p")
+					cg.Id("found").Op("=").True()
+					cg.Break()
+				}),
+				Default().Block(List(Id("_"), Id("_")).Op("=").Qual("io", "Copy").Call(Qual("io", "Discard"), Id("p"))),
+			)
 			fg.If(Id("found")).Block(Break())
+		})
+		return st
+	}
+
+	streamPkg := fmt.Sprintf("%s/stream", r.pkgPath(r.outDir))
+	st.Line().Id("partNames").Op(":=").Index().String().ValuesFunc(func(vg *Group) {
+		for _, arg := range streamArgs {
+			vg.Lit(r.streamPartName(method, arg))
 		}
 	})
-	if len(streamArgs) > 1 {
-		st.Line().Var().Id("body").Index().Byte()
+	st.Line().Id("partContentTypes").Op(":=").Index().String().ValuesFunc(func(vg *Group) {
 		for _, arg := range streamArgs {
-			partName := r.streamPartName(method, arg)
-			expectedContent := r.streamPartContent(method, arg)
-			fieldName := r.requestStructFieldName(method, arg)
-			st.Line().Id("body").Op(",").Id("ok").Op("=").Id("partBodies").Index(Lit(partName))
-			st.Line().If(Op("!").Id("ok")).Block(
-				Id("request").Dot(fieldName).Op("=").Qual(PackageBytes, "NewReader").Call(Nil()),
-			).Else().BlockFunc(func(eg *Group) {
-				if expectedContent != "" {
-					eg.If(Id("partContentTypes").Index(Lit(partName)).Op("!=").Lit(expectedContent)).BlockFunc(func(mg *Group) {
-						for _, a := range streamArgs {
-							mg.Id("request").Dot(r.requestStructFieldName(method, a)).Op("=").Qual(PackageBytes, "NewReader").Call(Nil())
-						}
-						mg.Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest"))
-						mg.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("part ").Op("+").Lit(partName).Op("+").Lit(": invalid content-type")))
-					})
-				}
-				eg.Id("request").Dot(fieldName).Op("=").Qual(PackageBytes, "NewReader").Call(Id("body"))
-			})
+			vg.Lit(r.streamPartContent(method, arg))
 		}
+	})
+	st.Line().Id("partReaders").Op(":=").Qual(streamPkg, "NewParts").Call(Id("mr"), Id("partNames"), Id("partContentTypes"))
+	for i, arg := range streamArgs {
+		fieldName := r.requestStructFieldName(method, arg)
+		st.Line().Id("request").Dot(fieldName).Op("=").Id("partReaders").Index(Lit(i))
 	}
 	return st
 }

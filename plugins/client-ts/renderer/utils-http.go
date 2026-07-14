@@ -203,7 +203,7 @@ func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, 
 		headersStmt := tsg.NewStatement()
 		headersStmt.Const(tsLocalVar("headers")).Op("=").Id("new Headers").Call().Semicolon()
 		mg.Add(headersStmt)
-		r.renderHTTPHeaders(mg, contract, method, requestMultipart, bodyStreamArg, responseMultipart, responseStreamResult)
+		r.renderHTTPHeaders(mg, contract, method, requestMultipart, bodyStreamArg, responseMultipart, responseStreamResult, len(bodyArgs) > 0)
 
 		headerMap := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
 		for _, arg := range r.argsForClient(contract, method) {
@@ -313,14 +313,9 @@ func (r *ClientRenderer) httpPathParamNames(method *model.Method, contract *mode
 	return names
 }
 
-func (r *ClientRenderer) argByPathParamName(contract *model.Contract, method *model.Method, pathSegmentName string) (v *model.Variable) {
+func (r *ClientRenderer) argByPathParamName(_ *model.Contract, method *model.Method, pathSegmentName string) (v *model.Variable) {
 
-	for _, arg := range method.Args {
-		if arg.Name == pathSegmentName || r.lcName(arg.Name) == pathSegmentName {
-			return arg
-		}
-	}
-	return nil
+	return model.ArgByPathSegment(method, pathSegmentName)
 }
 
 func (r *ClientRenderer) argsForClient(contract *model.Contract, method *model.Method) (out []*model.Variable) {
@@ -497,7 +492,7 @@ func (r *ClientRenderer) renderHTTPBody(mg *tsg.Group, contract *model.Contract,
 	}
 }
 
-func (r *ClientRenderer) renderHTTPHeaders(mg *tsg.Group, contract *model.Contract, method *model.Method, requestMultipart bool, bodyStreamArg *model.Variable, responseMultipart bool, responseStreamResult *model.Variable) {
+func (r *ClientRenderer) renderHTTPHeaders(mg *tsg.Group, contract *model.Contract, method *model.Method, requestMultipart bool, bodyStreamArg *model.Variable, responseMultipart bool, responseStreamResult *model.Variable, hasBody bool) {
 
 	switch {
 	case requestMultipart:
@@ -525,8 +520,10 @@ func (r *ClientRenderer) renderHTTPHeaders(mg *tsg.Group, contract *model.Contra
 			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Accept"), tsg.NewStatement().Lit(acceptType)).Semicolon())
 		}
 	default:
-		reqCT := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")
-		mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Lit(reqCT)).Semicolon())
+		if hasBody {
+			reqCT := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")
+			mg.Add(tsg.NewStatement().Id(tsLocalVar("headers")).Dot("set").Call(tsg.NewStatement().Lit("Content-Type"), tsg.NewStatement().Lit(reqCT)).Semicolon())
+		}
 		var defaultAccept string
 		switch {
 		case responseMultipart:
@@ -588,35 +585,41 @@ func (r *ClientRenderer) renderHTTPResponse(mg *tsg.Group, contract *model.Contr
 		mg.Return(returnObj)
 		return
 	}
-	resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
-	switch resKind {
-	case content.KindForm:
-		r.needParseFormValueHelper = true
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("formParams")).Op("=").Id("new URLSearchParams").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Semicolon())
-		responseDataObj := tsg.NewStatement()
-		responseDataObj.Values(func(rg *tsg.Group) {
-			for _, ret := range results {
-				formKey := r.formFieldName(method, ret)
-				kind := r.formParseKind(ret)
-				rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Add(r.parseFormValueExpr(tsg.NewStatement().Id(tsLocalVar("formParams")).Dot("get").Call(tsg.NewStatement().Lit(formKey)), kind)))
-			}
-		})
-		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Add(responseDataObj).Semicolon())
-	case content.KindXML:
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("new XMLParser").Call().Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
-	case content.KindMsgpack:
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Msgpack").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
-	case content.KindCBOR:
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Cbor").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
-	case content.KindYAML:
-		mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
-		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("YAML").Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
-	default:
-		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("json").Call()).Op("as").Id(responseTypeName).Semicolon())
+
+	bodyResults := model.HTTPResultsForExchangeBody(r.project, contract, method)
+	if len(bodyResults) == 0 {
+		mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Values(nil).Op("as").Id(responseTypeName).Semicolon())
+	} else {
+		resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
+		switch resKind {
+		case content.KindForm:
+			r.needParseFormValueHelper = true
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("formParams")).Op("=").Id("new URLSearchParams").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Semicolon())
+			responseDataObj := tsg.NewStatement()
+			responseDataObj.Values(func(rg *tsg.Group) {
+				for _, ret := range bodyResults {
+					formKey := r.formFieldName(method, ret)
+					kind := r.formParseKind(ret)
+					rg.Add(tsg.NewStatement().Id(tsSafeName(ret.Name)).Colon().Add(r.parseFormValueExpr(tsg.NewStatement().Id(tsLocalVar("formParams")).Dot("get").Call(tsg.NewStatement().Lit(formKey)), kind)))
+				}
+			})
+			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Add(responseDataObj).Semicolon())
+		case content.KindXML:
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
+			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("new XMLParser").Call().Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
+		case content.KindMsgpack:
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
+			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Msgpack").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
+		case content.KindCBOR:
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
+			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Cbor").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())
+		case content.KindYAML:
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
+			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("YAML").Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
+		default:
+			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("json").Call()).Op("as").Id(responseTypeName).Semicolon())
+		}
 	}
 	r.renderHTTPResponseMergeHeadersAndCookies(mg, contract, method, results, responseTypeName)
 	switch {
@@ -662,7 +665,7 @@ func (r *ClientRenderer) renderHTTPResponseMergeHeadersAndCookies(mg *tsg.Group,
 
 	needGetResponseCookie := false
 	for _, ret := range results {
-		if _, exclude := excludeFromBody[ret.Name]; exclude && cookieMap[ret.Name] != "" {
+		if cookieMap[ret.Name] != "" {
 			needGetResponseCookie = true
 			break
 		}
@@ -702,31 +705,30 @@ func (r *ClientRenderer) renderHTTPResponseMergeHeadersAndCookies(mg *tsg.Group,
 
 	mg.Add(tsg.NewStatement().Const("mergedResult").Colon().Id(responseTypeName).Op("=").Values(nil).Op("as").Id(responseTypeName).Semicolon())
 	for _, ret := range results {
-		if _, exclude := excludeFromBody[ret.Name]; exclude {
-			r.needParseFormValueHelper = true
-			kind := r.formParseKind(ret)
-			if headerName, ok := headerMap[ret.Name]; ok {
-				mg.Add(tsg.NewStatement().Assign(
-					tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
-					r.parseFormValueExpr(
-						tsg.NewStatement().Id(tsLocalVar("response")).Dot("headers").Dot("get").Call(tsg.NewStatement().Lit(headerName)),
-						kind,
-					),
-				).Semicolon())
-			} else {
-				cookieName := cookieMap[ret.Name]
-				mg.Add(tsg.NewStatement().Assign(
-					tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
-					r.parseFormValueExpr(
-						tsg.NewStatement().Id("getResponseCookie").Call(tsg.NewStatement().Id(tsLocalVar("response")), tsg.NewStatement().Lit(cookieName)),
-						kind,
-					),
-				).Semicolon())
-			}
-		} else {
+		_, fromHeaderOrCookieOnly := excludeFromBody[ret.Name]
+		headerName, hasHeader := headerMap[ret.Name]
+		cookieName, hasCookie := cookieMap[ret.Name]
+
+		if !fromHeaderOrCookieOnly {
 			mg.Add(tsg.NewStatement().Assign(
 				tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
 				tsg.NewStatement().Id(tsLocalVar("responseData")).OptionalChain(tsSafeName(ret.Name)),
+			).Semicolon())
+		}
+
+		if hasHeader || hasCookie {
+			r.needParseFormValueHelper = true
+			kind := r.formParseKind(ret)
+			var transportSrc *tsg.Statement
+			if hasHeader {
+				transportSrc = tsg.NewStatement().Id(tsLocalVar("response")).Dot("headers").Dot("get").Call(tsg.NewStatement().Lit(headerName))
+			} else {
+				transportSrc = tsg.NewStatement().Id("getResponseCookie").Call(tsg.NewStatement().Id(tsLocalVar("response")), tsg.NewStatement().Lit(cookieName))
+			}
+			// Header/cookie всегда перекрывает body, включая пустое значение (как Go Header.Get).
+			mg.Add(tsg.NewStatement().Assign(
+				tsg.NewStatement().Id("mergedResult").Dot(tsSafeName(ret.Name)),
+				r.parseFormValueExpr(transportSrc, kind),
 			).Semicolon())
 		}
 	}

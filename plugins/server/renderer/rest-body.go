@@ -25,10 +25,6 @@ func (r *contractRenderer) httpServeRequestBodyDecode(bg *Group, jsonPkg string,
 
 	switch reqKind {
 	case content.KindForm:
-		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-		bg.Var().Id("bodyBytes").Index().Byte()
-		bg.If(List(Id("bodyBytes"), Err()).Op("=").Qual("io", "ReadAll").Call(Id("bodyStream")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
-		bg.Id(VarNameFtx).Dot("Context").Call().Dot("Request").Dot("SetBodyRaw").Call(Id("bodyBytes"))
 		bg.If(Err().Op("=").Id(VarNameFtx).Dot("BodyParser").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindXML:
 		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())

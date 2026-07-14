@@ -20,6 +20,9 @@ import (
 //go:embed pkg-tmpl
 var pkgTmplFS embed.FS
 
+//go:embed stream/parts.go
+var streamPartsGo string
+
 type baseRenderer struct {
 	outDir   string
 	project  *model.Project
@@ -103,6 +106,20 @@ func (r *baseRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateData
 		}
 	}
 	return
+}
+
+func (r *baseRenderer) renderStreamPackage() (err error) {
+
+	dir := path.Join(r.outDir, "stream")
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return
+	}
+	body := streamPartsGo
+	if idx := strings.Index(body, "\npackage "); idx >= 0 {
+		body = body[idx+1:]
+	}
+	content := generated.ByToolGatewayComment + "\n\n" + body
+	return os.WriteFile(path.Join(dir, "parts.go"), []byte(content), 0600)
 }
 
 type pkgTemplateData struct {

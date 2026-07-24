@@ -117,3 +117,78 @@ func TestMethodHTTPAnnotations_acceptsFormArgWithFormTag(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestMethodHTTPAnnotations_acceptsFormInlineStructArg(t *testing.T) {
+
+	const tokenParamsTypeID = "example/contracts/dto:TokenParams"
+
+	project := &model.Project{
+		ModulePath: "example",
+		Types: map[string]*model.Type{
+			tokenParamsTypeID: {
+				Kind:     model.TypeKindStruct,
+				TypeName: "TokenParams",
+			},
+		},
+	}
+	contract := &model.Contract{
+		Name: "OAuth2",
+		Annotations: tags.DocTags{
+			model.TagServerHTTP: "",
+		},
+		Methods: []*model.Method{{
+			Name: "Token",
+			Annotations: tags.DocTags{
+				model.TagHTTPMethod:         "POST",
+				model.TagRequestContentType: "application/x-www-form-urlencoded",
+				"params.tags":               "json:inline",
+			},
+			Args: []*model.Variable{
+				{Name: "params", TypeRef: model.TypeRef{TypeID: tokenParamsTypeID}},
+			},
+		}},
+	}
+
+	if err := methodHTTPAnnotations(project, contract, contract.Methods[0]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestMethodHTTPAnnotations_rejectsFormNonInlineStructArg(t *testing.T) {
+
+	const tokenParamsTypeID = "example/contracts/dto:TokenParams"
+
+	project := &model.Project{
+		ModulePath: "example",
+		Types: map[string]*model.Type{
+			tokenParamsTypeID: {
+				Kind:     model.TypeKindStruct,
+				TypeName: "TokenParams",
+			},
+		},
+	}
+	contract := &model.Contract{
+		Name: "OAuth2",
+		Annotations: tags.DocTags{
+			model.TagServerHTTP: "",
+		},
+		Methods: []*model.Method{{
+			Name: "Token",
+			Annotations: tags.DocTags{
+				model.TagHTTPMethod:         "POST",
+				model.TagRequestContentType: "application/x-www-form-urlencoded",
+			},
+			Args: []*model.Variable{
+				{Name: "params", TypeRef: model.TypeRef{TypeID: tokenParamsTypeID}},
+			},
+		}},
+	}
+
+	err := methodHTTPAnnotations(project, contract, contract.Methods[0])
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "params") || !strings.Contains(err.Error(), "form:<name>") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

@@ -1,0 +1,61 @@
+package kafkaRUNTIME
+
+import (
+	"fmt"
+
+	{{JSON_IMPORT}}
+{{MSGPACK}}{{CBOR}}{{YAML}}{{XML}})
+
+// codec кодирует и декодирует тело Kafka-сообщения.
+type codec interface {
+	Marshal(v any) (data []byte, err error)
+	Unmarshal(data []byte, v any) (err error)
+}
+
+type jsonCodec struct {
+	marshal   func(v any) (data []byte, err error)
+	unmarshal func(data []byte, v any) (err error)
+}
+
+func (c jsonCodec) Marshal(v any) (data []byte, err error) {
+
+	return c.marshal(v)
+}
+
+func (c jsonCodec) Unmarshal(data []byte, v any) (err error) {
+
+	return c.unmarshal(data, v)
+}
+
+type bytesCodec struct{}
+
+func (c bytesCodec) Marshal(v any) (data []byte, err error) {
+
+	data, ok := v.([]byte)
+	if !ok {
+		return nil, fmt.Errorf("bytes codec: expected []byte, got %T", v)
+	}
+	return data, nil
+}
+
+func (c bytesCodec) Unmarshal(data []byte, v any) (err error) {
+
+	destination, ok := v.(*[]byte)
+	if !ok {
+		return fmt.Errorf("bytes codec: expected *[]byte, got %T", v)
+	}
+	*destination = append((*destination)[:0], data...)
+	return nil
+}
+
+func defaultCodecs() (codecs map[string]codec) {
+
+	codecs = map[string]codec{
+		"json": jsonCodec{
+			marshal:   json.Marshal,
+			unmarshal: json.Unmarshal,
+		},
+		"bytes": bytesCodec{},
+	}
+{{MSGPACK_REGISTRATION}}{{CBOR_REGISTRATION}}{{YAML_REGISTRATION}}{{XML_REGISTRATION}}	return codecs
+}

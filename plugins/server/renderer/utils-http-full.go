@@ -3,6 +3,7 @@
 package renderer
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -158,6 +159,9 @@ func usedCookieNamesForRequestOverlay(project *model.Project, contract *model.Co
 
 func (r *contractRenderer) argPathMap(method *model.Method) (out map[string]string) {
 
+	if model.MethodIsStream(r.project, r.contract, method) {
+		return model.StreamPathParamArgMap(r.project, r.contract, method)
+	}
 	return model.HTTPPathParamArgMap(r.project, r.contract, method)
 }
 
@@ -830,7 +834,13 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 
 	headerMap := r.varHeaderMapForRequest(method)
 	cookieMap := r.varCookieMapForRequest(method)
-	if len(headerMap) == 0 && len(cookieMap) == 0 {
+	queryMap := map[string]string(nil)
+	pathMap := map[string]string(nil)
+	if !overlayAsStruct {
+		queryMap = model.HTTPArgQueryMapForRequest(r.project, r.contract, method)
+		pathMap = r.argPathMap(method)
+	}
+	if len(headerMap) == 0 && len(cookieMap) == 0 && len(queryMap) == 0 && len(pathMap) == 0 {
 		return Line()
 	}
 	hasValidArgs := false
@@ -845,6 +855,23 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 		for fullArgName := range cookieMap {
 			argName := strings.Split(strings.TrimPrefix(fullArgName, "!"), ".")[0]
 			if r.argByName(method, argName) != nil {
+				hasValidArgs = true
+				break
+			}
+		}
+	}
+	if !hasValidArgs {
+		for fullArgName := range queryMap {
+			argName := strings.Split(strings.TrimPrefix(fullArgName, "!"), ".")[0]
+			if r.argByName(method, argName) != nil {
+				hasValidArgs = true
+				break
+			}
+		}
+	}
+	if !hasValidArgs {
+		for fullArgName := range pathMap {
+			if r.argByName(method, fullArgName) != nil {
 				hasValidArgs = true
 				break
 			}
@@ -869,6 +896,10 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 	}
 	inner.Add(r.argFromString(srcFile, typeGen, method, "header", headerMap, overlayFromMap, errBody, getTarget, false))
 	inner.Add(r.argFromString(srcFile, typeGen, method, "cookie", cookieMap, overlayFromMap, errBody, getTarget, false))
+	if !overlayAsStruct {
+		inner.Add(r.argFromString(srcFile, typeGen, method, "query", queryMap, overlayFromMap, errBody, getTarget, false))
+		inner.Add(r.argFromString(srcFile, typeGen, method, "urlParam", pathMap, overlayFromMap, errBody, getTarget, false))
+	}
 	var block *Statement
 	if overlayAsStruct {
 		block = Id("getterVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
@@ -878,8 +909,9 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 			inner,
 		)
 	} else {
+		streamPath := fmt.Sprintf("%s/stream", r.pkgPath(r.outDir))
 		assertBlock := If(List(Id("overlay"), Id("ok")).Op(":=").Id("overlayVal").Assert(Map(String()).String()).Op(";").Id("ok")).Block(inner)
-		block = Id("overlayVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
+		block = Id("overlayVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Qual(streamPath, "KeyOverlay")).
 			Line().If(Id("overlayVal").Op("!=").Nil()).Block(assertBlock)
 	}
 	return Line().Add(block)

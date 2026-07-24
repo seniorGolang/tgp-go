@@ -42,13 +42,29 @@ func validateTypeRefForGenerics(typeRef *model.TypeRef, project *model.Project, 
 
 func validateTypeRefForChan(typeRef *model.TypeRef, project *model.Project, contractName, methodName, varType string) (err error) {
 
+	// Каналы на уровне аргументов/результатов stream-методов проверяются в contractStreamAnnotations.
+	// Здесь запрещаем только вложенные/неожиданные chan (map/slice of chan и т.п. через TypeID).
 	if typeRef == nil {
+		return
+	}
+
+	if typeRef.ChanOf != nil {
+		if err = validateTypeRefForChan(typeRef.ChanOf, project, contractName, methodName, fmt.Sprintf("%s.chanOf", varType)); err != nil {
+			return
+		}
+		if typeRef.IsSlice || typeRef.ArrayLen > 0 {
+			return fmt.Errorf("contract %q: method %q: %s has unsupported type slice/array of chan", contractName, methodName, varType)
+		}
 		return
 	}
 
 	typ, ok := project.Types[typeRef.TypeID]
 	if ok && typ.Kind == model.TypeKindChan {
-		return fmt.Errorf("contract %q: method %q: %s %q has unsupported type chan (channels are not supported)", contractName, methodName, varType, varType)
+		if typeRef.IsSlice || typeRef.ArrayLen > 0 {
+			return fmt.Errorf("contract %q: method %q: %s %q has unsupported type slice of chan (channels are not supported)", contractName, methodName, varType, varType)
+		}
+		// Именованный chan-тип на top-level аргументе/результате допускается только для stream — см. contractStreamAnnotations.
+		return
 	}
 
 	if typeRef.MapValue != nil {
@@ -60,13 +76,6 @@ func validateTypeRefForChan(typeRef *model.TypeRef, project *model.Project, cont
 	if typeRef.MapKey != nil {
 		if err = validateTypeRefForChan(typeRef.MapKey, project, contractName, methodName, fmt.Sprintf("%s.mapKey", varType)); err != nil {
 			return
-		}
-	}
-
-	if typeRef.IsSlice {
-		elementType, ok := project.Types[typeRef.TypeID]
-		if ok && elementType.Kind == model.TypeKindChan {
-			return fmt.Errorf("contract %q: method %q: %s %q has unsupported type slice of chan (channels are not supported)", contractName, methodName, varType, varType)
 		}
 	}
 

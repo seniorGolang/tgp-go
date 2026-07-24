@@ -26,16 +26,13 @@ var version = "local"
 
 func main() {
 
-    log.Logger = config.Service().Logger().With().
-        Str("version", version).
-        Str("service", serviceName).
-        Logger()
+    log.Logger = config.Service().Logger().With().Str("version", version).Str("service", serviceName).Logger()
 	ctx := log.Logger.WithContext(context.Background())
 
 	serverLogger := logger.NewZerolog(log.Logger)
 
 	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, syscall.SIGINT)
+    signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
 	log.Ctx(ctx).Info().Msg("start service")
 	defer log.Info().Msg("shutdown server")
@@ -55,18 +52,18 @@ func main() {
 	}
 
 	srv := transport.New(serverLogger, services...).WithLog().WithMetrics()
-
 	srv.ServeMetrics(serverLogger, "/", config.Service().MetricsBind)
-
-	readinessSrv := transport.ServeHealth(serverLogger, "/readiness", config.Service().ReadinessBind, "ok")
-	defer readinessSrv.Stop()
+    defer func() { _ = srv.Shutdown() }()
 
 	go func() {
 		log.Info().Str("bind", config.Service().Bind).Msg("listen on")
-		if err := srv.Fiber().Listen(config.Service().Bind); err != nil {
-			log.Panic().Err(err).Stack().Msg("server error")
+		if listenErr := srv.Fiber().Listen(config.Service().Bind); listenErr != nil {
+			log.Panic().Err(listenErr).Stack().Msg("server error")
 		}
 	}()
+
+    readinessSrv := transport.ServeHealth(serverLogger, "/readiness", config.Service().ReadinessBind, "ok")
+    defer readinessSrv.Stop()
 
 	<-shutdown
 }

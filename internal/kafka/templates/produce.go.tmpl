@@ -1,0 +1,131 @@
+package kafkaRUNTIME
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sync"
+
+	"github.com/twmb/franz-go/pkg/kgo"
+)
+
+type produceOutcome struct {
+	bytes int
+	err   error
+}
+
+type produceHooks struct {
+	onQueued   func(records int)
+	onFinished func()
+}
+
+// produceAndWait ставит Produce и ждёт completion с учётом ctx.
+func produceAndWait(ctx context.Context, client *kgo.Client, record *kgo.Record, hooks *produceHooks) (outcome produceOutcome) {
+
+	if outcome.err = ctx.Err(); outcome.err != nil {
+		return outcome
+	}
+	if hooks != nil && hooks.onQueued != nil {
+		hooks.onQueued(1)
+	}
+	completion := make(chan error, 1)
+	client.Produce(ctx, record, func(completed *kgo.Record, produceErr error) {
+
+		if hooks != nil && hooks.onFinished != nil {
+			hooks.onFinished()
+		}
+		completion <- produceErr
+	})
+	select {
+	case outcome.err = <-completion:
+		if ctx.Err() != nil {
+			outcome.err = ctx.Err()
+			return outcome
+		}
+		if outcome.err == nil {
+			outcome.bytes = len(record.Value)
+		}
+		return outcome
+	case <-ctx.Done():
+		outcome.err = ctx.Err()
+		return outcome
+	}
+}
+
+// produceAllAndWait ставит все готовые records и ждёт completion каждой записи.
+func produceAllAndWait(ctx context.Context, client *kgo.Client, records []*kgo.Record, hooks *produceHooks) (outcomes []produceOutcome, err error) {
+
+	if err = ctx.Err(); err != nil {
+		return outcomes, err
+	}
+	if len(records) == 0 {
+		return outcomes, nil
+	}
+	if hooks != nil && hooks.onQueued != nil {
+		hooks.onQueued(len(records))
+	}
+	outcomes = make([]produceOutcome, len(records))
+	var group sync.WaitGroup
+	group.Add(len(records))
+	for index, record := range records {
+		client.Produce(ctx, record, func(completed *kgo.Record, produceErr error) {
+
+			defer group.Done()
+			if hooks != nil && hooks.onFinished != nil {
+				hooks.onFinished()
+			}
+			outcomes[index].err = produceErr
+			if produceErr == nil {
+				outcomes[index].bytes = len(record.Value)
+			}
+		})
+	}
+	done := make(chan struct{})
+	go func() {
+
+		group.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		if ctx.Err() != nil {
+			return outcomes, ctx.Err()
+		}
+		return outcomes, joinOutcomes(outcomes)
+	case <-ctx.Done():
+		return outcomes, ctx.Err()
+	}
+}
+
+func joinOutcomes(outcomes []produceOutcome) (err error) {
+
+	joined := make([]error, 0, len(outcomes))
+	for _, outcome := range outcomes {
+		if outcome.err != nil {
+			joined = append(joined, outcome.err)
+		}
+	}
+	return errors.Join(joined...)
+}
+
+func headerBytes(v any) (value []byte, err error) {
+
+	return valueBytes(v)
+}
+
+func keyBytes(v any) (key []byte, err error) {
+
+	return valueBytes(v)
+}
+
+func valueBytes(v any) (value []byte, err error) {
+
+	switch typed := v.(type) {
+	case string:
+		return []byte(typed), nil
+	case []byte:
+		return typed, nil
+	default:
+		return nil, fmt.Errorf("kafka value: expected string or []byte, got %T", v)
+	}
+}

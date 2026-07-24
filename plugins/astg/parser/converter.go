@@ -172,13 +172,13 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 				fillStructFields(structType, coreType.ImportPkgPath, imports, project, coreType, loader, processingSet)
 			} else if mapType, ok := underlying.(*types.Map); ok {
 				if mapType.Key() != nil {
-					keyInfo := convertFieldType(mapType.Key(), coreType.ImportPkgPath, imports, project, loader, processingSet)
+					keyInfo := convertFieldType(mapType.Key(), coreType.ImportPkgPath, imports, project, loader)
 					if keyInfo.TypeID != "" && keyInfo.TypeID != "invalid type" {
 						coreType.MapKey = fieldTypeInfoToTypeRef(keyInfo)
 					}
 				}
 				if mapType.Elem() != nil {
-					valueInfo := convertFieldType(mapType.Elem(), coreType.ImportPkgPath, imports, project, loader, processingSet)
+					valueInfo := convertFieldType(mapType.Elem(), coreType.ImportPkgPath, imports, project, loader)
 					if valueInfo.TypeID != "" && valueInfo.TypeID != "invalid type" {
 						coreType.MapValue = fieldTypeInfoToTypeRef(valueInfo)
 					}
@@ -246,13 +246,13 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 			fillStructFields(structType, coreType.ImportPkgPath, imports, project, coreType, loader, processingSet)
 		} else if mapType, ok := underlying.(*types.Map); ok {
 			if mapType.Key() != nil {
-				keyInfo := convertFieldType(mapType.Key(), coreType.ImportPkgPath, imports, project, loader, processingSet)
+				keyInfo := convertFieldType(mapType.Key(), coreType.ImportPkgPath, imports, project, loader)
 				if keyInfo.TypeID != "" && keyInfo.TypeID != "invalid type" {
 					coreType.MapKey = fieldTypeInfoToTypeRef(keyInfo)
 				}
 			}
 			if mapType.Elem() != nil {
-				valueInfo := convertFieldType(mapType.Elem(), coreType.ImportPkgPath, imports, project, loader, processingSet)
+				valueInfo := convertFieldType(mapType.Elem(), coreType.ImportPkgPath, imports, project, loader)
 				if valueInfo.TypeID != "" && valueInfo.TypeID != "invalid type" {
 					coreType.MapValue = fieldTypeInfoToTypeRef(valueInfo)
 					coreType.ElementPointers = valueInfo.NumberOfPointers

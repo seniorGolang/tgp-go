@@ -73,6 +73,21 @@ func (g *Generator) FieldTypeFromTypeRef(typeRef *model.TypeRef, allowEllipsis b
 		return c.Map(keyType).Add(valueType)
 	}
 
+	if typeRef.ChanOf != nil {
+		for i := 0; i < typeRef.NumberOfPointers; i++ {
+			c.Op("*")
+		}
+		switch typeRef.ChanDirection {
+		case 1:
+			c.Chan().Op("<-")
+		case 2:
+			c.Op("<-").Chan()
+		default:
+			c.Chan()
+		}
+		return c.Add(g.FieldTypeFromTypeRef(typeRef.ChanOf, false))
+	}
+
 	return c.Add(g.FieldType(typeRef.TypeID, typeRef.NumberOfPointers, false))
 }
 

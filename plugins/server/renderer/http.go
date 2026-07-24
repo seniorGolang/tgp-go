@@ -118,6 +118,23 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 						Call(Lit(r.methodHTTPPath(method)), Id("http").Dot("serve"+method.Name))
 				}
 			}
+			if model.ContractHasWS(r.project, r.contract) {
+				wsPath := model.ContractWSPath(r.project, r.contract)
+				bg.Id("route").Dot("Use").Call(Lit(wsPath), Func().Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).Params(Err().Error()).Block(
+					If(Qual(PackageFiberWebsocket, "IsWebSocketUpgrade").Call(Id(VarNameFtx))).Block(
+						Return(Id(VarNameFtx).Dot("Next").Call()),
+					),
+					Return(Qual(PackageFiber, "ErrUpgradeRequired")),
+				))
+				bg.Id("route").Dot("Get").Call(Lit(wsPath), Qual(PackageFiberWebsocket, "New").Call(Id("http").Dot("serveWS")))
+			}
+			if model.ContractHasSSE(r.project, r.contract) {
+				for _, method := range r.contract.Methods {
+					if model.MethodIsSSE(r.project, r.contract, method) {
+						bg.Id("route").Dot("Post").Call(Lit(model.MethodSSEPath(r.project, r.contract, method)), Id("http").Dot("serveSSE"+method.Name))
+					}
+				}
+			}
 		})
 }
 

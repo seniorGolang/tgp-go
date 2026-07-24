@@ -30,6 +30,9 @@ func GenerateServer(project *model.Project, contractID string, outDir string) (e
 	if contract, err = validate.FindContract(project, contractID); err != nil {
 		return fmt.Errorf("find contract: %w", err)
 	}
+	if !model.ContractIsHTTPFamily(project, contract) {
+		return nil
+	}
 
 	if err = validate.Contract(contract, project); err != nil {
 		return fmt.Errorf("validate contract: %w", err)
@@ -178,6 +181,16 @@ func (g *generator) generate() (err error) {
 	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "http-server") {
 		if err = g.contractRenderer.RenderREST(); err != nil {
 			return fmt.Errorf("render REST: %w", err)
+		}
+	}
+	if model.ContractHasWS(g.project, g.contract) {
+		if err = g.contractRenderer.RenderWebSocket(); err != nil {
+			return fmt.Errorf("render WebSocket: %w", err)
+		}
+	}
+	if model.ContractHasSSE(g.project, g.contract) {
+		if err = g.contractRenderer.RenderSSE(); err != nil {
+			return fmt.Errorf("render SSE: %w", err)
 		}
 	}
 

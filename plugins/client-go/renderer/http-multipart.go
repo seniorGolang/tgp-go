@@ -46,14 +46,14 @@ func (r *ClientRenderer) StreamingMultipartHelperTypes() *Statement {
 					Id("r").Dot("cur").Op("=").Id("part"),
 					Break(),
 				)
-				loop.Id("part").Dot("Close").Call()
+				loop.Id("_").Op("=").Id("part").Dot("Close").Call()
 			})
 		})
 		bg.Return(Id("r").Dot("cur").Dot("Read").Call(Id("p")))
 	}).Line().
 		Func().Params(Id("r").Op("*").Id("streamingPartReader")).Id("Close").Params().Params(Err().Error()).Block(
 		If(Id("r").Dot("cur").Op("!=").Nil()).Block(
-			Id("r").Dot("cur").Dot("Close").Call(),
+			Id("_").Op("=").Id("r").Dot("cur").Dot("Close").Call(),
 			Id("r").Dot("cur").Op("=").Nil(),
 		),
 		Return(Id("r").Dot("shared").Dot("Close").Call()),
@@ -103,8 +103,11 @@ func (r *ClientRenderer) httpMultipartRequestBody(contract *model.Contract, meth
 				Return(),
 			)
 		}
-		goBg.Id("mw").Dot("Close").Call()
-		goBg.Id("pipeWriter").Dot("Close").Call()
+		goBg.If(Id("writeErr").Op("=").Id("mw").Dot("Close").Call(), Id("writeErr").Op("!=").Nil()).Block(
+			Id("_").Op("=").Id("pipeWriter").Dot("CloseWithError").Call(Id("writeErr")),
+			Return(),
+		)
+		goBg.Id("_").Op("=").Id("pipeWriter").Dot("Close").Call()
 	}).Call()
 	st.Line()
 	st.Var().Id("httpReq").Op("*").Qual(PackageHttp, "Request")
@@ -133,14 +136,14 @@ func (r *ClientRenderer) httpMultipartResponseBody(contract *model.Contract, met
 	st.List(Id("_"), Id("params"), Err()).Op(":=").Qual(PackageMime, "ParseMediaType").Call(Id("httpResp").Dot("Header").Dot("Get").Call(Lit("Content-Type")))
 	st.Line()
 	st.If(Err().Op("!=").Nil()).Block(
-		Id("httpResp").Dot("Body").Dot("Close").Call(),
+		Id("_").Op("=").Id("httpResp").Dot("Body").Dot("Close").Call(),
 		Return(),
 	)
 	st.Line()
 	st.Id("boundary").Op(",").Id("ok").Op(":=").Id("params").Index(Lit("boundary"))
 	st.Line()
 	st.If(Op("!").Id("ok").Op("||").Id("boundary").Op("==").Lit("")).Block(
-		Id("httpResp").Dot("Body").Dot("Close").Call(),
+		Id("_").Op("=").Id("httpResp").Dot("Body").Dot("Close").Call(),
 		Return(),
 	)
 	st.Line()

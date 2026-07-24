@@ -249,15 +249,12 @@ func typeAnchorID(typeName string) (s string) {
 
 func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) (ok bool) {
 
-	if method == nil {
-		return false
-	}
-	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
+	return model.MethodIsJSONRPC(r.project, contract, method)
 }
 
 func (r *ClientRenderer) methodIsHTTP(method *model.Method, contract *model.Contract) (ok bool) {
 
-	return r.isHTTP(method, contract)
+	return model.MethodIsHTTP(r.project, contract, method)
 }
 
 func filterDocsComments(docs []string) (out []string) {

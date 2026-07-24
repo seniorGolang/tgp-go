@@ -1,0 +1,75 @@
+package kafkaRUNTIME
+
+import (
+	"time"
+
+	"github.com/twmb/franz-go/pkg/kgo"
+)
+
+// Header — одна пара ключ/значение заголовка Kafka; порядок и дубликаты сохраняются.
+type Header struct {
+	Key   string
+	Value []byte
+}
+
+// Meta — метаданные Kafka-записи.
+type Meta struct {
+	Key       []byte
+	Headers   []Header
+	Topic     string
+	Partition int32
+	Offset    int64
+	Timestamp time.Time
+}
+
+// Record — типизированная Kafka-запись.
+type Record[T any] struct {
+	Value T
+	Meta  Meta
+}
+
+// Batch — набор типизированных Kafka-записей.
+type Batch[T any] struct {
+	Records []Record[T]
+}
+
+// ResetPosition — стартовая позиция consumer, если у group нет committed offset.
+type ResetPosition int
+
+const (
+	AtStart ResetPosition = iota
+	AtEnd
+)
+
+// HeaderValue возвращает первое значение заголовка с ключом key.
+func HeaderValue(meta Meta, key string) (value []byte, ok bool) {
+
+	for _, header := range meta.Headers {
+		if header.Key == key {
+			return header.Value, true
+		}
+	}
+	return nil, false
+}
+
+func metaFromRecord(record *kgo.Record) (meta Meta) {
+
+	if record == nil {
+		return Meta{}
+	}
+	headers := make([]Header, 0, len(record.Headers))
+	for _, header := range record.Headers {
+		headers = append(headers, Header{
+			Key:   header.Key,
+			Value: header.Value,
+		})
+	}
+	return Meta{
+		Key:       record.Key,
+		Headers:   headers,
+		Topic:     record.Topic,
+		Partition: record.Partition,
+		Offset:    record.Offset,
+		Timestamp: record.Timestamp,
+	}
+}

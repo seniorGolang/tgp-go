@@ -132,7 +132,7 @@ func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method
 	)
 	if !skipRequest {
 		reqValue := Id(requestStructName(r.contract.Name, method.Name)).Values(DictFunc(func(d Dict) {
-			for _, arg := range argsWithoutContext(method) {
+			for _, arg := range streamVariables(r.project, argsWithoutContext(method), false) {
 				d[Id(r.requestStructFieldName(method, arg))] = Id(arg.Name)
 			}
 		}))

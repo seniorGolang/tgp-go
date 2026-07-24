@@ -141,6 +141,9 @@ Sub-аннотации на методе **перекрываются** анно
 | -------------------------- | ------------------------------------------------- | ------------------------------------------------ |
 | `jsonRPC-server`           | Включить JSON-RPC 2.0 сервер для интерфейса       | `// @tg jsonRPC-server`                          |
 | `http-server`              | Включить HTTP-сервер для интерфейса               | `// @tg http-server`                             |
+| `ws-server`                | Включить WebSocket stream transport               | `// @tg ws-server`                               |
+| `sse-server`               | Включить SSE server-stream transport              | `// @tg sse-server`                              |
+| `kafka`                    | Контракт событий Kafka (плагины kafka-pub-go / kafka-sub-go) | `// @tg kafka`                                    |
 | `log`                      | Логирование запросов по интерфейсу                | `// @tg log`                                     |
 | `trace`                    | Трассировка по интерфейсу                         | `// @tg trace`                                   |
 | `metrics`                  | Метрики по интерфейсу                             | `// @tg metrics`                                 |
@@ -155,6 +158,14 @@ Sub-аннотации на методе **перекрываются** анно
 | Аннотация                                | Описание                                                 | Пример                                             |
 | ---------------------------------------- | -------------------------------------------------------- | -------------------------------------------------- |
 | `http-method=<метод>`                    | HTTP-метод (GET, POST, PUT, PATCH, DELETE, OPTIONS)      | `// @tg http-method=POST`                          |
+| `stream=server\|client\|bidi`             | Направление потокового метода                              | `// @tg stream=server`                              |
+| `ws-path=<путь>` / `sse-path=<путь>`      | Переопределить путь WebSocket/SSE                           | `// @tg ws-path=/ws/live`                            |
+| `kafka-topic=<топик>`                    | Топик Kafka (`@tg kafka`)                                    | `// @tg kafka-topic=orders.created`                 |
+| `kafka-key=<аргумент>`                   | Аргумент → Kafka key                                           | `// @tg kafka-key=orderID`                          |
+| `kafka-headers=<arg>\|<header>,…`        | Аргументы → Kafka headers                                      | `// @tg kafka-headers=traceID\|x-trace-id`          |
+| `kafka-message=<аргумент>`               | Аргумент = тело записи                                         | `// @tg kafka-message=event`                        |
+| `kafka-codec=<имя>`                      | Кодек тела (json/msgpack/cbor/yaml/xml/bytes/…)              | `// @tg kafka-codec=json`                           |
+| `kafka-acks=<режим>`                     | noAck / leaderAck / allISRAcks                                 | `// @tg kafka-acks=allISRAcks`                      |
 | `http-path=<путь>`                       | URL-путь метода, поддерживает параметры (`:id`)          | `// @tg http-path=/users/:id`                      |
 | `http-success=<код>`                     | HTTP-код успеха (по умолчанию 200)                       | `// @tg http-success=201`                          |
 | `http-args=<переменная>\|<ключ>`         | Связь параметра URL с аргументом метода                  | `// @tg http-args=id\|userId`                      |

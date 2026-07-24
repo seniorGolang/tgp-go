@@ -45,8 +45,8 @@ func ParseRef(ref string) (parsed Ref, err error) {
 
 	colonHead := strings.Index(head, ":")
 	if colonHead >= 0 {
-		head = strings.TrimSpace(head[:colonHead])
 		contractsHead = splitContractList(head[colonHead+1:])
+		head = strings.TrimSpace(head[:colonHead])
 	}
 	projectKey := strings.TrimSpace(head)
 	if projectKey == "" {

@@ -72,6 +72,9 @@ func (r *ClientRenderer) collectTypeIDFromTypeRef(typeRef *model.TypeRef, collec
 	if typeRef.MapValue != nil {
 		r.collectTypeIDFromTypeRef(typeRef.MapValue, collectedTypeIDs, processedTypes)
 	}
+	if typeRef.ChanOf != nil {
+		r.collectTypeIDFromTypeRef(typeRef.ChanOf, collectedTypeIDs, processedTypes)
+	}
 }
 
 func (r *ClientRenderer) collectTypeIDFromStructField(field *model.StructField, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
@@ -119,6 +122,10 @@ func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs 
 		}
 		if typ.MapValue != nil {
 			r.collectTypeIDFromTypeRef(typ.MapValue, collectedTypeIDs, processedTypes)
+		}
+	case model.TypeKindChan:
+		if typ.ChanOfID != "" {
+			r.collectTypeIDRecursive(typ.ChanOfID, collectedTypeIDs, processedTypes)
 		}
 	case model.TypeKindAlias:
 		if typ.AliasOf != "" {

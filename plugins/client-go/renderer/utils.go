@@ -165,6 +165,18 @@ func (r *ClientRenderer) fieldTypeFromTypeRef(ctx context.Context, typeRef *mode
 		return c.Map(keyType).Add(valueType)
 	}
 
+	if typeRef.ChanOf != nil {
+		switch typeRef.ChanDirection {
+		case 1:
+			c.Chan().Op("<-")
+		case 2:
+			c.Op("<-").Chan()
+		default:
+			c.Chan()
+		}
+		return c.Add(r.fieldTypeFromTypeRef(ctx, typeRef.ChanOf, false))
+	}
+
 	return c.Add(r.fieldType(ctx, typeRef.TypeID, 0, false))
 }
 
@@ -532,24 +544,12 @@ func (r *ClientRenderer) ContractKeys() (out []string) {
 
 func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) (ok bool) {
 
-	if method == nil {
-		return false
-	}
-	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
+	return model.MethodIsJSONRPC(r.project, contract, method)
 }
 
 func (r *ClientRenderer) methodIsHTTP(contract *model.Contract, method *model.Method) (ok bool) {
 
-	if contract == nil || method == nil {
-		return false
-	}
-	contractHasHTTP := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP)
-	if !contractHasHTTP {
-		return false
-	}
-	contractHasJsonRPC := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC)
-	methodHasExplicitHTTP := model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
-	return !contractHasJsonRPC || methodHasExplicitHTTP
+	return model.MethodIsHTTP(r.project, contract, method)
 }
 
 func (r *ClientRenderer) methodRequestBodyStreamArg(method *model.Method) (v *model.Variable) {
@@ -809,6 +809,11 @@ func (r *ClientRenderer) fieldsResult(method *model.Method) (out []exchangeField
 
 	vars := r.resultsWithoutError(method)
 	return r.varsToFields(vars, method.Annotations)
+}
+
+func (r *ClientRenderer) fieldsStreamResult(method *model.Method) (out []exchangeField) {
+
+	return r.varsToFields(r.streamResults(method), method.Annotations)
 }
 
 func (r *ClientRenderer) fieldsRequestForBody(contract *model.Contract, method *model.Method) (out []exchangeField) {

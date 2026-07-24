@@ -35,6 +35,9 @@ tgp server -o <каталог>
 
 - **`@tg http-server`** — по контракту генерируются HTTP (REST) обработчики.
 - **`@tg jsonRPC-server`** — по контракту генерируются JSON-RPC 2.0 обработчики (в том числе batch).
+- **`@tg ws-server`** — для методов с `@tg stream=server|client|bidi` создаётся WebSocket endpoint; обмен использует JSON-RPC 2.0 notifications `$/stream`, `$/stream.end` и `$/cancel`.
+- **`@tg sse-server`** — для `@tg stream=server` создаётся SSE POST endpoint с событиями `text/event-stream`.
+- На stream-методах работают те же `http-headers` / `http-cookies` / `http-args` (и `:param` в `ws-path`/`sse-path`): для **SSE** — из HTTP-запроса метода; для **WS** — из upgrade handshake (connection-scoped на весь multiplex).
 - **`@tg log`** — доступно логирование запросов/ответов через `srv.WithLog()`.
 - **`@tg metrics`** — доступны метрики Prometheus через `srv.WithMetrics()`.
 - **`@tg trace`** — доступна трассировка OpenTelemetry через `srv.WithTrace(...)`.

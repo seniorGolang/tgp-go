@@ -87,7 +87,9 @@ func (r *contractRenderer) RenderREST() (err error) {
 		if !r.methodIsHTTP(method) {
 			continue
 		}
-		srcFile.Add(r.httpMethodFunc(typeGen, method))
+		if !r.methodUsesRouteOverride(method) {
+			srcFile.Add(r.httpMethodFunc(typeGen, method))
+		}
 		if handlerValue := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHandler, ""); handlerValue != "" && strings.Contains(handlerValue, ":") {
 			continue
 		}
@@ -237,7 +239,9 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 						bf.Return()
 					case responseStreamResult != nil:
 						contentType := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/octet-stream")
-						bf.Defer().Id("response").Dot(r.responseStructFieldName(method, responseStreamResult)).Dot("Close").Call()
+						bf.Defer().Func().Params().Block(
+							Id("_").Op("=").Id("response").Dot(r.responseStructFieldName(method, responseStreamResult)).Dot("Close").Call(),
+						).Call()
 						bf.Id(VarNameFtx).Dot("Response").Call().Dot("Header").Dot("SetContentType").Call(Lit(contentType))
 						bf.List(Id("_"), Err()).Op("=").Qual("io", "Copy").Call(Id(VarNameFtx).Dot("Response").Call().Dot("BodyWriter").Call(), Id("response").Dot(r.responseStructFieldName(method, responseStreamResult)))
 						bf.Return()

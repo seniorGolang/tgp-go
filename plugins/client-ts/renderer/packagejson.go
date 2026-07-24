@@ -3,12 +3,11 @@
 package renderer
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/goccy/go-json"
 
 	"tgp/internal/model"
 )

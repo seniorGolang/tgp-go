@@ -25,6 +25,7 @@ const (
 	PackageStrconv              = "strconv"
 	PackageFiber                = "github.com/gofiber/fiber/v2"
 	PackageFiberAdaptor         = "github.com/gofiber/adaptor/v2"
+	PackageFiberWebsocket       = "github.com/gofiber/contrib/websocket"
 	PackageSlog                 = "log/slog"
 	PackageTrace                = "go.opentelemetry.io/otel/trace"
 	PackageOTEL                 = "go.opentelemetry.io/otel"

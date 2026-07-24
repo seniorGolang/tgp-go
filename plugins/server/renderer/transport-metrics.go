@@ -9,21 +9,13 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/generated"
-	"tgp/internal/model"
 )
 
 func (r *transportRenderer) RenderTransportMetrics() (err error) {
 
 	metricsPath := path.Join(r.outDir, "metrics.go")
 
-	hasMetrics := false
-	for _, contract := range r.contractsSorted() {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
-			hasMetrics = true
-			break
-		}
-	}
-	if !hasMetrics {
+	if !r.hasMetrics() {
 		return
 	}
 

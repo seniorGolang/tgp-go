@@ -110,7 +110,10 @@ func (r *transportRenderer) renderServerFunctions(srcFile *GoFile) {
 		srcFile.Line().Add(r.withMetricsFunc())
 	}
 	for _, contract := range r.contractsSorted() {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||
+			model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) ||
+			model.ContractHasWS(r.project, contract) ||
+			model.ContractHasSSE(r.project, contract) {
 			srcFile.Line().Add(r.httpServiceAccessorFunc(contract))
 		}
 	}
@@ -133,7 +136,9 @@ func (r *transportRenderer) transportServerType() Code {
 		}
 		for _, contract := range r.contractsSorted() {
 			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||
-				model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+				model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) ||
+				model.ContractHasWS(r.project, contract) ||
+				model.ContractHasSSE(r.project, contract) {
 				bg.Line()
 				bg.Id("http" + contract.Name).Op("*").Id("http" + contract.Name)
 			}

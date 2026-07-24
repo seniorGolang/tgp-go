@@ -1,0 +1,46 @@
+package kafkaRUNTIME
+
+import (
+	"context"
+	"sort"
+
+	"github.com/twmb/franz-go/pkg/kgo"
+)
+
+// TopicHandler обрабатывает записи одного топика.
+type TopicHandler func(ctx context.Context, records []*kgo.Record) (err error)
+
+func groupRecordsByTopic(fetches kgo.Fetches) (byTopic map[string][]*kgo.Record) {
+
+	byTopic = make(map[string][]*kgo.Record)
+	fetches.EachRecord(func(record *kgo.Record) {
+
+		byTopic[record.Topic] = append(byTopic[record.Topic], record)
+	})
+	return byTopic
+}
+
+func sortedTopics(byTopic map[string][]*kgo.Record) (topics []string) {
+
+	for topic, records := range byTopic {
+		if len(records) != 0 {
+			topics = append(topics, topic)
+		}
+	}
+	sort.Strings(topics)
+	return topics
+}
+
+func dispatchTopics(ctx context.Context, byTopic map[string][]*kgo.Record, handlers map[string]TopicHandler) (err error) {
+
+	for _, topic := range sortedTopics(byTopic) {
+		handler, ok := handlers[topic]
+		if !ok || handler == nil {
+			continue
+		}
+		if err = handler(ctx, byTopic[topic]); err != nil {
+			return err
+		}
+	}
+	return nil
+}

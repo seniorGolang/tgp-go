@@ -59,6 +59,9 @@ func (r *transportRenderer) withTraceFunc() (c Code) {
 			bg.Line()
 			bg.Qual(fmt.Sprintf("%s/tracer", r.pkgPath(r.outDir)), "Init").Call(Id(VarNameCtx), Id("appName"), Id("endpoint"), Id("attributes").Op("..."))
 			for _, contract := range r.contractsSorted() {
+				if !model.IsAnnotationSet(r.project, contract, nil, nil, TagTrace) {
+					continue
+				}
 				if !r.contractHasHTTPTransport(contract) {
 					continue
 				}

@@ -13,8 +13,10 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/common"
+	"tgp/internal/content"
 	"tgp/internal/generated"
 	"tgp/internal/model"
+	"tgp/internal/tags"
 )
 
 func (r *ClientRenderer) RenderExchange(contract *model.Contract) (err error) {
@@ -30,12 +32,15 @@ func (r *ClientRenderer) RenderExchange(contract *model.Contract) (err error) {
 	for _, method := range contract.Methods {
 		isHTTP := r.methodIsHTTP(contract, method)
 		isJSONRPC := r.methodIsJsonRPC(contract, method)
+		isStream := model.MethodIsStream(r.project, contract, method)
+		reqXML := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")) == content.KindXML
+		respXML := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json")) == content.KindXML
 
-		if isJSONRPC {
-			srcFile.Add(r.exchange(ctx, contract, r.requestStructName(contract, method), r.fieldsArgumentForClient(contract, method))).Line()
+		if isJSONRPC || isStream {
+			srcFile.Add(r.exchange(ctx, contract, r.requestStructName(contract, method), r.fieldsArgumentForClient(contract, method), false)).Line()
 		}
 		if isHTTP && len(r.argsForRequestBody(contract, method)) > 0 {
-			srcFile.Add(r.exchange(ctx, contract, r.requestBodyStructName(contract, method), r.fieldsRequestForBody(contract, method))).Line()
+			srcFile.Add(r.exchange(ctx, contract, r.requestBodyStructName(contract, method), r.fieldsRequestForBody(contract, method), reqXML)).Line()
 		}
 
 		responseStreamResult := r.methodResponseBodyStreamResult(method)
@@ -43,16 +48,34 @@ func (r *ClientRenderer) RenderExchange(contract *model.Contract) (err error) {
 		if isHTTP && (responseStreamResult != nil || responseMultipart) {
 			continue
 		}
-		if !r.shouldGenerateResponseExchange(contract, method, isHTTP, isJSONRPC) {
+		if !r.shouldGenerateResponseExchange(contract, method, isHTTP, isJSONRPC || isStream) {
 			continue
 		}
 
 		exclude := r.resultNamesExcludeFromBody(contract, method)
 		if len(exclude) > 0 && isHTTP {
-			srcFile.Add(r.exchange(ctx, contract, r.responseBodyStructName(contract, method), r.fieldsResultBody(contract, method))).Line()
-		} else {
-			srcFile.Add(r.exchange(ctx, contract, r.responseStructName(contract, method), r.fieldsResult(method))).Line()
+			bodyFields := r.fieldsResultBody(contract, method)
+			if len(bodyFields) == 0 {
+				continue
+			}
+			srcFile.Add(r.exchange(ctx, contract, r.responseBodyStructName(contract, method), bodyFields, respXML)).Line()
+			continue
 		}
+		fields := r.fieldsResult(method)
+		if isStream {
+			// response нужен только client-stream (streamFinalResult в wsClientInputMethod);
+			// server/bidi отбрасывают sync non-chan results (streamClientResults).
+			if model.MethodStreamMode(r.project, contract, method) != model.StreamModeClient {
+				continue
+			}
+			fields = r.fieldsStreamResult(method)
+		}
+		// JSON-RPC всегда Unmarshal в response-тип, даже без полей результата.
+		if len(fields) == 0 && !isJSONRPC {
+			continue
+		}
+		withXML := respXML && isHTTP && !isJSONRPC
+		srcFile.Add(r.exchange(ctx, contract, r.responseStructName(contract, method), fields, withXML)).Line()
 	}
 	return srcFile.Save(path.Join(outDir, strings.ToLower(contract.Name)+"-exchange.go"))
 }
@@ -66,10 +89,10 @@ func (r *ClientRenderer) shouldGenerateResponseExchange(contract *model.Contract
 	return true
 }
 
-func (r *ClientRenderer) exchange(ctx context.Context, contract *model.Contract, name string, fields []exchangeField) Code {
+func (r *ClientRenderer) exchange(ctx context.Context, contract *model.Contract, name string, fields []exchangeField, withXML bool) Code {
 
 	if len(fields) == 0 {
-		return Comment("Formal exchange type, please do not delete.").Line().Type().Id(name).Struct()
+		return Type().Id(name).Struct()
 	}
 
 	sortedFields := slices.Clone(fields)
@@ -89,24 +112,25 @@ func (r *ClientRenderer) exchange(ctx context.Context, contract *model.Contract,
 	}
 	return Type().Id(name).StructFunc(func(gr *Group) {
 		for _, field := range sortedFields {
-			fieldCode := r.structField(ctx, field, template)
+			fieldCode := r.structField(ctx, field, template, withXML)
 			gr.Add(fieldCode)
 		}
 	})
 }
 
-func (r *ClientRenderer) structField(ctx context.Context, field exchangeField, template string) *Statement {
+func (r *ClientRenderer) structField(ctx context.Context, field exchangeField, template string, withXML bool) *Statement {
 
 	var isInlined bool
-	tags := map[string]string{"json": fmt.Sprintf(template, field.name)}
+	fieldTags := map[string]string{"json": fmt.Sprintf(template, field.name)}
 	for tag, value := range common.SortedPairs(field.tags) {
 		if tag == "json" {
+			fieldTags["json"] = value
 			if strings.Contains(value, "inline") {
 				isInlined = true
 			}
 			continue
 		}
-		tags[tag] = value
+		fieldTags[tag] = value
 	}
 	var s *Statement
 	if isInlined {
@@ -114,6 +138,13 @@ func (r *ClientRenderer) structField(ctx context.Context, field exchangeField, t
 		s = r.fieldType(ctx, field.typeID, field.numberOfPointers, false)
 		s.Tag(map[string]string{"json": ",inline"})
 	} else {
+		if withXML {
+			if _, hasXML := fieldTags["xml"]; !hasXML {
+				if xmlTag := tags.ExchangeXMLTag(fieldTags["json"]); xmlTag != "" {
+					fieldTags["xml"] = xmlTag
+				}
+			}
+		}
 		s = Id(ToCamel(field.name))
 		if field.isSlice || field.arrayLen > 0 || field.mapKey != nil {
 			typeRef := &model.TypeRef{
@@ -130,7 +161,7 @@ func (r *ClientRenderer) structField(ctx context.Context, field exchangeField, t
 		} else {
 			s.Add(r.fieldType(ctx, field.typeID, field.numberOfPointers, false))
 		}
-		s.Tag(tags)
+		s.Tag(fieldTags)
 	}
 	if field.isEllipsis {
 		s.Comment("This field was defined with ellipsis (...).")

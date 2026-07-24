@@ -36,11 +36,13 @@ func (r *ClientRenderer) argsForClient(contract *model.Contract, method *model.M
 
 func (r *ClientRenderer) argsForExchangeRequest(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	mappings := model.BuildHTTPArgMappings(r.project, contract, method)
-	exclude := model.HTTPExcludeFromExchangeRequestSet(mappings)
+	omit := model.HTTPOmitFromRequestJSON(r.project, contract, method)
 	var list []*model.Variable
 	for _, arg := range r.argsWithoutContext(method) {
-		if _, ok := exclude[arg.Name]; !ok {
+		if model.TypeRefIsChan(r.project, &arg.TypeRef) {
+			continue
+		}
+		if _, ok := omit[arg.Name]; !ok {
 			list = append(list, arg)
 		}
 	}

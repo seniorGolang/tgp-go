@@ -249,21 +249,7 @@ func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model
 	md.PlainText(markdown.Bold("Возможные ошибки:"))
 	md.LF()
 
-	errors := make([]*model.ErrorInfo, len(method.Errors))
-	copy(errors, method.Errors)
-	sort.Slice(errors, func(i, j int) bool {
-		// Сначала ошибки с HTTP кодом, затем без
-		if errors[i].HTTPCode == 0 && errors[j].HTTPCode != 0 {
-			return false
-		}
-		if errors[i].HTTPCode != 0 && errors[j].HTTPCode == 0 {
-			return true
-		}
-		// Если оба с кодом или оба без - сортируем по коду
-		return errors[i].HTTPCode < errors[j].HTTPCode
-	})
-
-	for _, errInfo := range errors {
+	for _, errInfo := range sortedMethodErrors(method.Errors) {
 		if errInfo.HTTPCode != 0 {
 			errorDesc := fmt.Sprintf("%s (%d)", errInfo.HTTPCodeText, errInfo.HTTPCode)
 			md.PlainText(fmt.Sprintf("- %s - %s", markdown.Code(fmt.Sprintf("%d", errInfo.HTTPCode)), errorDesc))
@@ -272,4 +258,27 @@ func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model
 		}
 		md.LF()
 	}
+}
+
+func sortedMethodErrors(src []*model.ErrorInfo) (out []*model.ErrorInfo) {
+
+	out = make([]*model.ErrorInfo, len(src))
+	copy(out, src)
+	sort.SliceStable(out, func(i, j int) bool {
+		left := out[i]
+		right := out[j]
+		leftHasCode := left.HTTPCode != 0
+		rightHasCode := right.HTTPCode != 0
+		if leftHasCode != rightHasCode {
+			return leftHasCode
+		}
+		if left.HTTPCode != right.HTTPCode {
+			return left.HTTPCode < right.HTTPCode
+		}
+		if left.TypeName != right.TypeName {
+			return left.TypeName < right.TypeName
+		}
+		return left.TypeID < right.TypeID
+	})
+	return out
 }

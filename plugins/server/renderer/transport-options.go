@@ -62,28 +62,29 @@ func (r *transportRenderer) renderOptionsService(srcFile *GoFile) {
 func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 
 	for _, contract := range r.contractsSorted() {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
-			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-				continue
-			}
+		hasHTTP := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP)
+		hasJSONRPC := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC)
+		hasStream := model.ContractHasWS(r.project, contract) || model.ContractHasSSE(r.project, contract)
+		if !hasHTTP && !hasJSONRPC && !hasStream {
+			continue
+		}
+		if hasHTTP && !hasJSONRPC {
 			srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
-			block := func(gr *Group) {
-				gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
-				gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
-				gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
-			}
 			srcFile.Line().Func().Id(contract.Name).
 				Params(Id("svc").Qual(contract.PkgPath, contract.Name)).
 				Id("Option").
 				Block(
 					Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
-						If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(block),
+						If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(func(gr *Group) {
+							gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
+							gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
+							gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
+						}),
 					)),
 				)
+			continue
 		}
-	}
-	for _, contract := range r.contractsSorted() {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if hasJSONRPC {
 			srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
 			srcFile.Line().Func().Id(contract.Name).
 				Params(Id("svc").Qual(contract.PkgPath, contract.Name)).
@@ -98,7 +99,21 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 						}),
 					)),
 				)
+			continue
 		}
+		srcFile.ImportName(contract.PkgPath, filepath.Base(contract.PkgPath))
+		srcFile.Line().Func().Id(contract.Name).
+			Params(Id("svc").Qual(contract.PkgPath, contract.Name)).
+			Id("Option").
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(func(gr *Group) {
+						gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
+						gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
+						gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
+					}),
+				)),
+			)
 	}
 }
 

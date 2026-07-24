@@ -431,11 +431,6 @@ func (r *ClientRenderer) walkNamedAliasType(schema typeDefTs, typeName, pkgPath 
 	if typeRef.NumberOfPointers > 0 {
 		schema.nullable = true
 	}
-	_, baseTypeExists := r.project.Types[typ.AliasOf]
-	if !baseTypeExists {
-		aliasTypeRef := &model.TypeRef{TypeID: typ.AliasOf}
-		return r.walkTypeRefWithVisited(typeName, pkgPath, aliasTypeRef, varTags, processing, isArgument)
-	}
 	baseTypeRefForWalk := &model.TypeRef{TypeID: typ.AliasOf}
 	baseSchema := r.walkTypeRefWithVisited("base", pkgPath, baseTypeRefForWalk, nil, processing, isArgument)
 	var underlyingType string

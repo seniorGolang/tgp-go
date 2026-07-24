@@ -26,6 +26,8 @@ flowchart LR
         server[server]
         client_go[client-go]
         client_ts[client-ts]
+        kafka_pub[kafka-pub-go]
+        kafka_sub[kafka-sub-go]
         swagger[swagger]
     end
 
@@ -38,12 +40,14 @@ flowchart LR
     astg --> server
     astg --> client_go
     astg --> client_ts
+    astg --> kafka_pub
+    astg --> kafka_sub
     astg --> swagger
 ```
 
 - **astg** — единственный источник модели: разбирает Go-код и собирает контракты в единую структуру.
 - **astg-db** и **astg-hook** работают с локальной базой контрактов: загрузка по ссылке и сохранение после разбора.
-- **server**, **client-go**, **client-ts**, **swagger** используют уже собранную модель и генерируют код/документацию.
+- **server**, **client-go**, **client-ts**, **kafka-pub-go**, **kafka-sub-go**, **swagger** используют уже собранную модель и генерируют код/документацию.
 - **init-go** не использует модель: создаёт новый Go-проект с контрактами и заглушками «с нуля».
 
 ---
@@ -93,7 +97,7 @@ sequenceDiagram
 
 **Суть:** Pre-плагин: подставляет в запрос модель проекта из **локальной базы контрактов**, чтобы не разбирать репозиторий при каждом запуске.
 
-**Возможности:** Загрузка по ссылке вида `проект@версия` или `проект:Контракт1,Контракт2@версия`, интерактивный выбор из списка сохранённых ref, фильтр контрактов. Срабатывает только если модели ещё нет и указана опция `from-db`.
+**Возможности:** Загрузка по ссылке вида `проект@версия` или `проект:Контракт1,Контракт2@версия`, интерактивный выбор проекта (пустой `from-db`) и контрактов (если они не заданы в ref и нет `--contracts`). Срабатывает только если модели ещё нет и указана опция `from-db`.
 
 **Связи:** Зависит от astg (в пайплайне). База заполняется плагином astg-hook.
 
@@ -139,6 +143,16 @@ sequenceDiagram
 
 ---
 
+### kafka-pub-go / kafka-sub-go
+
+**Суть:** Генераторы Kafka-издателя и подписчика на [franz-go](https://github.com/twmb/franz-go) по единым контрактам `@tg kafka`.
+
+**Возможности:** Именованные кодеки, `kafka-acks` с пулом до трёх client, sync produce с накоплением, четыре формы обработчиков подписчика (plain/Meta/Slice/Batch), commit AfterBatch/Auto, ResetOffset, наблюдаемость log/metrics/trace. Пакет вывода — basename `-o` (обычно `internal/publisher/kafka` и `internal/subscriber/kafka`).
+
+**Связи:** Использует модель от astg (или astg-db).
+
+---
+
 ### swagger
 
 **Суть:** Генератор описания API в формате **OpenAPI 3.0** по контрактам: пути, схемы, параметры, примеры и авторизация для использования в Swagger UI, Postman и др.
@@ -174,6 +188,8 @@ tg pkg add https://github.com/seniorGolang/tgp-go
 tg pkg add https://github.com/seniorGolang/tgp-go:server
 tg pkg add https://github.com/seniorGolang/tgp-go:client-go
 tg pkg add https://github.com/seniorGolang/tgp-go:client-ts
+tg pkg add https://github.com/seniorGolang/tgp-go:kafka-pub-go
+tg pkg add https://github.com/seniorGolang/tgp-go:kafka-sub-go
 tg pkg add https://github.com/seniorGolang/tgp-go:swagger
 tg pkg add https://github.com/seniorGolang/tgp-go:init-go
 tg pkg add https://github.com/seniorGolang/tgp-go:astg-db
@@ -184,7 +200,7 @@ tg pkg add https://github.com/seniorGolang/tgp-go:astg-hook
 
 ```bash
 tg plugin doc <имя-плагина>
-# например: astg, server, client-go, client-ts, swagger, init-go, astg-db, astg-hook
+# например: astg, server, client-go, client-ts, kafka-pub-go, kafka-sub-go, swagger, init-go, astg-db, astg-hook
 ```
 
 ---

@@ -26,6 +26,7 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		slog.Error(i18n.Msg("RenderJsonRPCClientClass: contract.PkgPath is empty"), slog.String("contract", contract.Name))
 		return fmt.Errorf("contract.PkgPath is empty for contract %s", contract.Name)
 	}
+	hasUnary := r.contractHasUnaryJSONRPC(contract)
 
 	outDir := r.outDir
 	r.contract = contract
@@ -36,10 +37,12 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	file.Comment(generated.ByToolGatewayComment)
 
 	file.ImportNamed("./client", "Client")
-	file.ImportNamed("./jsonrpc/client", "JsonRpcClient")
-	file.ImportType("./jsonrpc/utils/jsonrpc", "JsonRpcCall", "JsonRpcParams", "ResponseRPC")
-	file.ImportType("./jsonrpc/utils/ts", "MapBatchResult")
-	file.ImportType("./batch", "BatchRequest")
+	if hasUnary {
+		file.ImportNamed("./jsonrpc/client", "JsonRpcClient")
+		file.ImportType("./jsonrpc/utils/jsonrpc", "JsonRpcCall", "JsonRpcParams", "ResponseRPC")
+		file.ImportType("./jsonrpc/utils/ts", "MapBatchResult")
+		file.ImportType("./batch", "BatchRequest")
+	}
 
 	for _, method := range contract.Methods {
 		var args []*model.Variable
@@ -49,11 +52,11 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 			args = r.argsForClient(contract, method)
 		}
 		for _, arg := range args {
-			_ = r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true)
+			r.walkStreamAwareVariable(contract, method, arg, true)
 		}
 		results := r.resultsWithoutError(method)
 		for _, ret := range results {
-			_ = r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false)
+			r.walkStreamAwareVariable(contract, method, ret, false)
 		}
 	}
 
@@ -61,25 +64,25 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	exchangeTypes := make([]string, 0, len(contract.Methods)*2)
 	seenTypes := make(map[string]bool)
 	for _, method := range contract.Methods {
-		if !r.methodIsJsonRPC(contract, method) {
-			continue
-		}
-		args := r.argsForExchangeRequest(contract, method)
-		if len(args) > 0 {
-			requestType := r.requestTypeName(contract, method)
-			if !seenTypes[requestType] {
-				exchangeTypes = append(exchangeTypes, requestType)
-				seenTypes[requestType] = true
+		if r.methodIsJsonRPC(contract, method) {
+			args := r.argsForExchangeRequest(contract, method)
+			if len(args) > 0 {
+				requestType := r.requestTypeName(contract, method)
+				if !seenTypes[requestType] {
+					exchangeTypes = append(exchangeTypes, requestType)
+					seenTypes[requestType] = true
+				}
+			}
+			results := r.resultsWithoutError(method)
+			if len(results) > 0 {
+				responseType := r.responseTypeName(contract, method)
+				if !seenTypes[responseType] {
+					exchangeTypes = append(exchangeTypes, responseType)
+					seenTypes[responseType] = true
+				}
 			}
 		}
-		results := r.resultsWithoutError(method)
-		if len(results) > 0 {
-			responseType := r.responseTypeName(contract, method)
-			if !seenTypes[responseType] {
-				exchangeTypes = append(exchangeTypes, responseType)
-				seenTypes[responseType] = true
-			}
-		}
+		r.appendStreamExchangeTypes(contract, method, &exchangeTypes, seenTypes)
 	}
 	if len(exchangeTypes) > 0 {
 		file.ImportType(exchangePath, exchangeTypes...)
@@ -177,30 +180,57 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	return file.Save(outFilename)
 }
 
+func (r *ClientRenderer) walkStreamAwareVariable(contract *model.Contract, method *model.Method, variable *model.Variable, input bool) {
+
+	if variable == nil {
+		return
+	}
+	if element, ok := model.TypeRefChanElement(r.project, &variable.TypeRef); ok {
+		_ = r.walkVariable(variable.Name, contract.PkgPath, &model.Variable{Name: variable.Name, TypeRef: *element}, method.Annotations, input)
+		return
+	}
+	_ = r.walkVariable(variable.Name, contract.PkgPath, variable, method.Annotations, input)
+}
+
 func (r *ClientRenderer) collectUsedNamespacePackages(contract *model.Contract) (pkgs map[string]bool) {
 
 	pkgs = make(map[string]bool)
 	for _, method := range contract.Methods {
-		if !r.methodIsJsonRPC(contract, method) {
+		streamMethod := model.MethodIsStream(r.project, contract, method)
+		if !r.methodIsJsonRPC(contract, method) && !streamMethod {
 			continue
 		}
 		for _, arg := range r.argsForExchangeRequest(contract, method) {
-			link := r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true).typeLink()
-			if pkg := namespaceFromTypeLink(link); pkg != "" {
-				pkgs[pkg] = true
-			}
+			r.collectNamespaceFromVariable(contract, method, arg, true, pkgs)
+		}
+		if in, element, ok := model.MethodStreamInChan(r.project, method); ok {
+			r.collectNamespaceFromVariable(contract, method, &model.Variable{Name: in.Name, TypeRef: *element}, true, pkgs)
 		}
 		for _, ret := range r.resultsWithoutError(method) {
-			link := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
-			if pkg := namespaceFromTypeLink(link); pkg != "" {
-				pkgs[pkg] = true
+			if model.TypeRefIsChan(r.project, &ret.TypeRef) {
+				continue
 			}
+			r.collectNamespaceFromVariable(contract, method, ret, false, pkgs)
+		}
+		if out, element, ok := model.MethodStreamOutChan(r.project, method); ok {
+			r.collectNamespaceFromVariable(contract, method, &model.Variable{Name: out.Name, TypeRef: *element}, false, pkgs)
 		}
 	}
 	delete(pkgs, "dto")
 	delete(pkgs, "time")
 	delete(pkgs, "uuid")
 	return pkgs
+}
+
+func (r *ClientRenderer) collectNamespaceFromVariable(contract *model.Contract, method *model.Method, variable *model.Variable, input bool, pkgs map[string]bool) {
+
+	if variable == nil {
+		return
+	}
+	link := r.walkVariable(variable.Name, contract.PkgPath, variable, method.Annotations, input).typeLink()
+	if pkg := namespaceFromTypeLink(link); pkg != "" {
+		pkgs[pkg] = true
+	}
 }
 
 func namespaceFromTypeLink(link string) (pkg string) {
@@ -231,7 +261,9 @@ func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) (st 
 	}
 	stmt.Export().Class(contract.Name+"Client", func(grp *tsg.Group) {
 		grp.Add(tsg.NewStatement().Private().Id("baseClient").Colon().Id("Client").Semicolon())
-		grp.Add(tsg.NewStatement().Private().Id("client").Colon().Id("JsonRpcClient").Semicolon())
+		if r.contractHasUnaryJSONRPC(contract) {
+			grp.Add(tsg.NewStatement().Private().Id("client").Colon().Id("JsonRpcClient").Semicolon())
+		}
 		grp.Line()
 
 		constructor := tsg.NewStatement()
@@ -243,7 +275,9 @@ func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) (st 
 		})
 		constructorStmt.Block(func(cg *tsg.Group) {
 			cg.Add(tsg.NewStatement().This().Dot("baseClient").Op("=").Id("_baseClient").Semicolon())
-			cg.Add(tsg.NewStatement().This().Dot("client").Op("=").Id("_baseClient").Dot("getRpcClient").Call().Semicolon())
+			if r.contractHasUnaryJSONRPC(contract) {
+				cg.Add(tsg.NewStatement().This().Dot("client").Op("=").Id("_baseClient").Dot("getRpcClient").Call().Semicolon())
+			}
 		})
 		grp.Add(constructorStmt)
 		grp.Line()
@@ -259,11 +293,36 @@ func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) (st 
 				r.renderJsonRPCRequestMethod(grp, currentContract, method)
 			}
 		}
+		hasStream := false
+		for _, method := range currentContract.Methods {
+			if model.MethodIsWS(r.project, currentContract, method) || model.MethodIsSSE(r.project, currentContract, method) {
+				hasStream = true
+				break
+			}
+		}
+		if hasStream {
+			r.renderStreamSupport(grp, currentContract)
+			for _, method := range currentContract.Methods {
+				r.renderStreamMethods(grp, currentContract, method)
+			}
+		}
 
-		r.renderJsonRPCBatchMethod(grp, contract)
+		if r.contractHasUnaryJSONRPC(contract) {
+			r.renderJsonRPCBatchMethod(grp, contract)
+		}
 	})
 	stmt.Export()
 	return stmt
+}
+
+func (r *ClientRenderer) contractHasUnaryJSONRPC(contract *model.Contract) (ok bool) {
+
+	for _, method := range contract.Methods {
+		if r.methodIsJsonRPC(contract, method) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Contract, method *model.Method) {
@@ -331,34 +390,18 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 				Semicolon(),
 		)
 
-		methodErrors := r.collectMethodErrors(method, contract)
-		if len(methodErrors) > 0 {
-			mg.If(
-				tsg.NewStatement().
-					Id("execResult").
-					Dot("type").
-					Op("!==").
-					Lit("success"),
-				func(ig *tsg.Group) {
-					unionTypeName := fmt.Sprintf("%sError", method.Name)
-					errorVar := tsg.NewStatement()
-					errorVar.Const("error").Colon().Id(unionTypeName).Op("=").Id("execResult").Dot("error").Op("as").Id(unionTypeName)
-					ig.Add(errorVar.Semicolon())
-					ig.Throw(tsg.NewStatement().Id("error"))
-				},
-			)
-		} else {
-			mg.If(
-				tsg.NewStatement().
-					Id("execResult").
-					Dot("type").
-					Op("!==").
-					Lit("success"),
-				func(ig *tsg.Group) {
-					ig.Throw(tsg.NewStatement().Id("execResult").Dot("error"))
-				},
-			)
-		}
+		mg.If(
+			tsg.NewStatement().
+				Id("execResult").
+				Dot("type").
+				Op("!==").
+				Lit("success"),
+			func(ig *tsg.Group) {
+				ig.Throw(tsg.NewStatement().Id("this").Dot("baseClient").Dot("decodeRPCError").Call(
+					tsg.NewStatement().Id("execResult").Dot("error"),
+				))
+			},
+		)
 
 		if len(results) == 0 {
 			mg.Return()

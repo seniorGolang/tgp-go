@@ -44,58 +44,8 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 	md.H1("API Документация")
 	md.PlainText("Автоматически сгенерированная документация API для Go клиента.")
 
-	contracts := make([]*model.Contract, len(r.project.Contracts))
-	copy(contracts, r.project.Contracts)
-	sort.Slice(contracts, func(i, j int) bool {
-		return contracts[i].Name < contracts[j].Name
-	})
-
-	type tocItem struct {
-		title  string
-		level  int
-		anchor string
-	}
-	tocItems := make([]tocItem, 0)
-
+	contracts := model.ContractsSorted(r.project.Contracts)
 	hasJsonRPC := r.HasJsonRPC()
-
-	for _, contract := range contracts {
-		contractAnchor := contractAnchorID(contract.Name)
-		_ = append(tocItems, tocItem{
-			title:  contract.Name,
-			level:  2,
-			anchor: contractAnchor,
-		})
-
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-			for _, method := range contract.Methods {
-				if r.methodIsJsonRPC(contract, method) {
-					methodAnchor := methodAnchorID(contract.Name, method.Name)
-					_ = append(tocItems, tocItem{
-						title:  method.Name,
-						level:  3,
-						anchor: methodAnchor,
-					})
-				}
-			}
-		}
-
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
-			for _, method := range contract.Methods {
-				if r.methodIsHTTP(contract, method) {
-					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.MethodHTTPFullPath(r.project, contract, method)
-					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
-					methodAnchor := methodAnchorID(contract.Name, methodTitle)
-					_ = append(tocItems, tocItem{
-						title:  methodTitle,
-						level:  3,
-						anchor: methodAnchor,
-					})
-				}
-			}
-		}
-	}
 
 	typeUsages := r.collectStructTypes()
 	allTypes := make(map[string]*typeUsage)
@@ -104,7 +54,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 	}
 
 	r.typeAnchorsSet = make(map[string]bool)
-	for _, usage := range allTypes {
+	for _, usage := range common.SortedPairs(allTypes) {
 		r.typeAnchorsSet[typeAnchorID(usage.fullTypeName)] = true
 	}
 

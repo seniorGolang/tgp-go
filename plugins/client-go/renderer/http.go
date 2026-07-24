@@ -88,19 +88,21 @@ func (r *ClientRenderer) httpDoRoundTripFunc(outDir string) (c Code) {
 			bg.If(Id("cli").Dot("beforeRequest").Op("!=").Nil()).Block(
 				Id("ctx").Op("=").Id("cli").Dot("beforeRequest").Call(Id("ctx"), Id("httpReq")),
 			)
-			bg.If(Id("cli").Dot("logRequests")).Block(
+			bg.Var().Id("curlCmd").String()
+			bg.If(Id("cli").Dot("logRequests").Op("||").Id("cli").Dot("logOnError")).Block(
 				If(List(Id("cmd"), Id("cmdErr")).Op(":=").Qual(jsonrpcPkg, "ToCurl").Call(Id("httpReq")).Op(";").Id("cmdErr").Op("==").Nil()).Block(
-					Qual(PackageSlog, "DebugContext").Call(Id("ctx"), Lit("HTTP request"), Qual(PackageSlog, "String").Call(Lit("method"), Id("httpReq").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("cmd").Dot("String").Call())),
-				),
-			)
-			bg.If(List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("httpClient").Dot("Do").Call(Id("httpReq")).Op(";").Err().Op("!=").Nil()).Block(Return(Nil(), Err()))
-			bg.Defer().Func().Params().Block(
-				If(Err().Op("!=").Nil().Op("&&").Id("cli").Dot("logOnError").Op("&&").Id("httpReq").Op("!=").Nil()).Block(
-					If(List(Id("cmd"), Id("cmdErr")).Op(":=").Qual(jsonrpcPkg, "ToCurl").Call(Id("httpReq")).Op(";").Id("cmdErr").Op("==").Nil()).Block(
-						Qual(PackageSlog, "ErrorContext").Call(Id("ctx"), Lit("HTTP request failed"), Qual(PackageSlog, "String").Call(Lit("method"), Id("httpReq").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("cmd").Dot("String").Call()), Qual(PackageSlog, "Any").Call(Lit("error"), Err())),
+					Id("curlCmd").Op("=").Id("cmd").Dot("String").Call(),
+					If(Id("cli").Dot("logRequests")).Block(
+						Qual(PackageSlog, "DebugContext").Call(Id("ctx"), Lit("HTTP request"), Qual(PackageSlog, "String").Call(Lit("method"), Id("httpReq").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("curlCmd"))),
 					),
 				),
+			)
+			bg.Defer().Func().Params().Block(
+				If(Err().Op("!=").Nil().Op("&&").Id("cli").Dot("logOnError")).Block(
+					Qual(PackageSlog, "ErrorContext").Call(Id("ctx"), Lit("HTTP request failed"), Qual(PackageSlog, "String").Call(Lit("method"), Id("httpReq").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("curlCmd")), Qual(PackageSlog, "Any").Call(Lit("error"), Err())),
+				),
 			).Call()
+			bg.If(List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("httpClient").Dot("Do").Call(Id("httpReq")).Op(";").Err().Op("!=").Nil()).Block(Return(Nil(), Err()))
 			bg.If(Id("cli").Dot("afterRequest").Op("!=").Nil()).Block(
 				If(Err().Op("=").Id("cli").Dot("afterRequest").Call(Id("ctx"), Id("httpResp")).Op(";").Err().Op("!=").Nil()).Block(
 					Id("_").Op("=").Id("httpResp").Dot("Body").Dot("Close").Call(),
@@ -123,7 +125,7 @@ func (r *ClientRenderer) httpDoRoundTripFunc(outDir string) (c Code) {
 						Id("respBodyBytes"),
 					),
 				)
-				bgErr.Id("httpResp").Dot("Body").Dot("Close").Call()
+				bgErr.Id("_").Op("=").Id("httpResp").Dot("Body").Dot("Close").Call()
 				bgErr.Return(Nil(), Err())
 			})
 			bg.Return(Id("httpResp"), Nil())

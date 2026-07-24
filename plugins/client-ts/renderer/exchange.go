@@ -42,10 +42,16 @@ func (r *ClientRenderer) RenderExchangeTypes(contract *model.Contract) (err erro
 	for _, method := range contract.Methods {
 		args := r.argsWithoutContext(method)
 		for _, arg := range args {
+			if model.TypeRefIsChan(r.project, &arg.TypeRef) {
+				continue
+			}
 			_ = r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true)
 		}
 		results := r.resultsWithoutError(method)
 		for _, ret := range results {
+			if model.TypeRefIsChan(r.project, &ret.TypeRef) {
+				continue
+			}
 			_ = r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false)
 		}
 	}
@@ -195,6 +201,9 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 	}
 
 	results := r.resultsWithoutError(method)
+	if model.MethodIsStream(r.project, contract, method) {
+		results = r.resultsWithoutChannel(method)
+	}
 	switch len(results) {
 	case 0:
 		stmt.Comment("Formal exchange type, please do not delete.")

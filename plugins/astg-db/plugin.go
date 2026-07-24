@@ -9,6 +9,8 @@ import (
 	"tgp/core/i18n"
 	"tgp/core/plugin"
 	"tgp/internal/cdb"
+	"tgp/internal/helper"
+	"tgp/internal/model"
 )
 
 //go:embed plugin.md
@@ -32,49 +34,60 @@ func (p *AstgDbPlugin) Execute(request data.Storage) (response data.Storage, err
 		return
 	}
 
+	var root string
+	if root, err = cdb.Root(); err != nil {
+		err = fmt.Errorf("%s: %w", i18n.Msg("contracts db root"), err)
+		return
+	}
+
+	response, err = loadFromDB(request, root)
+	return
+}
+
+func loadFromDB(request data.Storage, root string) (response data.Storage, err error) {
+
+	response = request
+
 	refStr, _ := data.Get[string](request, optionFromDB)
-	interactive := refStr == ""
 
-	root, rootErr := cdb.Root()
-	if rootErr != nil {
-		err = fmt.Errorf("%s: %w", i18n.Msg("contracts db root"), rootErr)
+	var idx *cdb.Index
+	if idx, err = cdb.LoadIndex(root); err != nil {
+		err = fmt.Errorf("%s: %w", i18n.Msg("contracts db index"), err)
 		return
 	}
 
-	idx, loadErr := cdb.LoadIndex(root)
-	if loadErr != nil {
-		err = fmt.Errorf("%s: %w", i18n.Msg("contracts db index"), loadErr)
-		return
-	}
-
-	if interactive {
-		refStr, err = selectRef(idx)
-		if err != nil {
+	if refStr == "" {
+		if refStr, err = selectRef(idx); err != nil {
 			return
 		}
 	}
 
-	parsed, parseErr := cdb.ParseRef(refStr)
-	if parseErr != nil {
-		err = fmt.Errorf("%s: %w", i18n.Msg("invalid contract ref"), parseErr)
+	var parsed cdb.Ref
+	if parsed, err = cdb.ParseRef(refStr); err != nil {
+		err = fmt.Errorf("%s: %w", i18n.Msg("invalid contract ref"), err)
 		return
 	}
 
-	_, projectFile, resolveErr := cdb.ResolveRef(idx, parsed)
-	if resolveErr != nil {
-		err = fmt.Errorf("%s: %w", i18n.Msg("resolve contract ref"), resolveErr)
+	var projectFile string
+	if _, projectFile, err = cdb.ResolveRef(idx, parsed); err != nil {
+		err = fmt.Errorf("%s: %w", i18n.Msg("resolve contract ref"), err)
 		return
 	}
 
-	project, readErr := cdb.ReadProject(root, projectFile)
-	if readErr != nil {
-		err = fmt.Errorf("%s: %w", i18n.Msg("load project from db"), readErr)
+	var project *model.Project
+	if project, err = cdb.ReadProject(root, projectFile); err != nil {
+		err = fmt.Errorf("%s: %w", i18n.Msg("load project from db"), err)
 		return
 	}
 
-	if interactive {
-		parsed.Contracts, err = selectContracts(project)
-		if err != nil {
+	var contractsOpt []string
+	if contractsOpt, err = helper.ParseStringList(request, "contracts"); err != nil {
+		err = fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
+		return
+	}
+
+	if len(parsed.Contracts) == 0 && len(contractsOpt) == 0 {
+		if parsed.Contracts, err = selectContracts(project); err != nil {
 			return
 		}
 	}
@@ -110,7 +123,7 @@ func (p *AstgDbPlugin) Info() (info plugin.Info, err error) {
 				Name:        optionFromDB,
 				Type:        "string",
 				Default:     "",
-				Description: i18n.Msg("Load project from local contracts DB: ref (e.g. project@v1.0.1 or project:Contract1@main) or empty for interactive selection"),
+				Description: i18n.Msg("Load project from local contracts DB: ref (e.g. project@v1.0.1 or project:Contract1@main) or empty for interactive project selection; contracts are selected interactively unless listed in ref or --contracts"),
 			},
 		},
 	}

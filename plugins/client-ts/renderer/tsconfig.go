@@ -3,11 +3,10 @@
 package renderer
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
-
-	"github.com/goccy/go-json"
 
 	"tgp/internal/generated"
 )
@@ -48,9 +47,8 @@ func (r *ClientRenderer) RenderTsConfig() (err error) {
 		},
 	}
 
-	// Сериализуем в JSON с отступами
-	jsonData, err := json.MarshalIndent(tsConfig, "", "  ")
-	if err != nil {
+	var jsonData []byte
+	if jsonData, err = json.MarshalIndent(tsConfig, "", "  "); err != nil {
 		return fmt.Errorf("failed to marshal tsconfig.json: %w", err)
 	}
 

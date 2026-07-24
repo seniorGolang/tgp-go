@@ -1,0 +1,27 @@
+package kafkaRUNTIME
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/twmb/franz-go/pkg/sasl"
+	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
+)
+
+func saslMechanism(name string, user string, password string) (mechanism sasl.Mechanism, err error) {
+
+	switch strings.ToUpper(strings.TrimSpace(name)) {
+	case "PLAIN":
+		mechanism = plain.Auth{User: user, Pass: password}.AsMechanism()
+		return mechanism, nil
+	case "SCRAM-SHA-256":
+		mechanism = scram.Auth{User: user, Pass: password}.AsSha256Mechanism()
+		return mechanism, nil
+	case "SCRAM-SHA-512":
+		mechanism = scram.Auth{User: user, Pass: password}.AsSha512Mechanism()
+		return mechanism, nil
+	default:
+		return nil, fmt.Errorf("kafka sasl mechanism %q is not supported", name)
+	}
+}

@@ -23,6 +23,15 @@ var pkgTmplFS embed.FS
 //go:embed stream/parts.go
 var streamPartsGo string
 
+//go:embed stream/rpc.go
+var streamRPCGo string
+
+//go:embed stream/sse.go
+var streamSSEGo string
+
+//go:embed stream/context.go
+var streamContextGo string
+
 type baseRenderer struct {
 	outDir   string
 	project  *model.Project
@@ -114,12 +123,22 @@ func (r *baseRenderer) renderStreamPackage() (err error) {
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return
 	}
-	body := streamPartsGo
-	if idx := strings.Index(body, "\npackage "); idx >= 0 {
-		body = body[idx+1:]
+	files := map[string]string{
+		"parts.go":   streamPartsGo,
+		"rpc.go":     streamRPCGo,
+		"sse.go":     streamSSEGo,
+		"context.go": streamContextGo,
 	}
-	content := generated.ByToolGatewayComment + "\n\n" + body
-	return os.WriteFile(path.Join(dir, "parts.go"), []byte(content), 0600)
+	for name, body := range files {
+		if idx := strings.Index(body, "\npackage "); idx >= 0 {
+			body = body[idx+1:]
+		}
+		content := generated.ByToolGatewayComment + "\n\n" + body
+		if err = os.WriteFile(path.Join(dir, name), []byte(content), 0600); err != nil {
+			return
+		}
+	}
+	return
 }
 
 type pkgTemplateData struct {
@@ -160,11 +179,9 @@ func (r *baseRenderer) needsCookieType() (ok bool) {
 			if !methodIsHTTP(r.project, contract, method) {
 				continue
 			}
-			cookieValue := model.GetAnnotationValue(r.project, contract, method, nil, model.TagHttpCookies, "")
-			if len(model.ParseArgMapEntries(cookieValue)) == 0 {
-				continue
+			if len(model.HTTPResultCookieMapForResponse(r.project, contract, method)) > 0 {
+				return true
 			}
-			return true
 		}
 	}
 	return false
@@ -173,6 +190,9 @@ func (r *baseRenderer) needsCookieType() (ok bool) {
 func (r *baseRenderer) hasMetrics() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {
+		if !model.ContractIsHTTPFamily(r.project, contract) {
+			continue
+		}
 		if model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 			return true
 		}
@@ -183,6 +203,9 @@ func (r *baseRenderer) hasMetrics() (ok bool) {
 func (r *baseRenderer) hasTrace() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {
+		if !model.ContractIsHTTPFamily(r.project, contract) {
+			continue
+		}
 		if model.IsAnnotationSet(r.project, contract, nil, nil, TagTrace) {
 			return true
 		}

@@ -3,11 +3,10 @@
 package tags
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/goccy/go-json"
 
 	"tgp/internal/common"
 )

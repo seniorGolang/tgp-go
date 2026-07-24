@@ -155,3 +155,55 @@ func TestRenderHTTPClient_infersParamsTypeForHeaderMethod(t *testing.T) {
 		t.Fatalf("expected inferred params object, got:\n%s", source)
 	}
 }
+
+func TestRenderHTTPClient_xmlResponseUnwrapsRoot(t *testing.T) {
+
+	project := &model.Project{ModulePath: "example"}
+	contract := &model.Contract{
+		Name:    "Http",
+		PkgPath: "example/contracts",
+		Annotations: tags.DocTags{
+			model.TagServerHTTP: "",
+			model.TagHttpPrefix: "api/v1",
+		},
+		Methods: []*model.Method{{
+			Name: "XmlRoundTrip",
+			Annotations: tags.DocTags{
+				model.TagHTTPMethod:          "POST",
+				model.TagHttpPath:            "/xml/echo",
+				model.TagRequestContentType:  "application/xml",
+				model.TagResponseContentType: "application/xml",
+			},
+			Args: []*model.Variable{
+				{Name: "payload", TypeRef: model.TypeRef{TypeID: "string"}},
+			},
+			Results: []*model.Variable{
+				{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
+			},
+		}},
+	}
+
+	dir := t.TempDir()
+	renderer := NewClientRenderer(project, dir, false, "", true)
+	if err := renderer.RenderHTTPClientClass(contract); err != nil {
+		t.Fatalf("RenderHTTPClientClass: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, "http-http.ts"))
+	if err != nil {
+		t.Fatalf("read generated file: %v", err)
+	}
+	source := string(content)
+	if !strings.Contains(source, "new XMLParser().parse") {
+		t.Fatalf("expected XMLParser.parse, got:\n%s", source)
+	}
+	if !strings.Contains(source, "Object.keys") || !strings.Contains(source, "_rootKeys_") {
+		t.Fatalf("expected XML root unwrap via Object.keys, got:\n%s", source)
+	}
+	if !strings.Contains(source, "new XMLBuilder().build") {
+		t.Fatalf("expected XMLBuilder.build for request, got:\n%s", source)
+	}
+	if !strings.Contains(source, "requestHttpXmlRoundTrip") && !strings.Contains(source, "requestHTTPXmlRoundTrip") {
+		t.Fatalf("expected XML request wrapped in Go exchange root, got:\n%s", source)
+	}
+}

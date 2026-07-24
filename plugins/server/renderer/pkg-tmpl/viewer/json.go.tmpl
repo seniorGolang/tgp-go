@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strconv"
 	"strings"
@@ -21,6 +22,8 @@ const (
 	ptrHexPrefix           = "0x"
 )
 
+var typeJSONRawMessage = reflect.TypeOf(json.RawMessage(nil))
+
 func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
 	kind := v.Kind()
 	if kind == reflect.Invalid {
@@ -34,6 +37,11 @@ func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *Config
 			return nil, nil
 		}
 		return toJSONTree(v.Elem(), depth, pointers, cs, opt)
+	}
+	if v.CanInterface() {
+		if lv, ok := v.Interface().(slog.LogValuer); ok {
+			return slogValueToNode(slog.AnyValue(lv).Resolve(), depth, pointers, cs, opt)
+		}
 	}
 	if toString := v.MethodByName("String"); toString.IsValid() {
 		if v.Kind() == reflect.Pointer && v.IsNil() {
@@ -79,6 +87,41 @@ func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *Config
 			return optionFromAny(v.Interface(), opt), nil
 		}
 		return jsonPlaceholderInvalid, nil
+	}
+}
+
+func slogValueToNode(val slog.Value, depth int, pointers map[uintptr]int, cs *ConfigState, opt option) (node any, err error) {
+
+	switch val.Kind() {
+	case slog.KindString:
+		return val.String(), nil
+	case slog.KindInt64:
+		return val.Int64(), nil
+	case slog.KindUint64:
+		return val.Uint64(), nil
+	case slog.KindFloat64:
+		return val.Float64(), nil
+	case slog.KindBool:
+		return val.Bool(), nil
+	case slog.KindDuration:
+		return val.Duration().String(), nil
+	case slog.KindTime:
+		return val.Time().Format(time.RFC3339), nil
+	case slog.KindGroup:
+		attrs := val.Group()
+		m := make(map[string]any, len(attrs))
+		for _, a := range attrs {
+			var child any
+			if child, err = slogValueToNode(a.Value.Resolve(), depth+1, pointers, cs, opt); err != nil {
+				return nil, err
+			}
+			m[a.Key] = child
+		}
+		return m, nil
+	case slog.KindAny:
+		return toJSONTree(reflect.ValueOf(val.Any()), depth, pointers, cs, opt)
+	default:
+		return val.String(), nil
 	}
 }
 
@@ -128,6 +171,12 @@ func toJSONTreeSlice(v reflect.Value, depth int, pointers map[uintptr]int, cs *C
 
 	if v.Kind() == reflect.Slice && v.IsNil() {
 		return nil, nil
+	}
+	if v.Type() == typeJSONRawMessage {
+		if opt.enabled && opt.full {
+			return "hidden", nil
+		}
+		return json.RawMessage(v.Bytes()), nil
 	}
 	if v.Kind() == reflect.Slice && v.Type().Elem().Kind() == reflect.Uint8 {
 		return maskedHexBytes(v.Bytes(), opt), nil

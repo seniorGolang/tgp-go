@@ -4,5 +4,7 @@
   "Select contracts": "Выберите контракты",
   "contracts db empty": "база контрактов пуста",
   "no project selected": "проект не выбран",
-  "no contracts selected": "контракты не выбраны"
+  "no contracts selected": "контракты не выбраны",
+  "Load project from local contracts DB: ref (e.g. project@v1.0.1 or project:Contract1@main) or empty for interactive project selection; contracts are selected interactively unless listed in ref or --contracts": "Загрузить проект из локальной базы контрактов: ref (например project@v1.0.1 или project:Contract1@main) или пустое значение для интерактивного выбора проекта; контракты выбираются интерактивно, если не указаны в ref или --contracts",
+  "failed to parse contracts": "не удалось разобрать список контрактов"
 }

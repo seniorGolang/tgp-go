@@ -10,6 +10,7 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/generated"
+	"tgp/internal/model"
 )
 
 func (r *transportRenderer) RenderTransportContext() (err error) {
@@ -17,7 +18,7 @@ func (r *transportRenderer) RenderTransportContext() (err error) {
 	if err = r.pkgRenderTo("srvctx", r.outDir, newPkgTemplateData()); err != nil {
 		return
 	}
-	if r.hasHTTPServerContracts() {
+	if r.hasHTTPServerContracts() || r.hasStreamContracts() {
 		if err = r.renderStreamPackage(); err != nil {
 			return fmt.Errorf("render stream package: %w", err)
 		}
@@ -35,6 +36,16 @@ func (r *transportRenderer) RenderTransportContext() (err error) {
 	srcFile.Line().Add(r.withMethodLoggerFunc())
 
 	return srcFile.Save(contextPath)
+}
+
+func (r *transportRenderer) hasStreamContracts() (ok bool) {
+
+	for _, contract := range r.contractsSorted() {
+		if model.ContractHasWS(r.project, contract) || model.ContractHasSSE(r.project, contract) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *transportRenderer) withMethodLoggerFunc() Code {

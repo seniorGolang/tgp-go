@@ -71,21 +71,61 @@ func TestHTTPPathParamArgMapAndSet(t *testing.T) {
 	}
 }
 
-func TestHTTPPathParamExactName(t *testing.T) {
+func TestStreamPathParamArgMapAndOmit(t *testing.T) {
 
-	contract := &Contract{Name: "Svc"}
-	method := &Method{
-		Name: "Get",
-		Args: []*Variable{testStringVar("id")},
+	contract := &Contract{
+		Name: "Live",
 		Annotations: tags.DocTags{
-			TagHttpPath: "/item/:id",
+			TagServerWS:   "",
+			TagServerSSE:  "",
+			TagHttpPrefix: "api/v1",
+			TagWSPath:     "/ws/:room",
 		},
 	}
-	project := &Project{}
+	method := &Method{
+		Name: "Subscribe",
+		Args: []*Variable{
+			testStringVar("room"),
+			testStringVar("symbol"),
+			testStringVar("token"),
+		},
+		Results: []*Variable{
+			{Name: "ticks", TypeRef: TypeRef{ChanOf: &TypeRef{TypeID: "string"}, ChanDirection: 2}},
+			{Name: "err", TypeRef: TypeRef{TypeID: "error"}},
+		},
+		Annotations: tags.DocTags{
+			TagStream:     StreamModeServer,
+			TagSSEPath:    "/sse/:room/subscribe",
+			TagHttpHeader: "token|X-Token|explicit",
+		},
+	}
+	project := &Project{Contracts: []*Contract{contract}}
 
-	pathMap := HTTPPathParamArgMap(project, contract, method)
-	if pathMap["id"] != "id" {
-		t.Fatalf("pathMap = %#v", pathMap)
+	wsMap := StreamPathParamArgMap(project, contract, method)
+	if wsMap["room"] != "room" {
+		t.Fatalf("ws path map = %#v", wsMap)
+	}
+
+	methodSSE := *method
+	methodSSE.Annotations = tags.DocTags{
+		TagStream:  StreamModeServer,
+		TagSSEPath: "/sse/:room/subscribe",
+	}
+	// MethodIsSSE requires sse-server on contract — already set.
+	sseMap := PathParamArgMap(&methodSSE, MethodSSEPath(project, contract, &methodSSE))
+	if sseMap["room"] != "room" {
+		t.Fatalf("sse path map = %#v", sseMap)
+	}
+
+	omit := HTTPOmitFromRequestJSON(project, contract, method)
+	if _, ok := omit["token"]; !ok {
+		t.Fatalf("token must be omitted from JSON: %#v", omit)
+	}
+	if _, ok := omit["room"]; !ok {
+		t.Fatalf("room path param must be omitted from JSON: %#v", omit)
+	}
+	if _, ok := omit["symbol"]; ok {
+		t.Fatalf("symbol must stay in JSON body: %#v", omit)
 	}
 }
 

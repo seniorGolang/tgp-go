@@ -47,6 +47,17 @@ func TypeNameFromTypeID(project *Project, typeID string) (name string) {
 	return typeID
 }
 
+// ArgFieldEmbedded reports whether the method argument is serialized as json:,inline in exchange.
+func ArgFieldEmbedded(project *Project, method *Method, arg *Variable) (ok bool) {
+
+	if method == nil || arg == nil {
+		return false
+	}
+
+	jsonTag := tags.ParseMethodVarTags(method.Annotations, arg.Name)["json"]
+	return jsonTag == ",inline" && TypeIsEmbeddable(project, arg.TypeID)
+}
+
 // ResultFieldEmbedded reports whether the method result is serialized as json:,inline in exchange.
 func ResultFieldEmbedded(project *Project, contract *Contract, method *Method, ret *Variable) (ok bool) {
 

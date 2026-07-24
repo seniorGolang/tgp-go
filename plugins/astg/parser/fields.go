@@ -3,30 +3,24 @@
 package parser
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"log/slog"
 	"strings"
 
+	"tgp/core/i18n"
 	"tgp/internal/model"
 	"tgp/internal/tags"
 )
 
-func fillStructFields(structType *types.Struct, pkgPath string, imports map[string]string, project *model.Project, coreType *model.Type, loader *AutonomousPackageLoader, processingTypes ...map[string]bool) {
+func fillStructFields(structType *types.Struct, pkgPath string, imports map[string]string, project *model.Project, coreType *model.Type, loader *AutonomousPackageLoader, _ ...map[string]bool) {
 
 	if structType == nil {
 		return
 	}
 
 	coreType.StructFields = make([]*model.StructField, 0)
-
-	var processingSet map[string]bool
-	if len(processingTypes) > 0 && processingTypes[0] != nil {
-		processingSet = processingTypes[0]
-	} else {
-		processingSet = make(map[string]bool)
-	}
 
 	var astStructType *ast.StructType
 	if pkgInfo, ok := loader.GetPackage(pkgPath); ok && pkgInfo != nil {
@@ -47,15 +41,12 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 		fieldName := field.Name()
 		fieldType := field.Type()
 
-		typeInfo := convertFieldType(fieldType, pkgPath, imports, project, loader, processingSet)
+		typeInfo := convertFieldType(fieldType, pkgPath, imports, project, loader)
 
 		fieldTags := make(map[string][]string)
-		// Сначала пробуем получить из go/types
 		if fieldTag := structType.Tag(i); fieldTag != "" {
-			// Парсим теги в формате `json:"name,omitempty" xml:"name"`
 			fieldTags = parseStructTag(fieldTag)
 		} else if astStructType != nil {
-			// Если в go/types нет тегов, пытаемся получить из AST
 			astTags := extractTagsFromASTStruct(astStructType, fieldName)
 			if len(astTags) > 0 {
 				fieldTags = astTags
@@ -73,16 +64,7 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 		}
 
 		structField := &model.StructField{
-			TypeRef: model.TypeRef{
-				TypeID:           typeInfo.TypeID,
-				NumberOfPointers: typeInfo.NumberOfPointers,
-				IsSlice:          typeInfo.IsSlice,
-				ArrayLen:         typeInfo.ArrayLen,
-				IsEllipsis:       typeInfo.IsEllipsis,
-				ElementPointers:  typeInfo.ElementPointers,
-				MapKey:           typeInfo.MapKey,
-				MapValue:         typeInfo.MapValue,
-			},
+			TypeRef:     *fieldTypeInfoToTypeRef(typeInfo),
 			Name:        fieldName,
 			Tags:        fieldTags,
 			Docs:        docs,
@@ -94,206 +76,24 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 	}
 }
 
-type fieldTypeInfo struct {
-	TypeID           string
-	NumberOfPointers int
-	IsSlice          bool
-	ArrayLen         int
-	IsEllipsis       bool
-	ElementPointers  int // Для элементов массивов/слайсов и значений map
-	MapKey           *model.TypeRef
-	MapValue         *model.TypeRef
-}
+type fieldTypeInfo = typeConversionInfo
 
-func convertFieldType(typ types.Type, pkgPath string, imports map[string]string, project *model.Project, loader *AutonomousPackageLoader, processingTypes ...map[string]bool) (info fieldTypeInfo) {
+func convertFieldType(typ types.Type, pkgPath string, imports map[string]string, project *model.Project, loader *AutonomousPackageLoader) (info fieldTypeInfo) {
 
-	var processingSet map[string]bool
-	if len(processingTypes) > 0 && processingTypes[0] != nil {
-		processingSet = processingTypes[0]
-	} else {
-		processingSet = make(map[string]bool)
+	if typ == nil {
+		slog.Error(i18n.Msg("failed to convert field type"), slog.String("package", pkgPath), slog.String("reason", "nil type"))
+		return
 	}
-
-	for {
-		if ptr, ok := typ.(*types.Pointer); ok {
-			info.NumberOfPointers++
-			typ = ptr.Elem()
-			continue
-		}
-		break
+	var ok bool
+	if info, ok = typeRefFromTypes(typ, pkgPath, imports, project, loader); !ok {
+		slog.Error(i18n.Msg("failed to convert field type"), slog.String("package", pkgPath), slog.String("goType", typ.String()))
 	}
-
-	switch t := typ.(type) {
-	case *types.Array:
-		info.IsSlice = false
-		info.ArrayLen = int(t.Len())
-		if t.Elem() != nil {
-			eltInfo := convertFieldType(t.Elem(), pkgPath, imports, project, loader, processingSet)
-			if eltInfo.TypeID != "" && eltInfo.TypeID != "invalid type" {
-				info.TypeID = eltInfo.TypeID
-				info.ElementPointers = eltInfo.NumberOfPointers
-			}
-		}
-
-	case *types.Slice:
-		info.IsSlice = true
-		if t.Elem() != nil {
-			eltInfo := convertFieldType(t.Elem(), pkgPath, imports, project, loader, processingSet)
-			if eltInfo.TypeID != "" && eltInfo.TypeID != "invalid type" {
-				info.TypeID = eltInfo.TypeID
-				info.ElementPointers = eltInfo.NumberOfPointers
-			} else {
-				// Пытаемся получить typeID напрямую через generateTypeIDFromGoTypes
-				directTypeID := generateTypeIDFromGoTypes(t.Elem())
-				if directTypeID != "" && directTypeID != "invalid type" {
-					info.TypeID = directTypeID
-				}
-			}
-		}
-
-	case *types.Map:
-		if t.Key() != nil {
-			keyInfo := convertFieldType(t.Key(), pkgPath, imports, project, loader, processingSet)
-			if keyInfo.TypeID != "" && keyInfo.TypeID != "invalid type" {
-				info.MapKey = fieldTypeInfoToTypeRef(keyInfo)
-			}
-		}
-		if t.Elem() != nil {
-			valueInfo := convertFieldType(t.Elem(), pkgPath, imports, project, loader, processingSet)
-			if valueInfo.TypeID != "" && valueInfo.TypeID != "invalid type" {
-				info.MapValue = fieldTypeInfoToTypeRef(valueInfo)
-			}
-		}
-
-	default:
-		typeID := generateTypeIDFromGoTypes(typ)
-		//nolint:staticcheck // QF1003: проверка пустой строки более читаема через if
-		if typeID == "" {
-			if basic, ok := typ.(*types.Basic); ok {
-				typeID = basic.Name()
-				if typeID == "invalid type" {
-					typeID = ""
-				}
-			} else if named, ok := typ.(*types.Named); ok && named.Obj() != nil {
-				// Fallback для именованных типов
-				typeName := named.Obj().Name()
-				if named.Obj().Pkg() != nil {
-					importPkgPath := named.Obj().Pkg().Path()
-					typeID = fmt.Sprintf("%s:%s", importPkgPath, typeName)
-				} else {
-					typeID = typeName
-				}
-			} else if alias, ok := typ.(*types.Alias); ok && alias.Obj() != nil {
-				// Fallback для алиасов
-				typeName := alias.Obj().Name()
-				if alias.Obj().Pkg() != nil {
-					importPkgPath := alias.Obj().Pkg().Path()
-					typeID = fmt.Sprintf("%s:%s", importPkgPath, typeName)
-				} else {
-					typeID = typeName
-				}
-			}
-		} else if typeID == "invalid type" {
-			// Пытаемся получить typeID через fallback
-			if named, ok := typ.(*types.Named); ok && named.Obj() != nil {
-				typeName := named.Obj().Name()
-				if named.Obj().Pkg() != nil {
-					importPkgPath := named.Obj().Pkg().Path()
-					typeID = fmt.Sprintf("%s:%s", importPkgPath, typeName)
-				} else {
-					typeID = typeName
-				}
-			} else if alias, ok := typ.(*types.Alias); ok && alias.Obj() != nil {
-				typeName := alias.Obj().Name()
-				if alias.Obj().Pkg() != nil {
-					importPkgPath := alias.Obj().Pkg().Path()
-					typeID = fmt.Sprintf("%s:%s", importPkgPath, typeName)
-				} else {
-					typeID = typeName
-				}
-			} else {
-				typeID = ""
-			}
-		}
-		info.TypeID = typeID
-
-		if typeID != "" && !isBuiltinTypeName(typeID) {
-			// Если тип уже существует в project.Types, просто возвращаем его
-			if _, exists := project.Types[typeID]; exists {
-				return info
-			}
-
-			if alias, ok := typ.(*types.Alias); ok {
-				underlying := types.Unalias(alias)
-				underlyingInfo := convertFieldType(underlying, pkgPath, imports, project, loader, processingSet)
-				info = underlyingInfo
-				if alias.Obj() != nil && alias.Obj().Pkg() != nil {
-					typeID := fmt.Sprintf("%s:%s", alias.Obj().Pkg().Path(), alias.Obj().Name())
-					info.TypeID = typeID
-					if _, exists := project.Types[typeID]; !exists {
-						pkgInfo, ok := loader.GetPackage(alias.Obj().Pkg().Path())
-						if ok && pkgInfo != nil {
-							var coreType *model.Type
-							if coreType, _ = convertTypeFromGoTypes(typ, alias.Obj().Pkg().Path(), pkgInfo.Imports, project, loader, processingSet); coreType != nil {
-								detectInterfaces(typ, coreType, project, loader)
-								detectParseFromString(typ, coreType, project, loader)
-								project.Types[typeID] = coreType
-							}
-						}
-					}
-				}
-			} else {
-				if named, ok := typ.(*types.Named); ok {
-					if named.Obj() != nil && named.Obj().Pkg() != nil {
-						importPkgPath := named.Obj().Pkg().Path()
-						pkgInfo, ok := loader.GetPackage(importPkgPath)
-						if ok && pkgInfo != nil {
-							var coreType *model.Type
-							if coreType, _ = convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet); coreType != nil {
-								detectInterfaces(typ, coreType, project, loader)
-								detectParseFromString(typ, coreType, project, loader)
-								project.Types[typeID] = coreType
-							}
-						} else {
-							if pkgInfo, err := loader.LoadPackageForType(importPkgPath, named.Obj().Name()); err == nil {
-								var coreType *model.Type
-								if coreType, _ = convertTypeFromGoTypes(typ, importPkgPath, pkgInfo.Imports, project, loader, processingSet); coreType != nil {
-									detectInterfaces(typ, coreType, project, loader)
-									detectParseFromString(typ, coreType, project, loader)
-									project.Types[typeID] = coreType
-								}
-							}
-						}
-					} else if named.Obj() != nil {
-						// Тип без пакета - возможно, это встроенный тип или тип из текущего пакета
-						if typeID == "" {
-							typeID = named.Obj().Name()
-							info.TypeID = typeID
-						}
-					}
-				}
-			}
-		}
-	}
-
 	return
 }
 
 func fieldTypeInfoToTypeRef(info fieldTypeInfo) (ref *model.TypeRef) {
 
-	if info.TypeID == "" || info.TypeID == "invalid type" {
-		return nil
-	}
-	return &model.TypeRef{
-		TypeID:           info.TypeID,
-		NumberOfPointers: info.NumberOfPointers,
-		IsSlice:          info.IsSlice,
-		ArrayLen:         info.ArrayLen,
-		IsEllipsis:       info.IsEllipsis,
-		ElementPointers:  info.ElementPointers,
-		MapKey:           info.MapKey,
-		MapValue:         info.MapValue,
-	}
+	return conversionInfoToTypeRef(info)
 }
 
 func findASTStructType(file *ast.File, typeName string, typeInfo *types.Info) (foundStruct *ast.StructType) {
@@ -417,8 +217,6 @@ func parseStructTag(tag string) (result map[string][]string) {
 		return
 	}
 
-	// Но так как мы не можем использовать reflect в core, парсим вручную
-	// Формат: `key1:"value1" key2:"value2" key3:"value3,option1,option2"`
 	for tag != "" {
 		i := 0
 		for i < len(tag) && tag[i] == ' ' {
@@ -463,8 +261,7 @@ func parseStructTag(tag string) (result map[string][]string) {
 		value := tag[:valueEnd]
 		tag = tag[valueEnd+1:]
 
-		values := strings.Split(value, ",")
-		result[key] = values
+		result[key] = strings.Split(value, ",")
 	}
 
 	return

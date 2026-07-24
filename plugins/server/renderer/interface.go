@@ -12,6 +12,8 @@ type ContractRenderer interface {
 	RenderLogger() (err error)
 	RenderJsonRPC() (err error)
 	RenderREST() (err error)
+	RenderWebSocket() (err error)
+	RenderSSE() (err error)
 }
 
 type TransportRenderer interface {

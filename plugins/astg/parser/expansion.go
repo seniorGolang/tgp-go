@@ -252,8 +252,6 @@ func generateTypeIDFromGoTypes(t types.Type) (typeID string) {
 		result := t.Name()
 		//nolint:staticcheck // QF1003: проверка пустой строки более читаема через if
 		if result == "" || result == "invalid type" {
-			// Это не должно происходить - "invalid type" не является валидным именем типа
-			// Возвращаем пустую строку, чтобы fallback логика сработала
 			return
 		}
 		typeID = result

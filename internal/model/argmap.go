@@ -207,6 +207,12 @@ func HTTPExcludeFromExchangeRequestSet(mappings HTTPArgMappings) (excludeArgs ma
 func HTTPOmitFromRequestJSON(project *Project, contract *Contract, method *Method) (omit map[string]struct{}) {
 
 	omit = HTTPExcludeFromExchangeRequestSet(BuildHTTPArgMappings(project, contract, method))
+	if MethodIsStream(project, contract, method) {
+		for argName := range StreamPathParamArgMap(project, contract, method) {
+			omit[argName] = struct{}{}
+		}
+		return omit
+	}
 	for argName := range HTTPPathParamArgSet(project, contract, method) {
 		omit[argName] = struct{}{}
 	}
@@ -301,12 +307,19 @@ func HTTPPathParamArgSet(project *Project, contract *Contract, method *Method) (
 // HTTPPathParamArgMap возвращает arg.Name → имя сегмента пути для Fiber Params / client escape.
 func HTTPPathParamArgMap(project *Project, contract *Contract, method *Method) (pathMap map[string]string) {
 
-	pathMap = make(map[string]string)
 	if project == nil || contract == nil || method == nil {
+		return map[string]string{}
+	}
+	return PathParamArgMap(method, GetAnnotationValue(project, contract, method, nil, TagHttpPath, ""))
+}
+
+// PathParamArgMap возвращает arg.Name → имя сегмента :name из произвольного URL path.
+func PathParamArgMap(method *Method, urlPath string) (pathMap map[string]string) {
+
+	pathMap = make(map[string]string)
+	if method == nil || urlPath == "" {
 		return pathMap
 	}
-
-	urlPath := GetAnnotationValue(project, contract, method, nil, TagHttpPath, "")
 	for _, token := range strings.Split(urlPath, "/") {
 		token = strings.TrimSpace(token)
 		if !strings.HasPrefix(token, ":") {
@@ -317,8 +330,19 @@ func HTTPPathParamArgMap(project *Project, contract *Contract, method *Method) (
 			pathMap[arg.Name] = segmentName
 		}
 	}
-
 	return pathMap
+}
+
+// StreamPathParamArgMap — path-параметры stream-метода из ws-path или sse-path.
+func StreamPathParamArgMap(project *Project, contract *Contract, method *Method) (pathMap map[string]string) {
+
+	if !MethodIsStream(project, contract, method) {
+		return map[string]string{}
+	}
+	if MethodIsSSE(project, contract, method) {
+		return PathParamArgMap(method, MethodSSEPath(project, contract, method))
+	}
+	return PathParamArgMap(method, ContractWSPath(project, contract))
 }
 
 // HTTPArgsFromRequestBody returns arguments populated from the JSON request body.

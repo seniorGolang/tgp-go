@@ -57,6 +57,14 @@ func Contract(contract *model.Contract, project *model.Project) (err error) {
 		return
 	}
 
+	if err = contractStreamAnnotations(project, contract); err != nil {
+		return
+	}
+
+	if err = contractKafkaAnnotations(project, contract); err != nil {
+		return
+	}
+
 	return
 }
 

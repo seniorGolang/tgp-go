@@ -12,7 +12,7 @@ import (
 )
 
 type jsonrpcGenerator struct {
-	jsonPkg string // Пакет для JSON операций (например, "encoding/json" или "github.com/goccy/go-json")
+	jsonPkg string // Пакет для JSON операций (по умолчанию encoding/json)
 }
 
 func (r *ClientRenderer) RenderJsonRPCPackage(outDir string) (err error) {
@@ -382,21 +382,21 @@ func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) (err error) 
 			bg.If(Id("client").Dot("options").Dot("before").Op("!=").Nil()).Block(
 				Id("ctx").Op("=").Id("client").Dot("options").Dot("before").Call(Id("ctx"), Id("httpRequest")),
 			)
-			bg.If(Id("client").Dot("options").Dot("logRequests")).BlockFunc(
+			bg.Var().Id("curlCmd").String()
+			bg.If(Id("client").Dot("options").Dot("logRequests").Op("||").Id("client").Dot("options").Dot("logOnError")).BlockFunc(
 				func(ig *Group) {
 					ig.If(List(Id("cmd"), Id("cmdErr")).Op(":=").Id("ToCurl").Call(Id("httpRequest")).Op(";").Id("cmdErr").Op("==").Nil()).Block(
-						Qual(PackageSlog, "DebugContext").Call(Id("ctx"), Lit("call"), Qual(PackageSlog, "String").Call(Lit("method"), Id("request").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("cmd").Dot("String").Call())),
+						Id("curlCmd").Op("=").Id("cmd").Dot("String").Call(),
+						If(Id("client").Dot("options").Dot("logRequests")).Block(
+							Qual(PackageSlog, "DebugContext").Call(Id("ctx"), Lit("call"), Qual(PackageSlog, "String").Call(Lit("method"), Id("request").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("curlCmd"))),
+						),
 					)
 				},
 			)
 			bg.Defer().Func().Params().BlockFunc(
 				func(dg *Group) {
-					dg.If(Id("err").Op("!=").Nil().Op("&&").Id("client").Dot("options").Dot("logOnError")).BlockFunc(
-						func(eg *Group) {
-							eg.If(List(Id("cmd"), Id("cmdErr")).Op(":=").Id("ToCurl").Call(Id("httpRequest")).Op(";").Id("cmdErr").Op("==").Nil()).Block(
-								Qual(PackageSlog, "ErrorContext").Call(Id("ctx"), Lit("call"), Qual(PackageSlog, "String").Call(Lit("method"), Id("request").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("cmd").Dot("String").Call()), Qual(PackageSlog, "Any").Call(Lit("error"), Id("err"))),
-							)
-						},
+					dg.If(Id("err").Op("!=").Nil().Op("&&").Id("client").Dot("options").Dot("logOnError")).Block(
+						Qual(PackageSlog, "ErrorContext").Call(Id("ctx"), Lit("call"), Qual(PackageSlog, "String").Call(Lit("method"), Id("request").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("curlCmd")), Qual(PackageSlog, "Any").Call(Lit("error"), Id("err"))),
 					)
 				},
 			).Call()
@@ -473,21 +473,21 @@ func (gen *jsonrpcGenerator) renderInternal(outDir, jsonPkg string) (err error) 
 			bg.If(Id("client").Dot("options").Dot("before").Op("!=").Nil()).Block(
 				Id("ctx").Op("=").Id("client").Dot("options").Dot("before").Call(Id("ctx"), Id("httpRequest")),
 			)
-			bg.If(Id("client").Dot("options").Dot("logRequests")).BlockFunc(
+			bg.Var().Id("curlCmd").String()
+			bg.If(Id("client").Dot("options").Dot("logRequests").Op("||").Id("client").Dot("options").Dot("logOnError")).BlockFunc(
 				func(ig *Group) {
 					ig.If(List(Id("cmd"), Id("cmdErr")).Op(":=").Id("ToCurl").Call(Id("httpRequest")).Op(";").Id("cmdErr").Op("==").Nil()).Block(
-						Qual(PackageSlog, "DebugContext").Call(Id("ctx"), Lit("call"), Qual(PackageSlog, "String").Call(Lit("method"), Lit("batch")), Qual(PackageSlog, "Int").Call(Lit("count"), Len(Id("rpcRequests"))), Qual(PackageSlog, "String").Call(Lit("curl"), Id("cmd").Dot("String").Call())),
+						Id("curlCmd").Op("=").Id("cmd").Dot("String").Call(),
+						If(Id("client").Dot("options").Dot("logRequests")).Block(
+							Qual(PackageSlog, "DebugContext").Call(Id("ctx"), Lit("call"), Qual(PackageSlog, "String").Call(Lit("method"), Lit("batch")), Qual(PackageSlog, "Int").Call(Lit("count"), Len(Id("rpcRequests"))), Qual(PackageSlog, "String").Call(Lit("curl"), Id("curlCmd"))),
+						),
 					)
 				},
 			)
 			bg.Defer().Func().Params().BlockFunc(
 				func(dg *Group) {
-					dg.If(Id("err").Op("!=").Nil().Op("&&").Id("client").Dot("options").Dot("logOnError")).BlockFunc(
-						func(eg *Group) {
-							eg.If(List(Id("cmd"), Id("cmdErr")).Op(":=").Id("ToCurl").Call(Id("httpRequest")).Op(";").Id("cmdErr").Op("==").Nil()).Block(
-								Qual(PackageSlog, "ErrorContext").Call(Id("ctx"), Lit("call"), Qual(PackageSlog, "String").Call(Lit("method"), Lit("batch")), Qual(PackageSlog, "Int").Call(Lit("count"), Len(Id("rpcRequests"))), Qual(PackageSlog, "String").Call(Lit("curl"), Id("cmd").Dot("String").Call()), Qual(PackageSlog, "Any").Call(Lit("error"), Id("err"))),
-							)
-						},
+					dg.If(Id("err").Op("!=").Nil().Op("&&").Id("client").Dot("options").Dot("logOnError")).Block(
+						Qual(PackageSlog, "ErrorContext").Call(Id("ctx"), Lit("call"), Qual(PackageSlog, "String").Call(Lit("method"), Lit("batch")), Qual(PackageSlog, "Int").Call(Lit("count"), Len(Id("rpcRequests"))), Qual(PackageSlog, "String").Call(Lit("curl"), Id("curlCmd")), Qual(PackageSlog, "Any").Call(Lit("error"), Id("err"))),
 					)
 				},
 			).Call()

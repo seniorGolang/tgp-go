@@ -62,7 +62,6 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Co
 					}
 					cg.Id("request").Dot(fieldName).Op("=").Id("p")
 					cg.Id("found").Op("=").True()
-					cg.Break()
 				}),
 				Default().Block(List(Id("_"), Id("_")).Op("=").Qual("io", "Copy").Call(Qual("io", "Discard"), Id("p"))),
 			)
@@ -101,7 +100,9 @@ func (r *contractRenderer) httpServeMultipartResponseDefers(method *model.Method
 	st := Line()
 	for _, res := range streamResults {
 		fieldName := r.responseStructFieldName(method, res)
-		st.Line().Defer().Id("response").Dot(fieldName).Dot("Close").Call()
+		st.Line().Defer().Func().Params().Block(
+			Id("_").Op("=").Id("response").Dot(fieldName).Dot("Close").Call(),
+		).Call()
 	}
 	return st
 }
@@ -120,7 +121,9 @@ func (r *contractRenderer) httpServeMultipartResponse(method *model.Method) (c C
 	st.Line().Id(VarNameFtx).Dot("Response").Call().Dot("Header").Dot("SetContentType").Call(
 		Lit("multipart/form-data; boundary=").Op("+").Id("boundary"),
 	)
-	st.Line().Defer().Id("mw").Dot("Close").Call()
+	st.Line().Defer().Func().Params().Block(
+		Id("_").Op("=").Id("mw").Dot("Close").Call(),
+	).Call()
 	st.Line().Var().Id("partHeader").Qual(PackageNetTextproto, "MIMEHeader")
 	st.Line().Var().Id("partWriter").Qual("io", "Writer")
 	for _, res := range streamResults {

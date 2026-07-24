@@ -11,6 +11,7 @@ import (
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
 
 	"tgp/internal/common"
+	"tgp/internal/content"
 	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/internal/tags"
@@ -22,9 +23,6 @@ func (r *contractRenderer) RenderExchange() (err error) {
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
 	srcFile.PackageComment(generated.ByToolGateway)
 
-	srcFile.ImportName(PackageSlog, "slog")
-	srcFile.ImportName(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "viewer")
-
 	typeGen := types.NewGenerator(r.project, &srcFile)
 
 	for _, method := range r.contract.Methods {
@@ -34,12 +32,17 @@ func (r *contractRenderer) RenderExchange() (err error) {
 			responseFields[0].tags["json"] = ",inline"
 		}
 
+		reqXML := content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagRequestContentType, "application/json")) == content.KindXML
+		respXML := content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")) == content.KindXML
+
 		reqName := requestStructName(r.contract.Name, method.Name)
 		respName := responseStructName(r.contract.Name, method.Name)
-		srcFile.Line().Add(r.exchangeStruct(typeGen, reqName, requestFields))
-		srcFile.Line().Add(r.exchangeLogValueMethod(reqName, requestFields))
-		srcFile.Line().Add(r.exchangeStruct(typeGen, respName, responseFields))
-		srcFile.Line().Add(r.exchangeLogValueMethod(respName, responseFields))
+		srcFile.Line().Add(r.exchangeStruct(typeGen, reqName, requestFields, reqXML))
+		r.addExchangeLogValue(&srcFile, reqName, requestFields)
+		if len(responseFields) > 0 || !model.MethodIsStream(r.project, r.contract, method) {
+			srcFile.Line().Add(r.exchangeStruct(typeGen, respName, responseFields, respXML))
+			r.addExchangeLogValue(&srcFile, respName, responseFields)
+		}
 
 		if len(r.resultNamesExcludeFromBody(method)) > 0 {
 			bodyFields := r.fieldsResultBody(method)
@@ -47,12 +50,12 @@ func (r *contractRenderer) RenderExchange() (err error) {
 				bodyFields[0].tags["json"] = ",inline"
 			}
 			bodyName := responseBodyStructName(r.contract.Name, method.Name)
-			srcFile.Line().Add(r.exchangeStruct(typeGen, bodyName, bodyFields))
-			srcFile.Line().Add(r.exchangeLogValueMethod(bodyName, bodyFields))
+			srcFile.Line().Add(r.exchangeStruct(typeGen, bodyName, bodyFields, respXML))
+			r.addExchangeLogValue(&srcFile, bodyName, bodyFields)
 			resultFields := r.fieldsResultForMarshal(method)
 			resultName := responseResultStructName(r.contract.Name, method.Name)
-			srcFile.Line().Add(r.exchangeStruct(typeGen, resultName, resultFields))
-			srcFile.Line().Add(r.exchangeLogValueMethod(resultName, resultFields))
+			srcFile.Line().Add(r.exchangeStruct(typeGen, resultName, resultFields, respXML))
+			r.addExchangeLogValue(&srcFile, resultName, resultFields)
 		}
 	}
 
@@ -60,7 +63,7 @@ func (r *contractRenderer) RenderExchange() (err error) {
 	return
 }
 
-func (r *contractRenderer) exchangeStruct(typeGen *types.Generator, name string, fields []exchangeField) (c Code) {
+func (r *contractRenderer) exchangeStruct(typeGen *types.Generator, name string, fields []exchangeField, withXML bool) (c Code) {
 
 	if len(fields) == 0 {
 		return Type().Id(name).Struct()
@@ -73,15 +76,35 @@ func (r *contractRenderer) exchangeStruct(typeGen *types.Generator, name string,
 
 	return Type().Id(name).StructFunc(func(gr *Group) {
 		for _, field := range fields {
-			fieldCode := r.structField(typeGen, field, template)
+			fieldCode := r.structField(typeGen, field, template, withXML)
 			gr.Add(fieldCode)
 		}
 	})
 }
 
-func (r *contractRenderer) exchangeLogValueMethod(typeName string, fields []exchangeField) (c Code) {
+func (r *contractRenderer) addExchangeLogValue(srcFile *GoFile, typeName string, fields []exchangeField) {
 
-	// Viewer по полям типа может паниковать на неэкспортируемых полях (например io.Reader); используем placeholder.
+	if !exchangeNeedsLogValue(fields) {
+		return
+	}
+	srcFile.ImportName(PackageSlog, "slog")
+	srcFile.Line().Add(r.exchangeLogValueMethod(typeName))
+}
+
+func exchangeNeedsLogValue(fields []exchangeField) (needed bool) {
+
+	for _, field := range fields {
+		switch field.typeID {
+		case TypeIDIOReader, TypeIDIOReadCloser:
+			return true
+		}
+	}
+	return false
+}
+
+func (r *contractRenderer) exchangeLogValueMethod(typeName string) (c Code) {
+
+	// Placeholder: viewer уважает slog.LogValuer и не обходит поля (io.Reader и т.п.).
 	return Func().Params(Id("r").Id(typeName)).Id("LogValue").Params().
 		Params(Qual(PackageSlog, "Value")).
 		Block(
@@ -105,6 +128,9 @@ type exchangeField struct {
 func (r *contractRenderer) fieldsArgument(method *model.Method) []exchangeField {
 
 	vars := argsWithoutContext(method)
+	if model.MethodIsStream(r.project, r.contract, method) {
+		vars = streamVariables(r.project, vars, false)
+	}
 	omitSet := model.HTTPOmitFromRequestJSON(r.project, r.contract, method)
 	return r.varsToFields(vars, method.Annotations, omitSet)
 }
@@ -112,6 +138,9 @@ func (r *contractRenderer) fieldsArgument(method *model.Method) []exchangeField 
 func (r *contractRenderer) fieldsResult(method *model.Method) []exchangeField {
 
 	vars := resultsWithoutError(method)
+	if model.MethodIsStream(r.project, r.contract, method) {
+		vars = streamVariables(r.project, vars, false)
+	}
 	exclude := r.resultNamesExcludeFromBody(method)
 	return r.varsToFields(vars, method.Annotations, exclude)
 }
@@ -119,6 +148,9 @@ func (r *contractRenderer) fieldsResult(method *model.Method) []exchangeField {
 func (r *contractRenderer) fieldsResultForMarshal(method *model.Method) []exchangeField {
 
 	vars := resultsWithoutError(method)
+	if model.MethodIsStream(r.project, r.contract, method) {
+		vars = streamVariables(r.project, vars, false)
+	}
 	return r.varsToFields(vars, method.Annotations, nil)
 }
 
@@ -126,6 +158,19 @@ func (r *contractRenderer) fieldsResultBody(method *model.Method) []exchangeFiel
 
 	vars := r.resultsForBody(method)
 	return r.varsToFields(vars, method.Annotations, nil)
+}
+
+func streamVariables(project *model.Project, vars []*model.Variable, includeChannels bool) (out []*model.Variable) {
+
+	out = make([]*model.Variable, 0, len(vars))
+	for _, variable := range vars {
+		isChannel := model.TypeRefIsChan(project, &variable.TypeRef)
+		if isChannel != includeChannels {
+			continue
+		}
+		out = append(out, variable)
+	}
+	return
 }
 
 func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.DocTags, requestJsonOmitNames map[string]struct{}) []exchangeField {
@@ -158,21 +203,28 @@ func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.
 	return fields
 }
 
-func (r *contractRenderer) structField(typeGen *types.Generator, field exchangeField, template string) (st *Statement) {
+func (r *contractRenderer) structField(typeGen *types.Generator, field exchangeField, template string, withXML bool) (st *Statement) {
 
 	jsonTag := field.tags["json"]
 	if jsonTag == "" {
 		jsonTag = fmt.Sprintf(template, field.name)
 	}
-	tags := map[string]string{"json": jsonTag}
+	fieldTags := map[string]string{"json": jsonTag}
 	for tag, value := range common.SortedPairs(field.tags) {
 		if tag == "json" {
 			continue
 		}
-		tags[tag] = value
+		fieldTags[tag] = value
+	}
+	if withXML {
+		if _, hasXML := fieldTags["xml"]; !hasXML {
+			if xmlTag := tags.ExchangeXMLTag(jsonTag); xmlTag != "" {
+				fieldTags["xml"] = xmlTag
+			}
+		}
 	}
 
-	isEmbedded := tags["json"] == ",inline" && typeGen.TypeIsEmbeddable(field.typeID)
+	isEmbedded := fieldTags["json"] == ",inline" && typeGen.TypeIsEmbeddable(field.typeID)
 
 	var s *Statement
 	switch {
@@ -198,6 +250,6 @@ func (r *contractRenderer) structField(typeGen *types.Generator, field exchangeF
 	if !isEmbedded {
 		s = Id(toCamel(field.name)).Add(s)
 	}
-	s.Tag(tags)
+	s.Tag(fieldTags)
 	return s
 }

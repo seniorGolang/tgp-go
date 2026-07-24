@@ -61,6 +61,9 @@ func (p *ServerPlugin) Execute(request data.Storage) (response data.Storage, err
 	}
 
 	for _, contract := range project.Contracts {
+		if !model.ContractIsHTTPFamily(project, contract) {
+			continue
+		}
 		if err = generator.GenerateServer(project, contract.ID, output); err != nil {
 			slog.Error(i18n.Msg("failed to generate server"),
 				slog.String("contract", contract.ID),

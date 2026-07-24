@@ -86,6 +86,9 @@ func validateFormRequestAnnotations(project *model.Project, contract *model.Cont
 	}
 
 	for _, arg := range model.HTTPArgsFromRequestBody(project, contract, method) {
+		if model.ArgFieldEmbedded(project, method, arg) {
+			continue
+		}
 		if _, ok := tags.FormFieldName(method.Annotations, arg.Name); !ok {
 			return fmt.Errorf("contract %q: method %q: argument %q requires form:<name> tag when requestContentType is %s", contract.Name, method.Name, arg.Name, requestContentType)
 		}

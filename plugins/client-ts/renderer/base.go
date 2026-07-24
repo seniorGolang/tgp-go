@@ -74,6 +74,26 @@ func (r *ClientRenderer) HasHTTP() (ok bool) {
 	return false
 }
 
+func (r *ClientRenderer) HasWS() (ok bool) {
+
+	for _, contract := range r.project.Contracts {
+		if model.ContractHasWS(r.project, contract) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *ClientRenderer) HasSSE() (ok bool) {
+
+	for _, contract := range r.project.Contracts {
+		if model.ContractHasSSE(r.project, contract) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *ClientRenderer) ContractKeys() (keys []string) {
 
 	keys = make([]string, 0, len(r.project.Contracts))

@@ -88,6 +88,37 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 		}
 	}
 
+	hasStreams := false
+	hasWS := false
+	hasSSE := false
+	for _, method := range contract.Methods {
+		if model.MethodIsWS(r.project, contract, method) {
+			hasStreams = true
+			hasWS = true
+		}
+		if model.MethodIsSSE(r.project, contract, method) {
+			hasStreams = true
+			hasSSE = true
+		}
+	}
+	if hasStreams {
+		srcFile.ImportName(PackageContext, "context")
+		srcFile.ImportName(PackageFmt, "fmt")
+		srcFile.ImportName(PackageStrings, "strings")
+		srcFile.ImportName(PackageURL, "url")
+		srcFile.ImportName(PackageUUID, "uuid")
+		srcFile.ImportName(r.getPackageJSON(contract), "json")
+		if hasWS {
+			srcFile.ImportName(packageWebsocket, "websocket")
+			srcFile.ImportName(PackageHttp, "http")
+		}
+		if hasSSE {
+			srcFile.ImportName(PackageBytes, "bytes")
+			srcFile.ImportName("bufio", "bufio")
+			srcFile.ImportName(PackageHttp, "http")
+		}
+	}
+
 	if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) && r.contractHasHTTPMethods(contract) {
 		srcFile.ImportName(PackageTime, "time")
 	}
@@ -115,6 +146,12 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 			srcFile.Line().Add(r.jsonrpcClientRequestFunc(ctx, contract, method, outDir))
 		} else if r.methodIsHTTP(contract, method) {
 			srcFile.Line().Add(r.httpClientMethodFunc(ctx, contract, method, outDir))
+		}
+		if model.MethodIsWS(r.project, contract, method) || model.MethodIsSSE(r.project, contract, method) {
+			srcFile.Line().Add(r.streamClientMethod(ctx, contract, method))
+			if model.MethodIsWS(r.project, contract, method) && model.MethodIsSSE(r.project, contract, method) {
+				srcFile.Line().Add(r.streamSSEAlternateMethod(ctx, contract, method))
+			}
 		}
 	}
 

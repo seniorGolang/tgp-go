@@ -54,16 +54,7 @@ func (r *contractRenderer) methodJsonRPCPath(method *model.Method) (path string)
 
 func methodIsHTTP(project *model.Project, contract *model.Contract, method *model.Method) (ok bool) {
 
-	if contract == nil || method == nil {
-		return false
-	}
-	contractHasHTTP := model.IsAnnotationSet(project, contract, nil, nil, model.TagServerHTTP)
-	if !contractHasHTTP {
-		return false
-	}
-	contractHasJsonRPC := model.IsAnnotationSet(project, contract, nil, nil, model.TagServerJsonRPC)
-	methodHasExplicitHTTP := model.IsAnnotationSet(project, contract, method, nil, model.TagHTTPMethod)
-	return !contractHasJsonRPC || methodHasExplicitHTTP
+	return model.MethodIsHTTP(project, contract, method)
 }
 
 func (r *contractRenderer) methodIsHTTP(method *model.Method) (ok bool) {
@@ -73,10 +64,7 @@ func (r *contractRenderer) methodIsHTTP(method *model.Method) (ok bool) {
 
 func (r *contractRenderer) methodIsJsonRPC(method *model.Method) (ok bool) {
 
-	if method == nil {
-		return false
-	}
-	return r.contract != nil && model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPMethod)
+	return model.MethodIsJSONRPC(r.project, r.contract, method)
 }
 
 func (r *contractRenderer) methodHandlerQual(srcFile *GoFile, method *model.Method) (stmt *Statement) {
@@ -93,4 +81,15 @@ func (r *contractRenderer) methodHandlerQual(srcFile *GoFile, method *model.Meth
 		return Qual(pkgPath, funcName)
 	}
 	return Id(handlerValue)
+}
+
+// methodUsesRouteOverride — handler= или http-response= обходят transport-wrapper вокруг svc.
+func (r *contractRenderer) methodUsesRouteOverride(method *model.Method) (ok bool) {
+
+	handlerValue := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHandler, "")
+	if handlerValue != "" && strings.Contains(handlerValue, ":") {
+		return true
+	}
+	responseValue := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpResponse, "")
+	return responseValue != "" && strings.Contains(responseValue, ":")
 }

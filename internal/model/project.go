@@ -97,7 +97,7 @@ type Method struct {
 	Handler     *HandlerInfo `json:"handler,omitempty"`
 }
 
-// Рекурсивно используется в MapKey/MapValue для вложенных map. Не содержит имени, тегов и аннотаций.
+// Рекурсивно используется в MapKey/MapValue/ChanOf. Не содержит имени, тегов и аннотаций.
 type TypeRef struct {
 	TypeID           string   `json:"typeID,omitempty"`
 	NumberOfPointers int      `json:"numberOfPointers,omitempty"`
@@ -107,6 +107,8 @@ type TypeRef struct {
 	ElementPointers  int      `json:"elementPointers,omitempty"`
 	MapKey           *TypeRef `json:"mapKey,omitempty"`
 	MapValue         *TypeRef `json:"mapValue,omitempty"`
+	ChanOf           *TypeRef `json:"chanOf,omitempty"`
+	ChanDirection    int      `json:"chanDirection,omitempty"` // 1=send, 2=recv, 0/3=both (go/types.ChanDir)
 }
 
 // Variable — аргумент/результат метода или элемент описания (map key/value и т.д.). Содержит TypeRef + имя и метаданные.

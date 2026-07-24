@@ -18,6 +18,9 @@ func (l *AutonomousPackageLoader) LoadPackageForErrorType(pkgPath string, typeNa
 	}
 	l.mu.RUnlock()
 
+	if l.resolver == nil {
+		return nil, fmt.Errorf("package loader is not initialized")
+	}
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
 		return nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
@@ -87,6 +90,9 @@ func (l *AutonomousPackageLoader) LoadPackageForType(pkgPath string, typeName st
 	}
 	l.mu.RUnlock()
 
+	if l.resolver == nil {
+		return nil, fmt.Errorf("package loader is not initialized")
+	}
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
 		return nil, fmt.Errorf("failed to resolve package path %s: %w", pkgPath, err)
@@ -162,6 +168,9 @@ func (l *AutonomousPackageLoader) LoadPackageMinimal(pkgPath string, requiredImp
 	l.cache[pkgPath] = nil
 	l.mu.Unlock()
 
+	if l.resolver == nil {
+		return nil, fmt.Errorf("package loader is not initialized")
+	}
 	var pkgDir string
 	if pkgDir, err = l.resolver.Resolve(pkgPath); err != nil {
 		l.mu.Lock()

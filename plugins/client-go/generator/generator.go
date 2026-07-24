@@ -64,7 +64,7 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 		}
 	}
 
-	if g.renderer.HasJsonRPC() || g.renderer.HasHTTP() {
+	if g.renderer.HasJsonRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE() {
 		if err = g.renderer.RenderClientOptions(); err != nil {
 			return
 		}
@@ -72,6 +72,9 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 			return
 		}
 		if err = g.renderer.RenderClient(); err != nil {
+			return
+		}
+		if err = g.renderer.RenderStreamHelpers(); err != nil {
 			return
 		}
 		if err = g.renderer.RenderClientError(); err != nil {
@@ -95,7 +98,7 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 		if contract == nil {
 			continue
 		}
-		if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerHTTP) {
+		if model.ContractIsHTTPFamily(g.project, contract) {
 			contractsForClient = append(contractsForClient, contract)
 		}
 	}
@@ -125,7 +128,7 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 		}
 	}
 
-	if docOpts.Enabled && (g.renderer.HasJsonRPC() || g.renderer.HasHTTP()) {
+	if docOpts.Enabled && (g.renderer.HasJsonRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE()) {
 		if err = g.renderer.RenderReadmeGo(docOpts); err != nil {
 			return
 		}

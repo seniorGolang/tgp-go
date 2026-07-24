@@ -4,6 +4,7 @@ package generator
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -26,6 +27,9 @@ func (g *generator) generatePaths(contracts []*model.Contract, ifaces []string) 
 	}
 
 	for _, contract := range contracts {
+		if !model.ContractIsHTTPFamily(g.project, contract) {
+			continue
+		}
 		if len(include) > 0 {
 			found := false
 			for _, iface := range include {
@@ -66,14 +70,78 @@ func (g *generator) generateMethodPath(paths map[string]types.Path, contract *mo
 		serviceTags = strings.Split(model.GetAnnotationValue(g.project, contract, method, nil, tagSwaggerTags, ""), ",")
 	}
 
-	isJsonRPC := model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(g.project, contract, method, nil, model.TagHTTPMethod)
-	isHTTP := model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerHTTP) && (!model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(g.project, contract, method, nil, model.TagHTTPMethod))
+	isWS := model.MethodIsWS(g.project, contract, method)
+	isSSE := model.MethodIsSSE(g.project, contract, method)
+	isJsonRPC := model.MethodIsJSONRPC(g.project, contract, method)
+	isHTTP := model.MethodIsHTTP(g.project, contract, method)
 
+	if isWS {
+		g.generateWebSocketPath(paths, contract, method, serviceTags)
+	}
+	if isSSE {
+		g.generateSSEPath(paths, contract, method, serviceTags)
+	}
+	if isWS || isSSE {
+		return
+	}
 	if isJsonRPC {
 		g.generateJsonRPCPath(paths, contract, method, serviceTags)
 	} else if isHTTP {
 		g.generateHTTPPath(paths, contract, method, serviceTags)
 	}
+}
+
+func (g *generator) generateWebSocketPath(paths map[string]types.Path, contract *model.Contract, method *model.Method, serviceTags []string) {
+
+	requestName := g.requestStructName(contract, method)
+	args := streamNonChannelVariables(g.project, method.Args)
+	g.registerStruct(requestName, contract.PkgPath, method, args, contentJSON, true)
+	wireMethod := model.JsonRPCWireMethod(contract.Name, method.Name)
+	methodBlock := fmt.Sprintf("%s (`%s`): %s", method.Name, wireMethod, strings.TrimSpace(descriptionFromMethod(method)))
+	wsPath := model.ContractWSPath(g.project, contract)
+	pathValue := paths[wsPath]
+	if pathValue.Get == nil {
+		pathValue.Get = &types.Operation{
+			OperationID: types.ToCamel(contract.Name) + "WebSocket",
+			Description: "WebSocket JSON-RPC 2.0 streaming profile: open with id and params; chunks use $/stream; client ends with $/stream.end; cancellation uses $/cancel.\n\n" + methodBlock,
+			Tags:        serviceTags,
+			XWebSocket:  true,
+			Responses: types.Responses{
+				"101": {Description: "Switching Protocols"},
+			},
+		}
+	} else {
+		pathValue.Get.Description += "\n\n" + methodBlock
+	}
+	paths[wsPath] = pathValue
+}
+
+func (g *generator) generateSSEPath(paths map[string]types.Path, contract *model.Contract, method *model.Method, serviceTags []string) {
+
+	requestName := g.requestStructName(contract, method)
+	args := streamNonChannelVariables(g.project, method.Args)
+	g.registerStruct(requestName, contract.PkgPath, method, args, contentJSON, true)
+	operation := &types.Operation{
+		OperationID: types.ToCamel(contract.Name) + types.ToCamel(method.Name) + "SSE",
+		Description: descriptionFromMethod(method) + "\n\nServer-Sent Events JSON-RPC streaming profile: each event contains a $/stream notification; the final event is the JSON-RPC result.",
+		Tags:        serviceTags,
+		RequestBody: &types.RequestBody{Content: types.Content{contentJSON: types.Media{Schema: g.toSchema(requestName)}}},
+		Responses: types.Responses{
+			"200": {Description: "Event stream", Content: types.Content{"text/event-stream": {Schema: types.Schema{Type: "string"}}}},
+		},
+	}
+	paths[model.MethodSSEPath(g.project, contract, method)] = types.Path{Post: operation}
+}
+
+func streamNonChannelVariables(project *model.Project, variables []*model.Variable) (out []*model.Variable) {
+
+	for _, variable := range variables {
+		if variable.TypeID == "context:Context" || model.TypeRefIsChan(project, &variable.TypeRef) {
+			continue
+		}
+		out = append(out, variable)
+	}
+	return
 }
 
 func (g *generator) generateJsonRPCPath(paths map[string]types.Path, contract *model.Contract, method *model.Method, serviceTags []string) {
@@ -344,15 +412,31 @@ func (g *generator) effectiveResponseSchema(contract *model.Contract, method *mo
 	return merged
 }
 
-func (g *generator) resolveSchemaForMerge(s *types.Schema) types.Schema {
+func (g *generator) resolveSchemaForMerge(s *types.Schema) (resolved types.Schema) {
 
 	if s == nil {
 		return types.Schema{}
 	}
 	if s.Ref != "" {
-		resolved, ok := g.resolveRefToSchema(s.Ref)
-		if ok {
-			return resolved
+		if refResolved, ok := g.resolveRefToSchema(s.Ref); ok {
+			return g.resolveSchemaForMerge(&refResolved)
+		}
+		return *s
+	}
+	if len(s.Properties) > 0 {
+		return *s
+	}
+	for _, item := range s.OneOf {
+		if item.Nullable {
+			continue
+		}
+		if candidate := g.resolveSchemaForMerge(&item); len(candidate.Properties) > 0 {
+			return candidate
+		}
+	}
+	for _, item := range s.AllOf {
+		if candidate := g.resolveSchemaForMerge(&item); len(candidate.Properties) > 0 {
+			return candidate
 		}
 	}
 	return *s
@@ -769,7 +853,13 @@ func (g *generator) fillErrors(responses types.Responses, method *model.Method) 
 		withoutHTTPCode = append(withoutHTTPCode, errInfo)
 	}
 
-	for code, errInfos := range byCode {
+	codes := make([]int, 0, len(byCode))
+	for code := range byCode {
+		codes = append(codes, code)
+	}
+	sort.Ints(codes)
+	for _, code := range codes {
+		errInfos := byCode[code]
 		schema := g.errorInfosSchema(errInfos)
 		if schema == nil {
 			continue

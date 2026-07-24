@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"tgp/internal/common"
 	"tgp/internal/markdown"
 	"tgp/internal/model"
 )
@@ -204,7 +205,7 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 	}
 
 	services := make([]ServiceInfo, 0, len(servicesUsed))
-	for contractName, serviceVar := range servicesUsed {
+	for contractName, serviceVar := range common.SortedPairs(servicesUsed) {
 		services = append(services, ServiceInfo{
 			Name: contractName,
 			Var:  serviceVar,

@@ -3,7 +3,7 @@
 package types
 
 import (
-	"github.com/goccy/go-json"
+	"encoding/json"
 
 	"gopkg.in/yaml.v3"
 )
@@ -52,6 +52,7 @@ type Operation struct {
 	Deprecated  bool         `json:"deprecated,omitempty" yaml:"deprecated,omitempty"`
 	Servers     []Server     `json:"servers,omitempty" yaml:"servers,omitempty"`
 	CodeSamples []CodeSample `json:"x-code-samples,omitempty" yaml:"x-code-samples,omitempty"`
+	XWebSocket  bool         `json:"x-websocket,omitempty" yaml:"x-websocket,omitempty"`
 }
 
 type CodeSample struct {

@@ -17,16 +17,7 @@ import (
 
 func (r *ClientRenderer) isHTTP(method *model.Method, contract *model.Contract) (ok bool) {
 
-	if method == nil || contract == nil {
-		return false
-	}
-	contractHasHTTP := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP)
-	if !contractHasHTTP {
-		return false
-	}
-	contractHasJsonRPC := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC)
-	methodHasExplicitHTTP := model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
-	return !contractHasJsonRPC || methodHasExplicitHTTP
+	return model.MethodIsHTTP(r.project, contract, method)
 }
 
 func (r *ClientRenderer) renderHTTPMethod(grp *tsg.Group, method *model.Method, contract *model.Contract) {
@@ -333,11 +324,13 @@ func (r *ClientRenderer) argsForClient(contract *model.Contract, method *model.M
 
 func (r *ClientRenderer) argsForExchangeRequest(contract *model.Contract, method *model.Method) (out []*model.Variable) {
 
-	mappings := model.BuildHTTPArgMappings(r.project, contract, method)
-	exclude := model.HTTPExcludeFromExchangeRequestSet(mappings)
+	omit := model.HTTPOmitFromRequestJSON(r.project, contract, method)
 	var list []*model.Variable
 	for _, arg := range r.argsWithoutContext(method) {
-		if _, ok := exclude[arg.Name]; !ok {
+		if model.TypeRefIsChan(r.project, &arg.TypeRef) {
+			continue
+		}
+		if _, ok := omit[arg.Name]; !ok {
 			list = append(list, arg)
 		}
 	}
@@ -476,7 +469,11 @@ func (r *ClientRenderer) renderHTTPBody(mg *tsg.Group, contract *model.Contract,
 			mg.Add(tsg.NewStatement().Const(tsLocalVar("bodyObj")).Op("=").Add(bodyObj).Semicolon())
 			switch reqKind {
 			case content.KindXML:
-				mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("new XMLBuilder").Call().Dot("build").Call(tsg.NewStatement().Id(tsLocalVar("bodyObj"))).Semicolon())
+				xmlRoot := "request" + contract.Name + method.Name
+				wrapped := tsg.NewStatement().Values(func(bg *tsg.Group) {
+					bg.Add(tsg.NewStatement().Id(xmlRoot).Colon().Id(tsLocalVar("bodyObj")))
+				})
+				mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("new XMLBuilder").Call().Dot("build").Call(wrapped).Semicolon())
 			case content.KindMsgpack:
 				mg.Add(tsg.NewStatement().Const(tsLocalVar("body")).Op("=").Id("new Blob").Call(tsg.NewStatement().Id("Msgpack").Dot("encode").Call(tsg.NewStatement().Id(tsLocalVar("bodyObj")))).Semicolon())
 			case content.KindCBOR:
@@ -607,7 +604,9 @@ func (r *ClientRenderer) renderHTTPResponse(mg *tsg.Group, contract *model.Contr
 			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Add(responseDataObj).Semicolon())
 		case content.KindXML:
 			mg.Add(tsg.NewStatement().Const(tsLocalVar("text")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("text").Call()).Semicolon())
-			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("new XMLParser").Call().Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Op("as").Id(responseTypeName).Semicolon())
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("parsed")).Op("=").Id("new XMLParser").Call().Dot("parse").Call(tsg.NewStatement().Id(tsLocalVar("text"))).Semicolon())
+			mg.Add(tsg.NewStatement().Const(tsLocalVar("rootKeys")).Op("=").Id("Object").Dot("keys").Call(tsg.NewStatement().Id(tsLocalVar("parsed"))).Semicolon())
+			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Op("(").Id(tsLocalVar("rootKeys")).Dot("length").Op("===").Lit(1).Op("?").Id(tsLocalVar("parsed")).Index(tsg.NewStatement().Id(tsLocalVar("rootKeys")).Index(tsg.NewStatement().Lit(0))).Op(":").Id(tsLocalVar("parsed")).Op(")").Op("as").Id(responseTypeName).Semicolon())
 		case content.KindMsgpack:
 			mg.Add(tsg.NewStatement().Const(tsLocalVar("buf")).Op("=").Await(tsg.NewStatement().Id(tsLocalVar("response")).Dot("arrayBuffer").Call()).Semicolon())
 			mg.Add(tsg.NewStatement().Var(tsLocalVar("responseData")).Colon().Id(responseTypeName).Op("=").Id("Msgpack").Dot("decode").Call(tsg.NewStatement().Id("new Uint8Array").Call(tsg.NewStatement().Id(tsLocalVar("buf")))).Op("as").Id(responseTypeName).Semicolon())

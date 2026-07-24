@@ -58,6 +58,12 @@ func TestRenderREST_HttpResponseAnnotationCallsFunction(t *testing.T) {
 	if !strings.Contains(source, "fiberhooks.EchoResponseHandler(ftx, http.base, request.Text)") {
 		t.Fatalf("expected EchoResponseHandler call, got:\n%s", source)
 	}
+	if strings.Contains(source, "func (http *httpOverrides) customEcho(") {
+		t.Fatalf("http-response= must not generate unused svc wrapper:\n%s", source)
+	}
+	if strings.Contains(source, "func (http *httpOverrides) customPing(") {
+		t.Fatalf("handler= must not generate unused svc wrapper:\n%s", source)
+	}
 }
 
 func TestRenderHTTP_HandlerAnnotationRejectsMalformedReturn(t *testing.T) {

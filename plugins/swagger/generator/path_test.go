@@ -50,3 +50,118 @@ func TestAddResponseHeaders_BodyModeIncluded(t *testing.T) {
 		t.Fatalf("body-mode result header missing: %#v", headers)
 	}
 }
+
+func TestResolveSchemaForMerge_oneOfPointerRef(t *testing.T) {
+
+	const cfgJWKSTypeName = "dto.CfgJWKS"
+
+	gen := newGenerator(&model.Project{Types: map[string]*model.Type{
+		"string": {Kind: model.TypeKindString},
+	}})
+	gen.schemas[cfgJWKSTypeName] = types.Schema{
+		Type: "object",
+		Properties: types.Properties{
+			"issuer":   {Type: "string"},
+			"jwks_uri": {Type: "string"},
+		},
+		Required: []string{"issuer", "jwks_uri"},
+	}
+
+	source := &types.Schema{
+		OneOf: []types.Schema{
+			{Ref: componentsSchemasPrefix + cfgJWKSTypeName},
+			{Nullable: true},
+		},
+	}
+
+	resolved := gen.resolveSchemaForMerge(source)
+	if len(resolved.Properties) != 2 {
+		t.Fatalf("expected 2 properties, got %#v", resolved.Properties)
+	}
+	if _, ok := resolved.Properties["issuer"]; !ok {
+		t.Fatalf("expected issuer property, got %#v", resolved.Properties)
+	}
+}
+
+func TestResolveSchemaForMerge_allOfAliasRef(t *testing.T) {
+
+	const aliasTypeName = "dto.JSONWebKeySet"
+	const baseTypeName = "jose.JSONWebKeySet"
+
+	gen := newGenerator(&model.Project{Types: map[string]*model.Type{}})
+	gen.schemas[aliasTypeName] = types.Schema{
+		AllOf: []types.Schema{{Ref: componentsSchemasPrefix + baseTypeName}},
+	}
+	gen.schemas[baseTypeName] = types.Schema{
+		Type: "object",
+		Properties: types.Properties{
+			"keys": {Type: "array"},
+		},
+		Required: []string{"keys"},
+	}
+
+	source := &types.Schema{
+		OneOf: []types.Schema{
+			{Ref: componentsSchemasPrefix + aliasTypeName},
+			{Nullable: true},
+		},
+	}
+
+	resolved := gen.resolveSchemaForMerge(source)
+	if len(resolved.Properties) != 1 {
+		t.Fatalf("expected 1 property, got %#v", resolved.Properties)
+	}
+	if _, ok := resolved.Properties["keys"]; !ok {
+		t.Fatalf("expected keys property, got %#v", resolved.Properties)
+	}
+}
+
+func TestEffectiveResponseSchema_enableInlineSinglePointerStruct(t *testing.T) {
+
+	const cfgTypeID = "example/contracts/dto:CfgJWKS"
+	const cfgTypeName = "dto.CfgJWKS"
+
+	project := &model.Project{
+		ModulePath: "example",
+		Types: map[string]*model.Type{
+			"string": {Kind: model.TypeKindString},
+			cfgTypeID: {
+				Kind:     model.TypeKindStruct,
+				TypeName: "CfgJWKS",
+				StructFields: []*model.StructField{
+					{Name: "Issuer", TypeRef: model.TypeRef{TypeID: "string"}, Tags: map[string][]string{"json": {"issuer"}}},
+					{Name: "UriJWKS", TypeRef: model.TypeRef{TypeID: "string"}, Tags: map[string][]string{"json": {"jwks_uri"}}},
+				},
+			},
+		},
+	}
+	contract := &model.Contract{
+		Name:    "JWKS",
+		PkgPath: "example/contracts",
+		Annotations: tags.DocTags{
+			model.TagHttpEnableInlineSingle: "",
+		},
+		Methods: []*model.Method{{
+			Name: "Configuration",
+			Results: []*model.Variable{
+				{Name: "config", TypeRef: model.TypeRef{TypeID: cfgTypeID, NumberOfPointers: 1}},
+				{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+			},
+		}},
+	}
+
+	gen := newGenerator(project)
+	method := contract.Methods[0]
+	gen.registerStruct(gen.responseStructName(contract, method), contract.PkgPath, method, gen.resultsWithoutError(method), contentJSON, false)
+
+	schema := gen.effectiveResponseSchema(contract, method, gen.responseStructName(contract, method), nil)
+	if len(schema.Properties) != 2 {
+		t.Fatalf("expected inline struct properties, got %#v", schema)
+	}
+	if _, ok := schema.Properties["issuer"]; !ok {
+		t.Fatalf("expected issuer in response schema, got %#v", schema.Properties)
+	}
+	if _, found := gen.schemas[cfgTypeName]; !found {
+		t.Fatalf("expected registered schema %q", cfgTypeName)
+	}
+}

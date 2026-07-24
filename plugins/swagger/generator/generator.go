@@ -70,12 +70,13 @@ func GenerateDoc(project *model.Project, ifaces ...string) (swaggerDoc types.Obj
 		swaggerDoc.Security, swaggerDoc.Components.SecuritySchemes = parseSecurityAnnotations(securityValue)
 	}
 
-	paths := gen.generatePaths(project.Contracts, ifaces)
+	contracts := model.ContractsSorted(project.Contracts)
+	paths := gen.generatePaths(contracts, ifaces)
 	swaggerDoc.Paths = paths
 
 	tagOrder := collectTagOrder(paths)
 	sort.Strings(tagOrder)
-	tagDescs := buildTagDescriptions(project.Contracts, tagOrder)
+	tagDescs := buildTagDescriptions(contracts, tagOrder)
 	for _, name := range tagOrder {
 		swaggerDoc.Tags = append(swaggerDoc.Tags, types.Tag{Name: name, Description: tagDescs[name]})
 	}

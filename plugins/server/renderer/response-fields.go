@@ -43,7 +43,7 @@ func (r *contractRenderer) responseAssignmentTargets(method *model.Method, respo
 // responseLogValues — composite literal для логирования response (модель полей как в exchange).
 func (r *contractRenderer) responseLogValues(method *model.Method) (values Code) {
 
-	results := resultsWithoutError(method)
+	results := streamVariables(r.project, resultsWithoutError(method), false)
 	if len(results) == 0 {
 		return nil
 	}

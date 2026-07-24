@@ -39,7 +39,9 @@ func (r *ClientRenderer) RenderClient() (err error) {
 		if contract == nil {
 			continue
 		}
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) ||
+			model.ContractHasWS(r.project, contract) ||
+			model.ContractHasSSE(r.project, contract) {
 			clientClassName := contract.Name + "Client"
 			file.ImportNamed("./"+r.tsFileName(contract), clientClassName)
 		}
@@ -161,7 +163,10 @@ func (r *ClientRenderer) renderBaseClientClass() *tsg.Statement {
 			if contract == nil {
 				continue
 			}
-			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
+			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) ||
+				model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||
+				model.ContractHasWS(r.project, contract) ||
+				model.ContractHasSSE(r.project, contract) {
 				grp.Add(r.renderContractClientMethod(contract))
 				grp.Line()
 			}
@@ -200,7 +205,9 @@ func (r *ClientRenderer) renderContractClientMethod(contract *model.Contract) *t
 	clientClassName := contract.Name + "Client"
 
 	// Для JSON-RPC контрактов
-	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) ||
+		model.ContractHasWS(r.project, contract) ||
+		model.ContractHasSSE(r.project, contract) {
 		stmt.Id(methodName)
 		stmt.Params(func(pg *tsg.Group) {
 			// Пустые параметры

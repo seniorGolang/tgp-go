@@ -23,16 +23,21 @@ func (r *ClientRenderer) RenderClient() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(outDir))
 	srcFile.PackageComment(generated.ByToolGateway)
-	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(PackageHttp, "http")
 	srcFile.ImportName(PackageOS, "os")
 	srcFile.ImportName(PackageSync, "sync")
 	srcFile.ImportName(PackageTime, "time")
 	if r.HasJsonRPC() {
+		srcFile.ImportName(PackageContext, "context")
 		srcFile.ImportName(PackageURL, "url")
 		srcFile.ImportName(PackagePath, "path")
 	}
-	srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
+	if r.HasHTTP() || r.HasSSE() {
+		srcFile.ImportName(PackageContext, "context")
+	}
+	if r.HasJsonRPC() {
+		srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
+	}
 	if r.HasMetrics() {
 		srcFile.ImportName(PackagePrometheus, "prometheus")
 	}
@@ -102,7 +107,10 @@ func (r *ClientRenderer) RenderClient() (err error) {
 		if contract == nil {
 			continue
 		}
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) || model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) ||
+			model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||
+			model.ContractHasWS(r.project, contract) ||
+			model.ContractHasSSE(r.project, contract) {
 			srcFile.Line().Func().Params(Id("cli").Op("*").Id("Client")).Id(contract.Name).Params().Params(Op("*").Id("Client" + contract.Name)).Block(
 				Return(Op("&").Id("Client" + contract.Name).Values(Dict{
 					Id("Client"): Id("cli"),
@@ -124,7 +132,7 @@ func (r *ClientRenderer) clientStructFunc(outDir string) Code {
 	return Type().Id("Client").StructFunc(func(sg *Group) {
 		sg.Id("name").String()
 		sg.Id("endpoint").String()
-		if r.HasJsonRPC() || r.HasHTTP() {
+		if r.HasJsonRPC() || r.HasHTTP() || r.HasSSE() {
 			sg.Line().Id("httpClient").Op("*").Qual(PackageHttp, "Client")
 		}
 		if r.HasJsonRPC() {
@@ -135,7 +143,7 @@ func (r *ClientRenderer) clientStructFunc(outDir string) Code {
 		if r.HasHTTP() {
 			sg.Line().Id("httpErrorDecoder").Id("HTTPErrorDecoder")
 		}
-		if r.HasJsonRPC() || r.HasHTTP() {
+		if r.HasJsonRPC() || r.HasHTTP() || r.HasSSE() {
 			sg.Line().Id("logRequests").Bool()
 			sg.Id("logOnError").Bool()
 			sg.Id("headersFromCtx").Op("[]").Any()

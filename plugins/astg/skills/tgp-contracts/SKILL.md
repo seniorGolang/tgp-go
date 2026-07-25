@@ -2,20 +2,31 @@
 name: tgp-contracts
 description: >-
   Writes and reviews Go tgp contracts with @tg annotations (levels, HTTP/JSON-RPC/stream
-  mapping, sub-annotations, kafka). Use when editing contracts/, adding API methods,
-  fixing @tg annotations, http-headers/cookies/args modes, stream/ws/sse, or before
-  regenerating server/clients/swagger/kafka.
+  mapping, sub-annotations, kafka). Use when editing contracts/ or contracts/dto, adding
+  API methods, fixing @tg annotations, http-headers/cookies/args modes, stream/ws/sse,
+  or before regenerating server/clients/swagger/kafka.
 ---
 
 # tgp-contracts
 
 ## Goal
 
-Correct `@tg` contracts in `contracts/*.go` (flat dir only — no nested folders). Generators read this model; bad annotations → bad code.
+Correct `@tg` contracts in `contracts/`. Generators read this model; bad annotations → bad code.
+
+## Layout (required)
+
+Separate the API contract from its DTO types:
+
+- `contracts/*.go` — **only** `@tg` interfaces (+ package-level annotations). Flat: nested folders are **not** scanned for contracts.
+- `contracts/dto/*.go` — DTO types (`package dto`); reference them in signatures as `dto.Type`.
+- Do **not** put payload structs in `package contracts`.
+- Do **not** put `@tg` interfaces in `contracts/dto` or any nested folder — they won't be discovered.
+
+DTO types are resolved via imports/`go/types`, so `contracts/dto` (and other imported packages) work fine — only the interface files must stay flat in `contracts/`.
 
 ## Workflow
 
-1. Edit only contracts (and domain types they reference) — not generated `transport/` / client / kafka packages.
+1. Edit interfaces in `contracts/` and their DTO in `contracts/dto` — not generated `transport/` / client / kafka packages.
 2. Put annotations in comments: `// @tg name[=value] …`
 3. Values with spaces/special chars → backticks: `` // @tg http-path=`/users/:id` ``
 4. Long OpenAPI text → `file:docs/api.md` or `file:docs/api.md#Section`
@@ -45,7 +56,7 @@ Example:
 ```go
 // @tg http-headers=token|Authorization|explicit
 // @tg token.required
-GetProfile(ctx context.Context, token string) (profile Profile, err error)
+GetProfile(ctx context.Context, token string) (profile dto.Profile, err error)
 ```
 
 ## Streams
@@ -70,6 +81,7 @@ Useful `tags`: `json:inline`, `json:name,omitempty`, `form:name`, `dumper:hide`.
 
 ## Checklist before generate
 
+- [ ] DTO live in `contracts/dto` (`package dto`), not alongside interfaces  
 - [ ] Interface has the right transport enable flags  
 - [ ] Paths/methods set for REST (`http-method`, `http-path`, `http-prefix`)  
 - [ ] Mapping modes intentional (not accidental default `body`)  

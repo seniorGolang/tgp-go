@@ -31,13 +31,19 @@ Full list and edge cases: `tg plugin doc astg`.
 
 ## Minimal REST example
 
+Interfaces in `contracts/`; DTO in `contracts/dto` (referenced as `dto.Type`).
+
 ```go
+package contracts
+
+import "<module>/contracts/dto"
+
 // @tg http-server
 // @tg http-prefix=api/v1
 type UserService interface {
 	// @tg http-method=GET
 	// @tg http-path=/users/:id
 	// @tg http-args=id|userId
-	GetUser(ctx context.Context, id string) (user User, err error)
+	GetUser(ctx context.Context, id string) (user dto.User, err error)
 }
 ```

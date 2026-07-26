@@ -1,0 +1,10 @@
+{
+  "Export astg project model as JSON": "Экспорт модели проекта astg в формате JSON",
+  "Export astg project model as JSON to stdout or file": "Экспорт модели проекта astg в формате JSON в stdout или файл",
+  "Path to output file (default: stdout)": "Путь к выходному файлу (по умолчанию: stdout)",
+  "Path to contracts folder (relative to rootDir)": "Путь к папке с контрактами (относительно rootDir)",
+  "Load full model from DB without interactive contract selection": "Загружать полную модель из БД без интерактивного выбора контрактов",
+  "failed to marshal project": "не удалось сериализовать модель проекта",
+  "failed to write project to stdout": "не удалось записать модель проекта в stdout",
+  "failed to write project file": "не удалось записать файл модели проекта"
+}

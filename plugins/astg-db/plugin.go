@@ -16,7 +16,10 @@ import (
 //go:embed plugin.md
 var docContent string
 
-const optionFromDB = "from-db"
+const (
+	optionFromDB       = "from-db"
+	optionAllContracts = "all-contracts"
+)
 
 // AstgDbPlugin реализует pre-плагин: подставляет project из локальной базы контрактов в request.
 type AstgDbPlugin struct{}
@@ -86,7 +89,8 @@ func loadFromDB(request data.Storage, root string) (response data.Storage, err e
 		return
 	}
 
-	if len(parsed.Contracts) == 0 && len(contractsOpt) == 0 {
+	allContracts, _ := data.Get[bool](request, optionAllContracts)
+	if !allContracts && len(parsed.Contracts) == 0 && len(contractsOpt) == 0 {
 		if parsed.Contracts, err = selectContracts(project); err != nil {
 			return
 		}

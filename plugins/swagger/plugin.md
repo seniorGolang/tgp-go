@@ -21,7 +21,7 @@
 ### Сохранение в файл
 
 ```bash
-tg plugin swagger --out api-docs/openapi.yaml
+tg swagger --out api-docs/openapi.yaml
 ```
 
 Формат определяется расширением: `.json` — JSON, `.yaml` или `.yml` — YAML. Каталог для файла создаётся при необходимости.
@@ -29,7 +29,7 @@ tg plugin swagger --out api-docs/openapi.yaml
 ### Только просмотр в браузере (без файла)
 
 ```bash
-tg plugin swagger --serve :8080
+tg swagger --serve :8080
 ```
 
 Запускается локальный HTTP-сервер с Swagger UI на указанном адресе (например, `:8080` или `localhost:3000`). Браузер открывается автоматически. Спецификация отдаётся в JSON.
@@ -37,13 +37,13 @@ tg plugin swagger --serve :8080
 Если не указать ни `--out`, ни `--serve`, по умолчанию запускается сервер на порту **8080** — можно сразу посмотреть документацию в браузере:
 
 ```bash
-tg plugin swagger
+tg swagger
 ```
 
 ### Файл и просмотр одновременно
 
 ```bash
-tg plugin swagger --out api-docs/openapi.yaml --serve :8080
+tg swagger --out api-docs/openapi.yaml --serve :8080
 ```
 
 Документация сохраняется в файл и одновременно доступна через Swagger UI по указанному адресу.
@@ -54,10 +54,10 @@ tg plugin swagger --out api-docs/openapi.yaml --serve :8080
 
 ```bash
 # Только указанные контракты
-tg plugin swagger --out api-docs/openapi.yaml --contracts UserService,OrderService
+tg swagger --out api-docs/openapi.yaml --contracts UserService,OrderService
 
 # Все, кроме помеченных «!»
-tg plugin swagger --out api-docs/openapi.yaml --contracts '!OrderService'
+tg swagger --out api-docs/openapi.yaml --contracts '!OrderService'
 ```
 
 ## Параметры команды
@@ -454,38 +454,38 @@ Role string `json:"role"`
 ### Файл для всех контрактов
 
 ```bash
-tg plugin swagger --out docs/openapi.yaml
+tg swagger --out docs/openapi.yaml
 ```
 
 ### Файл только для выбранных контрактов
 
 ```bash
-tg plugin swagger --out docs/openapi.yaml --contracts UserService,OrderService
+tg swagger --out docs/openapi.yaml --contracts UserService,OrderService
 ```
 
 ### JSON вместо YAML
 
 ```bash
-tg plugin swagger --out docs/openapi.json
+tg swagger --out docs/openapi.json
 ```
 
 ### Просмотр в браузере без сохранения
 
 ```bash
-tg plugin swagger --serve :8080
+tg swagger --serve :8080
 ```
 
 ### Просмотр по умолчанию (порт 8080)
 
 ```bash
-tg plugin swagger
+tg swagger
 ```
 
 (Для Swagger UI в Docker обычно используется JSON; при монтировании YAML может понадобиться конвертация или другой образ.)
 
 ### Импорт в Postman
 
-1. Сгенерировать документацию: `tg plugin swagger --out docs/openapi.json`
+1. Сгенерировать документацию: `tg swagger --out docs/openapi.json`
 2. В Postman: File → Import → выбрать `openapi.json`.
 
 ## Интеграция с другими инструментами

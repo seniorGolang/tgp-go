@@ -9,7 +9,7 @@
 ## Запуск
 
 ```bash
-tgp server -o <каталог>
+tg server -o <каталог>
 ```
 
 | Параметр | Обязательный | Описание |
@@ -96,7 +96,7 @@ func (s *userService) GetUser(ctx context.Context, id string) (user contracts.Us
 
 func main() {
     svc := &userService{}
-    srv := transport.New(slog.Default(), transport.UserService(contracts.NewUserService(svc)))
+srv := transport.New(slog.Default(), transport.UserService(svc))
 
     srv.WithLog()
     srv.WithMetrics() // при первом вызове метрики создаются внутри
@@ -200,7 +200,7 @@ defer hs.Stop()
 ```go
 // Контракт с @tg http-server, @tg http-prefix=api/v1 и методами с http-method, http-path
 
-srv := transport.New(slog.Default(), transport.UserService(contracts.NewUserService(&userService{})))
+srv := transport.New(slog.Default(), transport.UserService(&userService{}))
 srv.WithLog()
 _ = srv.Fiber().Listen(":8080")
 // Например: GET /api/v1/users/:id
@@ -211,7 +211,7 @@ _ = srv.Fiber().Listen(":8080")
 ```go
 // Контракт с @tg jsonRPC-server
 
-srv := transport.New(slog.Default(), transport.UserService(contracts.NewUserService(&userService{})))
+srv := transport.New(slog.Default(), transport.UserService(&userService{}))
 srv.WithLog()
 _ = srv.Fiber().Listen(":8080")
 // POST /userService, метод в запросе: userService.getUser
@@ -222,7 +222,7 @@ _ = srv.Fiber().Listen(":8080")
 ```go
 // Контракт с @tg jsonRPC-server и @tg http-server, у части методов — http-method и http-path
 
-srv := transport.New(slog.Default(), transport.UserService(contracts.NewUserService(&userService{})))
+srv := transport.New(slog.Default(), transport.UserService(&userService{}))
 srv.WithLog()
 srv.WithMetrics()
 _ = srv.Fiber().Listen(":8080")
@@ -231,7 +231,7 @@ _ = srv.Fiber().Listen(":8080")
 ### Graceful shutdown
 
 ```go
-srv := transport.New(slog.Default(), transport.UserService(contracts.NewUserService(&userService{})))
+srv := transport.New(slog.Default(), transport.UserService(&userService{}))
 srv.WithLog()
 
 go func() {

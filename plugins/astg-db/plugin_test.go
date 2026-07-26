@@ -192,6 +192,28 @@ func TestLoadFromDB(t *testing.T) {
 		assertContractNames(t, response, "Alpha", "Beta", "Gamma")
 	})
 
+	t.Run("all-contracts skips interactive select", func(t *testing.T) {
+		restore := stubInteractiveSelect(t, func(string, []string, bool, []string) ([]string, error) {
+			t.Fatal("InteractiveSelect must not be called")
+			return nil, nil
+		})
+		defer restore()
+
+		request := data.NewStorage()
+		if err := request.Set(optionFromDB, projectKey+"@"+version); err != nil {
+			t.Fatalf("Set from-db: %v", err)
+		}
+		if err := request.Set(optionAllContracts, true); err != nil {
+			t.Fatalf("Set all-contracts: %v", err)
+		}
+
+		response, err := loadFromDB(request, root)
+		if err != nil {
+			t.Fatalf("loadFromDB: %v", err)
+		}
+		assertContractNames(t, response, "Alpha", "Beta", "Gamma")
+	})
+
 	t.Run("empty contracts selection fails", func(t *testing.T) {
 		restore := stubInteractiveSelect(t, func(string, []string, bool, []string) ([]string, error) {
 			return []string{}, nil

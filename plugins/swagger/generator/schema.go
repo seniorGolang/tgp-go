@@ -231,6 +231,9 @@ func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.Doc
 
 	switch typeInfo.Kind {
 	case model.TypeKindAlias:
+		if len(typeInfo.Enums) > 0 && !hasEnumsAnnotation(annotations) {
+			return g.namedEnumToSchema(typeInfo, typeRef, pkgPath)
+		}
 		if typeInfo.AliasOf != "" {
 			baseTypeRef := &model.TypeRef{TypeID: typeInfo.AliasOf}
 			baseSchema := g.typeRefToSchema(baseTypeRef, annotations, pkgPath, isArgument)
@@ -347,7 +350,14 @@ func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.Doc
 		model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
 		model.TypeKindFloat32, model.TypeKindFloat64, model.TypeKindBool,
 		model.TypeKindByte, model.TypeKindRune, model.TypeKindError, model.TypeKindAny:
-		if schema = g.basicTypeToSchema(typeRef.TypeID, annotations); schema == nil {
+		if len(typeInfo.Enums) > 0 && !hasEnumsAnnotation(annotations) {
+			return g.namedEnumToSchema(typeInfo, typeRef, pkgPath)
+		}
+		basicTypeID := typeRef.TypeID
+		if hasEnumsAnnotation(annotations) && typeInfo.TypeName != "" && typeInfo.ImportPkgPath != "" {
+			basicTypeID = enumUnderlyingTypeID(typeInfo)
+		}
+		if schema = g.basicTypeToSchema(basicTypeID, annotations); schema == nil {
 			return
 		}
 		if typeRef.NumberOfPointers > 0 {
@@ -511,6 +521,94 @@ func (g *generator) basicTypeToSchema(typeID string, varTags tags.DocTags) (resu
 	}
 
 	return schema
+}
+
+func (g *generator) namedEnumToSchema(typeInfo *model.Type, typeRef *model.TypeRef, pkgPath string) (result *types.Schema) {
+
+	typeName := g.normalizeTypeName(typeInfo, typeRef.TypeID, pkgPath)
+	if _, found := g.schemas[typeName]; found {
+		result = &types.Schema{Ref: fmt.Sprintf(componentsSchemasPrefix+"%s", typeName)}
+		if typeRef.NumberOfPointers > 0 {
+			return &types.Schema{
+				OneOf: []types.Schema{
+					*result,
+					{Nullable: true},
+				},
+			}
+		}
+		return result
+	}
+
+	underlyingID := enumUnderlyingTypeID(typeInfo)
+	schema := g.basicTypeToSchema(underlyingID, nil)
+	if schema == nil {
+		schema = &types.Schema{Type: "string"}
+	}
+	schema.Enum = enumSchemaValues(typeInfo.Enums)
+	g.schemas[typeName] = *schema
+
+	result = &types.Schema{Ref: fmt.Sprintf(componentsSchemasPrefix+"%s", typeName)}
+	if typeRef.NumberOfPointers > 0 {
+		return &types.Schema{
+			OneOf: []types.Schema{
+				*result,
+				{Nullable: true},
+			},
+		}
+	}
+	return result
+}
+
+func hasEnumsAnnotation(annotations tags.DocTags) (ok bool) {
+
+	if annotations == nil {
+		return false
+	}
+	_, ok = annotations["enums"]
+	return ok
+}
+
+func enumUnderlyingTypeID(typeInfo *model.Type) (typeID string) {
+
+	if typeInfo == nil {
+		return "string"
+	}
+	if typeInfo.UnderlyingTypeID != "" {
+		return typeInfo.UnderlyingTypeID
+	}
+	if typeInfo.UnderlyingKind != "" {
+		return string(typeInfo.UnderlyingKind)
+	}
+	switch typeInfo.Kind {
+	case model.TypeKindAlias:
+		if typeInfo.AliasOf != "" {
+			return typeInfo.AliasOf
+		}
+		return "string"
+	case model.TypeKindString, model.TypeKindInt, model.TypeKindInt8, model.TypeKindInt16,
+		model.TypeKindInt32, model.TypeKindInt64, model.TypeKindUint, model.TypeKindUint8,
+		model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
+		model.TypeKindFloat32, model.TypeKindFloat64, model.TypeKindBool,
+		model.TypeKindByte, model.TypeKindRune:
+		return string(typeInfo.Kind)
+	default:
+		return "string"
+	}
+}
+
+func enumSchemaValues(enums []*model.EnumValue) (values []string) {
+
+	if len(enums) == 0 {
+		return nil
+	}
+	values = make([]string, 0, len(enums))
+	for _, item := range enums {
+		if item == nil {
+			continue
+		}
+		values = append(values, item.Value)
+	}
+	return values
 }
 
 func (g *generator) normalizeTypeName(typeInfo *model.Type, typeID string, defaultPkgPath string) (typeName string) {

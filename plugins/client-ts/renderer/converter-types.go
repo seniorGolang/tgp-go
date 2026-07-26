@@ -147,6 +147,10 @@ func (r *ClientRenderer) walkTypeRefWithVisited(typeName, pkgPath string, typeRe
 		return r.walkNamedAliasType(schema, typeName, pkgPath, typ, typeRef, varTags, processing, isArgument)
 	}
 
+	if len(typ.Enums) > 0 && typ.TypeName != "" {
+		return r.walkNamedEnumType(schema, typ, typeRef)
+	}
+
 	if tsType, okBuiltin := r.goBuiltinTSType(typeID, typ); okBuiltin {
 		schema.kind = "scalar"
 		schema.typeName = tsType
@@ -428,6 +432,9 @@ func (r *ClientRenderer) walkTypeRefWithVisited(typeName, pkgPath string, typeRe
 
 func (r *ClientRenderer) walkNamedAliasType(schema typeDefTs, typeName, pkgPath string, typ *model.Type, typeRef *model.TypeRef, varTags map[string]string, processing map[string]bool, isArgument bool) (result typeDefTs) {
 
+	if len(typ.Enums) > 0 {
+		return r.walkNamedEnumType(schema, typ, typeRef)
+	}
 	if typeRef.NumberOfPointers > 0 {
 		schema.nullable = true
 	}
@@ -458,6 +465,69 @@ func (r *ClientRenderer) walkNamedAliasType(schema typeDefTs, typeName, pkgPath 
 		r.typeDefTs[typeKey] = schema
 	}
 	return schema
+}
+
+func (r *ClientRenderer) walkNamedEnumType(schema typeDefTs, typ *model.Type, typeRef *model.TypeRef) (result typeDefTs) {
+
+	if typeRef != nil && typeRef.NumberOfPointers > 0 {
+		schema.nullable = true
+	}
+	schema.kind = "scalar"
+	schema.typeName = tsEnumUnion(typ.Enums, typ)
+	schema.name = typ.TypeName
+	if typ.PkgName != "" {
+		schema.importPkg = typ.PkgName
+	} else if typ.ImportAlias != "" {
+		schema.importPkg = typ.ImportAlias
+	} else if typ.ImportPkgPath != "" {
+		parts := strings.Split(typ.ImportPkgPath, "/")
+		schema.importPkg = parts[len(parts)-1]
+	}
+	schema.importName = typ.TypeName
+	if schema.importPkg != "" && schema.importName != "" {
+		typeKey := fmt.Sprintf("%s:%s", schema.importPkg, schema.importName)
+		r.typeDefTs[typeKey] = schema
+	}
+	return schema
+}
+
+func tsEnumUnion(enums []*model.EnumValue, typ *model.Type) (union string) {
+
+	parts := make([]string, 0, len(enums))
+	numeric := isTSEnumNumeric(typ)
+	for _, item := range enums {
+		if item == nil {
+			continue
+		}
+		if numeric {
+			parts = append(parts, item.Value)
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%q", item.Value))
+	}
+	if len(parts) == 0 {
+		return "string"
+	}
+	return strings.Join(parts, " | ")
+}
+
+func isTSEnumNumeric(typ *model.Type) (ok bool) {
+
+	if typ == nil {
+		return false
+	}
+	kind := typ.Kind
+	if typ.UnderlyingKind != "" {
+		kind = typ.UnderlyingKind
+	}
+	switch kind {
+	case model.TypeKindInt, model.TypeKindInt8, model.TypeKindInt16, model.TypeKindInt32, model.TypeKindInt64,
+		model.TypeKindUint, model.TypeKindUint8, model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
+		model.TypeKindByte, model.TypeKindRune, model.TypeKindFloat32, model.TypeKindFloat64:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *ClientRenderer) jsonName(field *model.StructField) (value string, inline bool) {

@@ -19,6 +19,7 @@ Full annotation catalog: `tg plugin doc swagger` · `tg plugin doc astg`.
 | Method `@tg deprecated` | `operation.deprecated` |
 | Field / arg / result `@tg desc` (or `<name>.desc`) | `schema.description` / parameter description |
 | Field / arg `@tg format` / `example` / `enums` / `type` | schema facets |
+| Named typed enum (`type Role string` + typed consts) | `Type.Enums` → OpenAPI `$ref` schema.enum, client typed unions/consts |
 
 Priority for a description value: explicit `@tg desc` wins. If absent, non-`@tg` godoc lines on the same declaration are used. Prefer `@tg desc` for anything that must appear in OpenAPI.
 
@@ -30,7 +31,8 @@ Priority for a description value: explicit `@tg desc` wins. If absent, non-`@tg`
 | Operation details | `desc` | Behavior, constraints, side effects; markdown OK |
 | Request body prose | `requestBodyDesc` | Only when body needs text beyond the schema |
 | Field / parameter meaning | `desc` on DTO field or `<arg>.desc` | Public request/response fields and path/query/header params |
-| Scalar shape hints | `format`, `example`, `enums` | UUIDs, emails, closed sets, illustrative values |
+| Scalar shape hints | `format`, `example`, `enums` | UUIDs, emails, closed sets on bare scalars, illustrative values |
+| Typed closed set | named type + typed `const` | Prefer `type Role string` with `const RoleAdmin Role = "admin"`; ASTG fills `Type.Enums` |
 | Tag grouping | `swaggerTags` + `tagDesc.<tag>` | Stable tag ids; describe each tag once on the interface |
 | API product blurb | package `title`, `version`, `desc` | Once per contracts package |
 
@@ -83,7 +85,7 @@ type User struct {
 - [ ] Each public HTTP/JSON-RPC method has `summary`
 - [ ] Non-trivial methods have `desc` (or `file:`)
 - [ ] Public DTO fields and wire parameters have `desc`
-- [ ] Closed scalars use `enums`; ids/emails use `format` / `example` where useful
+- [ ] Closed scalars use typed named enums (`type X string`/`int` + typed consts) or field `@tg enums` for bare scalars; ids/emails use `format` / `example` where useful
 - [ ] Tags have `tagDesc` (or interface `desc` as fallback)
 - [ ] Deprecated operations use `@tg deprecated`
 - [ ] `tg astg json` shows intended `desc`/`summary` after `file:` resolution

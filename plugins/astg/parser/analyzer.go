@@ -26,5 +26,6 @@ func analyzeProject(project *model.Project, loader *AutonomousPackageLoader) (er
 		return fmt.Errorf("failed to expand types recursively: %w", err)
 	}
 
+	attachContractEnums(project, loader)
 	return
 }

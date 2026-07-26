@@ -190,8 +190,15 @@ type Type struct {
 
 	ParseFromString *ParseFromStringInfo `json:"parseFromString,omitempty"`
 
+	Enums []*EnumValue `json:"enums,omitempty"`
+
 	Docs       []string `json:"docs,omitempty"`
 	Directives []string `json:"directives,omitempty"`
+}
+
+type EnumValue struct {
+	Name  string `json:"name,omitempty"`
+	Value string `json:"value"`
 }
 
 type ParseFromStringInfo struct {

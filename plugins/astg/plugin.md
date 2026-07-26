@@ -195,7 +195,7 @@ Sub-аннотации на методе **перекрываются** анно
 | -------------------------- | ------------------------------------------------------- | -------------------------------------- |
 | `desc=<описание>`          | Описание поля                                           | `// @tg desc=User identifier`          |
 | `type=<тип>`               | Тип в OpenAPI                                           | `// @tg type=string`                   |
-| `enums=val1,val2`          | Допустимые значения                                     | `// @tg enums=active,inactive,pending` |
+| `enums=val1,val2`          | Допустимые значения (для голых скаляров; для именованных типов предпочтительны typed const) | `// @tg enums=active,inactive,pending` |
 | `format=<формат>`          | Формат в OpenAPI (uuid, email, date-time и т.д.)        | `// @tg format=uuid`                   |
 | `required`                 | Поле обязательно (см. также правила вывода в swagger)   | `// @tg required`                      |
 | `example=<значение>`       | Пример для документации                                 | `// @tg example=550e8400-...`          |
@@ -275,6 +275,14 @@ UploadFile(ctx context.Context, file []byte) (url string, err error)
 ### Аннотации полей
 
 ```go
+type Role string
+
+const (
+	RoleAdmin Role = "admin"
+	RoleUser  Role = "user"
+	RoleGuest Role = "guest"
+)
+
 type CreateUserRequest struct {
 // @tg required
 // @tg desc=User email address
@@ -287,9 +295,15 @@ Email string `json:"email"`
 Password string `json:"password"`
 
 // @tg desc=User role
+Role Role `json:"role"`
+}
+```
+
+Для голого `string` без именованного типа допустим override:
+
+```go
 // @tg enums=admin,user,guest
 Role string `json:"role"`
-}
 ```
 
 ### Разный тип контента (XML)

@@ -93,7 +93,8 @@ For authoring semantics and modes → skill `tgp-contracts`. Here: **verify what
 1. From arg/result take `typeID` (and `numberOfPointers` / `isSlice` if set).
 2. Resolve `types[typeID]`.
 3. Structs: `structFields[]` — `name`, nested `typeID`, `tags` (go struct tags), field `annotations`.
-4. Nested/composites: follow `typeID` / `arrayOfID` / `mapKey`/`mapValue` / `aliasOf` / `underlyingTypeID`.
+4. Named scalar enums: `enums[]` with `name` / `value` when the type has ≥2 typed package consts.
+5. Nested/composites: follow `typeID` / `arrayOfID` / `mapKey`/`mapValue` / `aliasOf` / `underlyingTypeID`.
 
 ```bash
 jq --arg id "…typeID…" '.types[$id]' .tg/project.json

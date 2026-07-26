@@ -28,6 +28,7 @@ Follow `typeID` in `tgp-astg-json` when a schema is wrong. Check:
 - pointer/slice/array/map shape
 - field JSON tags and `omitempty`
 - `required`, `format`, `example`, `enums`, `type`
+- named typed enums (`Type.Enums`) as `$ref` schemas with `enum`
 - inline result/field tags
 - custom marshalers, which may produce a generic object
 

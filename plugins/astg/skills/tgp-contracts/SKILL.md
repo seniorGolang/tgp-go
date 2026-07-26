@@ -94,6 +94,8 @@ GetProfile(ctx context.Context, token string) (profile dto.Profile, err error)
 
 `// @tg <paramOrResult>.<key>[=value]` — keys: `required`, `desc`, `format`, `example`, `enums`, `type`, `tags`, `log-skip`, `http-part-name`, `http-part-content`.
 
+For closed value sets prefer a **named typed enum** in DTO (`type Role string` + typed `const RoleAdmin Role = "admin"`). ASTG collects them into `Type.Enums` for types reachable from the contract. Use field/arg `@tg enums=` only for bare scalars or as an override.
+
 Useful `tags`: `json:inline`, `json:name,omitempty`, `form:name`, `dumper:hide`.
 
 ## Wire-shape review

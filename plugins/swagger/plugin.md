@@ -140,7 +140,7 @@ tg swagger --out api-docs/openapi.yaml --contracts '!OrderService'
 | `desc`     | поле / аргумент / результат   | Описание                         | `schema.description`               |
 | `format`   | поле / аргумент (базовый тип) | Формат значения (`uuid`, и т.п.) | `schema.format`                    |
 | `example`  | поле / аргумент (базовый тип) | Пример значения                  | `schema.example`                   |
-| `enums`    | поле / аргумент (базовый тип) | Перечень допустимых значений     | `schema.enum`                      |
+| `enums`    | поле / аргумент (базовый тип) | Перечень допустимых значений (override; именованные enum — из `Type.Enums`) | `schema.enum` / `$ref` typed schema |
 | `type`     | поле / аргумент (базовый тип) | Явный тип в OpenAPI              | `schema.type`                      |
 
 Далее — детальное описание аннотаций с примерами.

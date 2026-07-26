@@ -5,11 +5,13 @@ package renderer
 import (
 	"context"
 	"fmt"
+	"go/token"
 	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	. "github.com/dave/jennifer/jen" // nolint:staticcheck
@@ -310,6 +312,10 @@ func (r *ClientRenderer) generateClientMethod(ctx context.Context, method *model
 
 func (r *ClientRenderer) generateClientAlias(ctx context.Context, typeName string, typ *model.Type) (code Code) {
 
+	if len(typ.Enums) > 0 {
+		return r.generateClientEnum(typeName, typ)
+	}
+
 	// Для алиасов всегда используем базовый тип через AliasOf
 	// Это позволяет сохранить семантику алиаса в клиенте (type Alias = BaseType)
 	if typ.AliasOf != "" {
@@ -353,6 +359,69 @@ func (r *ClientRenderer) generateClientAlias(ctx context.Context, typeName strin
 	}
 
 	return
+}
+
+func (r *ClientRenderer) generateClientEnum(typeName string, typ *model.Type) (code Code) {
+
+	underlying := clientEnumUnderlying(typ)
+	typeDecl := Type().Id(typeName).Id(underlying)
+
+	defs := make([]Code, 0, len(typ.Enums))
+	for _, item := range typ.Enums {
+		if item == nil || item.Name == "" || !token.IsExported(item.Name) {
+			continue
+		}
+		defs = append(defs, Id(item.Name).Id(typeName).Op("=").Add(clientEnumLit(item.Value, model.TypeKind(underlying))))
+	}
+	if len(defs) == 0 {
+		return typeDecl
+	}
+	return Add(typeDecl).Line().Line().Const().Defs(defs...)
+}
+
+func clientEnumUnderlying(typ *model.Type) (underlying string) {
+
+	if typ == nil {
+		return "string"
+	}
+	if typ.UnderlyingKind != "" {
+		return string(typ.UnderlyingKind)
+	}
+	if typ.UnderlyingTypeID != "" && !strings.Contains(typ.UnderlyingTypeID, ":") {
+		return typ.UnderlyingTypeID
+	}
+	switch typ.Kind {
+	case model.TypeKindString, model.TypeKindInt, model.TypeKindInt8, model.TypeKindInt16,
+		model.TypeKindInt32, model.TypeKindInt64, model.TypeKindUint, model.TypeKindUint8,
+		model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
+		model.TypeKindFloat32, model.TypeKindFloat64, model.TypeKindBool,
+		model.TypeKindByte, model.TypeKindRune:
+		return string(typ.Kind)
+	default:
+		return "string"
+	}
+}
+
+func clientEnumLit(value string, kind model.TypeKind) (code Code) {
+
+	switch kind {
+	case model.TypeKindBool:
+		return Lit(value == "true")
+	case model.TypeKindInt, model.TypeKindInt8, model.TypeKindInt16, model.TypeKindInt32, model.TypeKindInt64,
+		model.TypeKindUint, model.TypeKindUint8, model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
+		model.TypeKindByte, model.TypeKindRune:
+		if parsed, err := strconv.ParseInt(value, 10, 64); err == nil {
+			return Lit(int(parsed))
+		}
+		return Lit(value)
+	case model.TypeKindFloat32, model.TypeKindFloat64:
+		if parsed, err := strconv.ParseFloat(value, 64); err == nil {
+			return Lit(parsed)
+		}
+		return Lit(value)
+	default:
+		return Lit(value)
+	}
 }
 
 func (r *ClientRenderer) generateClientNamedArray(ctx context.Context, typeName string, typ *model.Type) (code Code) {

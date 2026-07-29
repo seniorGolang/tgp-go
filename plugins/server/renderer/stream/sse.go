@@ -6,10 +6,110 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
+
+const (
+	// DefaultSSEHeartbeat — интервал SSE comment keepalive для idle-соединений.
+	DefaultSSEHeartbeat = 15 * time.Second
+)
+
+// OpenSSE немедленно открывает SSE-поток (первый chunk + flush).
+func OpenSSE(writer *bufio.Writer) (err error) {
+
+	return WriteSSEComment(writer, "connected")
+}
+
+// WriteSSEBuf пишет SSE data:-событие с JSON-RPC payload и flush.
+func WriteSSEBuf(writer *bufio.Writer, msg Message) (err error) {
+
+	if msg.Version == "" {
+		msg.Version = Version
+	}
+	var raw []byte
+	if raw, err = json.Marshal(msg); err != nil {
+		return
+	}
+	if _, err = fmt.Fprintf(writer, "data: %s\n\n", raw); err != nil {
+		return
+	}
+	return writer.Flush()
+}
+
+// WriteSSEComment пишет SSE comment (keepalive) и flush.
+func WriteSSEComment(writer *bufio.Writer, comment string) (err error) {
+
+	if _, err = fmt.Fprintf(writer, ": %s\n\n", comment); err != nil {
+		return
+	}
+	return writer.Flush()
+}
+
+// WriteSSEError пишет JSON-RPC error как SSE data:-событие.
+func WriteSSEError(writer *bufio.Writer, id json.RawMessage, err error) (writeErr error) {
+
+	if err == nil {
+		return
+	}
+	var rpcErr *Error
+	if errors.As(err, &rpcErr) {
+		return WriteSSEBuf(writer, Message{ID: id, Version: Version, Error: rpcErr})
+	}
+	code := internalError
+	if coder, ok := err.(interface{ Code() int }); ok {
+		code = coder.Code()
+	}
+	return WriteSSEBuf(writer, errorMessage(id, code, err.Error()))
+}
+
+// PumpSSEServerStreamTyped читает out, шлёт chunks и final result; heartbeat в том же select.
+func PumpSSEServerStreamTyped[T any](ctx context.Context, writer *bufio.Writer, id json.RawMessage, out <-chan T, final json.RawMessage, heartbeat time.Duration) (err error) {
+
+	var ticker *time.Ticker
+	var tick <-chan time.Time
+	if heartbeat > 0 {
+		ticker = time.NewTicker(heartbeat)
+		defer ticker.Stop()
+		tick = ticker.C
+	}
+	var seq int64
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case _, ok := <-tick:
+			if !ok {
+				continue
+			}
+			if err = WriteSSEComment(writer, "heartbeat"); err != nil {
+				return
+			}
+		case item, open := <-out:
+			if !open {
+				if final == nil {
+					final = EmptyResult()
+				}
+				return WriteSSEBuf(writer, Message{ID: id, Version: Version, Result: final})
+			}
+			seq++
+			var raw []byte
+			if raw, err = json.Marshal(item); err != nil {
+				return
+			}
+			var params json.RawMessage
+			if params, err = json.Marshal(ChunkParams{ID: id, Seq: seq, Item: raw}); err != nil {
+				return
+			}
+			if err = WriteSSEBuf(writer, Message{Version: Version, Method: MethodStream, Params: params}); err != nil {
+				return
+			}
+		}
+	}
+}
 
 // WriteSSE пишет одно SSE-событие с JSON-RPC notification payload.
 func WriteSSE(w http.ResponseWriter, flusher http.Flusher, msg Message) (err error) {
@@ -41,11 +141,26 @@ func ServeSSEServerStream(ctx context.Context, w http.ResponseWriter, id json.Ra
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
+	var ticker *time.Ticker
+	var tick <-chan time.Time
+	if DefaultSSEHeartbeat > 0 {
+		ticker = time.NewTicker(DefaultSSEHeartbeat)
+		defer ticker.Stop()
+		tick = ticker.C
+	}
 	var seq int64
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case _, ok := <-tick:
+			if !ok {
+				continue
+			}
+			if _, err = fmt.Fprintf(w, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		case item, open := <-out:
 			if !open {
 				if final == nil {

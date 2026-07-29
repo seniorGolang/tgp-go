@@ -38,7 +38,8 @@ func (r *contractRenderer) renderHTTPTypes(srcFile *GoFile) {
 		Id("svc").Op("*").Id("server" + r.contract.Name),
 		Id("base").Qual(r.contract.PkgPath, r.contract.Name),
 	}
-	if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) ||
+		model.ContractHasSSE(r.project, r.contract) {
 		fields = append(fields, Id("srv").Op("*").Id("Server"))
 	}
 	srcFile.Type().Id("http" + r.contract.Name).Struct(fields...)

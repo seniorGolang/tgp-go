@@ -10,7 +10,7 @@
 
 - **JSON-RPC 2.0** — вызовы методов и batch-запросы.
 - **HTTP REST** — GET, POST, PUT, PATCH, DELETE с настраиваемыми путями, заголовками и cookie.
-- **Streaming** — контракты с `ws-server` и `sse-server` включаются в генерацию для WebSocket/SSE профиля JSON-RPC 2.0. На SSE — `http-headers`/`http-cookies` в fetch; на WS в браузере custom headers недоступны, поэтому те же значения дублируются в query (сервер читает query как fallback).
+- **Streaming** — контракты с `ws-server` и `sse-server` включаются в генерацию для WebSocket/SSE профиля JSON-RPC 2.0. На SSE — `http-headers`/`http-cookies` в fetch; на WS в браузере custom headers недоступны, поэтому те же значения дублируются в query (сервер читает query как fallback). Stream-методы принимают `signal?: AbortSignal` (SSE → `fetch` + `reader.cancel`, WS → `socket.close`).
 - **Типобезопасность** — методы и типы генерируются по сигнатурам интерфейсов.
 - **Асинхронность** — все методы возвращают Promise.
 - **Заголовки** — статические или динамические (функция, в том числе async).

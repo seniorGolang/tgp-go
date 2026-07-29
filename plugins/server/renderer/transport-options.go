@@ -78,6 +78,9 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 						If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(func(gr *Group) {
 							gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
 							gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
+							if model.ContractHasSSE(r.project, contract) {
+								gr.Id("httpSvc").Dot("srv").Op("=").Id("srv")
+							}
 							gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
 						}),
 					)),
@@ -110,6 +113,9 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 					If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(func(gr *Group) {
 						gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
 						gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
+						if model.ContractHasSSE(r.project, contract) {
+							gr.Id("httpSvc").Dot("srv").Op("=").Id("srv")
+						}
 						gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
 					}),
 				)),
@@ -192,6 +198,16 @@ func (r *transportRenderer) renderOptionsTimeouts(srcFile *GoFile) {
 				Id("srv").Dot("config").Dot("WriteTimeout").Op("=").Id("timeout"),
 			)),
 		)
+	if r.hasSSE() {
+		srcFile.Line().Func().Id("SetSSEHeartbeat").
+			Params(Id("interval").Qual(PackageTime, "Duration")).
+			Id("Option").
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					Id("srv").Dot("sseHeartbeat").Op("=").Id("interval"),
+				)),
+			)
+	}
 }
 
 func (r *transportRenderer) renderOptionsHeaders(srcFile *GoFile) {

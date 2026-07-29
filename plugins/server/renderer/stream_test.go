@@ -53,8 +53,13 @@ func TestRenderSSE_MixedResultsFinalMarshal(t *testing.T) {
 	}
 	source := string(content)
 	for _, fragment := range []string{
-		"ticks, response.Count, err = http.svc.Subscribe",
+		"stream.OpenSSE(writer)",
+		"stream.PumpSSEServerStreamTyped[string]",
 		"stream.MarshalResult(response)",
+		"stream.WriteSSEError(writer, requestBase.ID, err)",
+		"stream.DefaultSSEHeartbeat",
+		"X-Accel-Buffering",
+		"ticks, response.Count, err = http.svc.Subscribe(streamCtx",
 	} {
 		if !strings.Contains(source, fragment) {
 			t.Fatalf("missing %q in:\n%s", fragment, source)
@@ -62,6 +67,50 @@ func TestRenderSSE_MixedResultsFinalMarshal(t *testing.T) {
 	}
 	if strings.Contains(source, "ticks, err = http.svc.Subscribe") {
 		t.Fatal("SSE must not drop non-chan results")
+	}
+	if strings.Contains(source, `fmt.Fprintf(writer, "data: %s`) {
+		t.Fatal("SSE must use stream runtime instead of inline fmt.Fprintf")
+	}
+}
+
+func TestRenderSSE_HTTPContractWiresServerRef(t *testing.T) {
+
+	project := streamTestProject("Live", model.TagServerSSE)
+	dir := filepath.Join(t.TempDir(), "transport")
+	renderer := NewContractRenderer(project, project.Contracts[0], dir)
+	if err := renderer.RenderHTTP(); err != nil {
+		t.Fatalf("RenderHTTP: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "live-http.go"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(content), "srv") || !strings.Contains(string(content), "*Server") {
+		t.Fatalf("SSE contract http wrapper must expose srv *Server:\n%s", content)
+	}
+}
+
+func TestRenderTransportOptions_SSEHeartbeat(t *testing.T) {
+
+	project := streamTestProject("Live", model.TagServerSSE)
+	dir := filepath.Join(t.TempDir(), "transport")
+	renderer := NewTransportRenderer(project, dir)
+	if err := renderer.RenderTransportOptions(); err != nil {
+		t.Fatalf("RenderTransportOptions: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "options.go"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	source := string(content)
+	for _, fragment := range []string{
+		"func SetSSEHeartbeat(interval time.Duration) Option",
+		"srv.sseHeartbeat = interval",
+		"httpSvc.srv = srv",
+	} {
+		if !strings.Contains(source, fragment) {
+			t.Fatalf("missing %q in:\n%s", fragment, source)
+		}
 	}
 }
 

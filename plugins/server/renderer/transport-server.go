@@ -80,6 +80,7 @@ func (r *transportRenderer) renderServerConstants(srcFile *GoFile) {
 	srcFile.Const().Id("defaultWriteBufferSize").Op("=").Lit(4096)
 	srcFile.Const().Id("defaultReadTimeout").Op("=").Lit(30).Op("*").Qual(PackageTime, "Second")
 	srcFile.Const().Id("defaultWriteTimeout").Op("=").Lit(30).Op("*").Qual(PackageTime, "Second")
+	srcFile.Const().Id("defaultSSEHeartbeat").Op("=").Lit(15).Op("*").Qual(PackageTime, "Second")
 	srcFile.Const().Id("defaultIdleTimeout").Op("=").Lit(120).Op("*").Qual(PackageTime, "Second")
 	srcFile.Const().Id("defaultConcurrency").Op("=").Lit(256).Op("*").Lit(1024)
 	srcFile.Const().Id("contentTypeJson").Op("=").Lit("application/json")
@@ -133,6 +134,9 @@ func (r *transportRenderer) transportServerType() Code {
 			bg.Line().Id("maxBatchSize").Int()
 			bg.Id("maxParallelBatch").Int()
 			bg.Id("jsonRPCMethodMaps").Map(String()).Map(String()).Id("methodJsonRPC").Line()
+		}
+		if r.hasSSE() {
+			bg.Line().Id("sseHeartbeat").Qual(PackageTime, "Duration")
 		}
 		for _, contract := range r.contractsSorted() {
 			if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) ||

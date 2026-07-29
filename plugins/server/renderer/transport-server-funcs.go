@@ -111,6 +111,9 @@ func (r *transportRenderer) serverNewFunc() (c Code) {
 					dict[Id("maxBatchSize")] = Id("defaultMaxBatchSize")
 					dict[Id("maxParallelBatch")] = Id("defaultMaxParallelBatch")
 				}
+				if r.hasSSE() {
+					dict[Id("sseHeartbeat")] = Id("defaultSSEHeartbeat")
+				}
 				dict[Id("headerHandlers")] = Make(Map(String()).Id("HeaderHandler"))
 				dict[Id("config")] = Qual(PackageFiber, "Config").Values(Dict{
 					Id("StreamRequestBody"):            True(),

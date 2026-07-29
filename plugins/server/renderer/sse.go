@@ -21,7 +21,6 @@ func (r *contractRenderer) RenderSSE() (err error) {
 	srcFile.PackageComment(generated.ByToolGateway)
 	srcFile.ImportName("bufio", "bufio")
 	srcFile.ImportName(PackageStdJSON, "json")
-	srcFile.ImportName(PackageFmt, "fmt")
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(fmt.Sprintf("%s/stream", r.pkgPath(r.outDir)), "stream")
 
@@ -37,7 +36,9 @@ func (r *contractRenderer) RenderSSE() (err error) {
 func (r *contractRenderer) sseHandler(srcFile *GoFile, typeGen *types.Generator, method *model.Method) (c Code) {
 
 	streamPath := fmt.Sprintf("%s/stream", r.pkgPath(r.outDir))
-	outResult, _, _ := model.MethodStreamOutChan(r.project, method)
+	outResult, element, _ := model.MethodStreamOutChan(r.project, method)
+	needsServerRef := model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) ||
+		model.ContractHasSSE(r.project, r.contract)
 	fiberErr := func(arg, header string) []Code {
 		return []Code{
 			Return(Qual(PackageFiber, "NewError").Call(Qual(PackageFiber, "StatusBadRequest"), Lit("http value could not be decoded: ").Op("+").Err().Dot("Error").Call())),
@@ -65,86 +66,69 @@ func (r *contractRenderer) sseHandler(srcFile *GoFile, typeGen *types.Generator,
 			bg.Add(r.httpArgHeaders(srcFile, typeGen, method, fiberErr))
 			bg.Add(r.httpCookies(srcFile, typeGen, method, fiberErr))
 			nonChanResults := streamVariables(r.project, resultsWithoutError(method), false)
-			if len(nonChanResults) > 0 {
-				bg.Var().Id("response").Id(responseStructName(r.contract.Name, method.Name))
-			}
-			bg.Var().Id(outResult.Name).Add(typeGen.FieldTypeFromTypeRef(&outResult.TypeRef, false))
-			bg.ListFunc(func(lg *Group) {
-				for _, variable := range resultsWithoutError(method) {
-					if model.TypeRefIsChan(r.project, &variable.TypeRef) {
-						lg.Id(variable.Name)
-						continue
-					}
-					lg.Id("response").Dot(r.responseStructFieldName(method, variable))
-				}
-				lg.Err()
-			}).Op("=").Id("http").Dot("svc").Dot(method.Name).CallFunc(func(cg *Group) {
-				cg.Id(VarNameFtx).Dot("UserContext").Call()
-				for _, arg := range argsWithoutContext(method) {
-					if model.TypeRefIsChan(r.project, &arg.TypeRef) {
-						continue
-					}
-					cg.Id("request").Dot(r.requestStructFieldName(method, arg))
-				}
-			})
-			bg.If(Err().Op("!=").Nil()).Block(
-				Return(Err()),
-			)
 			bg.Id(VarNameFtx).Dot("Set").Call(Lit("Content-Type"), Lit("text/event-stream"))
 			bg.Id(VarNameFtx).Dot("Set").Call(Lit("Cache-Control"), Lit("no-cache"))
-			// Capture request context before SetBodyStreamWriter: Fiber Ctx is recycled while the writer runs.
+			bg.Id(VarNameFtx).Dot("Set").Call(Lit("X-Accel-Buffering"), Lit("no"))
+			bg.Comment("Capture request context before SetBodyStreamWriter: Fiber Ctx is recycled while the writer runs.")
 			bg.Id("streamCtx").Op(":=").Id(VarNameFtx).Dot("UserContext").Call()
+			bg.Id("heartbeat").Op(":=").Qual(streamPath, "DefaultSSEHeartbeat")
+			if needsServerRef {
+				bg.If(Id("http").Dot("srv").Op("!=").Nil()).Block(
+					Id("heartbeat").Op("=").Id("http").Dot("srv").Dot("sseHeartbeat"),
+				)
+			}
 			bg.Id(VarNameFtx).Dot("Context").Call().Dot("SetBodyStreamWriter").Call(
 				Func().Params(Id("writer").Op("*").Qual("bufio", "Writer")).BlockFunc(func(wg *Group) {
-					wg.Var().Id("seq").Int64()
-					wg.For().BlockFunc(func(fg *Group) {
-						fg.Select().Block(
-							Case(Id("item").Op(",").Id("open").Op(":=").Op("<-").Id(outResult.Name)).BlockFunc(func(cg *Group) {
-								cg.If(Op("!").Id("open")).BlockFunc(func(ig *Group) {
-									if len(nonChanResults) == 0 {
-										ig.Id("final").Op(":=").Qual(streamPath, "Message").Values(Dict{
-											Id("ID"):      Id("requestBase").Dot("ID"),
-											Id("Version"): Qual(streamPath, "Version"),
-											Id("Result"):  Qual(streamPath, "EmptyResult").Call(),
-										})
-									} else {
-										ig.Var().Id("finalResult").Qual(PackageStdJSON, "RawMessage")
-										ig.If(List(Id("finalResult"), Err()).Op("=").Qual(streamPath, "MarshalResult").Call(Id("response")).Op(";").Err().Op("!=").Nil()).Block(Return())
-										ig.Id("final").Op(":=").Qual(streamPath, "Message").Values(Dict{
-											Id("ID"):      Id("requestBase").Dot("ID"),
-											Id("Version"): Qual(streamPath, "Version"),
-											Id("Result"):  Id("finalResult"),
-										})
-									}
-									ig.Id("payload").Op(",").Id("marshalErr").Op(":=").Qual(PackageStdJSON, "Marshal").Call(Id("final"))
-									ig.If(Id("marshalErr").Op("!=").Nil()).Block(Return())
-									ig.Id("_").Op(",").Id("_").Op("=").Qual(PackageFmt, "Fprintf").Call(Id("writer"), Lit("data: %s\n\n"), Id("payload"))
-									ig.Id("_").Op("=").Id("writer").Dot("Flush").Call()
-									ig.Return()
-								})
-								cg.Id("seq").Op("++")
-								cg.Id("raw").Op(",").Id("marshalErr").Op(":=").Qual(PackageStdJSON, "Marshal").Call(Id("item"))
-								cg.If(Id("marshalErr").Op("!=").Nil()).Block(Return())
-								cg.Id("params").Op(",").Id("marshalErr").Op(":=").Qual(PackageStdJSON, "Marshal").Call(Qual(streamPath, "ChunkParams").Values(Dict{
-									Id("ID"):   Id("requestBase").Dot("ID"),
-									Id("Seq"):  Id("seq"),
-									Id("Item"): Id("raw"),
-								}))
-								cg.If(Id("marshalErr").Op("!=").Nil()).Block(Return())
-								cg.Id("payload").Op(",").Id("marshalErr").Op(":=").Qual(PackageStdJSON, "Marshal").Call(Qual(streamPath, "Message").Values(Dict{
-									Id("Version"): Qual(streamPath, "Version"),
-									Id("Method"):  Qual(streamPath, "MethodStream"),
-									Id("Params"):  Id("params"),
-								}))
-								cg.If(Id("marshalErr").Op("!=").Nil()).Block(Return())
-								cg.Id("_").Op(",").Id("_").Op("=").Qual(PackageFmt, "Fprintf").Call(Id("writer"), Lit("data: %s\n\n"), Id("payload"))
-								cg.Id("_").Op("=").Id("writer").Dot("Flush").Call()
-							}),
-							Case(Op("<-").Id("streamCtx").Dot("Done").Call()).Block(
-								Return(),
-							),
-						)
+					wg.If(Err().Op("=").Qual(streamPath, "OpenSSE").Call(Id("writer")).Op(";").Err().Op("!=").Nil()).Block(Return())
+					if len(nonChanResults) > 0 {
+						wg.Var().Id("response").Id(responseStructName(r.contract.Name, method.Name))
+					}
+					wg.Var().Id(outResult.Name).Add(typeGen.FieldTypeFromTypeRef(&outResult.TypeRef, false))
+					wg.ListFunc(func(lg *Group) {
+						for _, variable := range resultsWithoutError(method) {
+							if model.TypeRefIsChan(r.project, &variable.TypeRef) {
+								lg.Id(variable.Name)
+								continue
+							}
+							lg.Id("response").Dot(r.responseStructFieldName(method, variable))
+						}
+						lg.Err()
+					}).Op("=").Id("http").Dot("svc").Dot(method.Name).CallFunc(func(cg *Group) {
+						cg.Id("streamCtx")
+						for _, arg := range argsWithoutContext(method) {
+							if model.TypeRefIsChan(r.project, &arg.TypeRef) {
+								continue
+							}
+							cg.Id("request").Dot(r.requestStructFieldName(method, arg))
+						}
 					})
+					wg.If(Err().Op("!=").Nil()).Block(
+						Id("_").Op("=").Qual(streamPath, "WriteSSEError").Call(Id("writer"), Id("requestBase").Dot("ID"), Err()),
+						Return(),
+					)
+					if len(nonChanResults) == 0 {
+						wg.If(Err().Op("=").Qual(streamPath, "PumpSSEServerStreamTyped").Types(typeGen.FieldTypeFromTypeRef(element, false)).
+							Call(
+								Id("streamCtx"),
+								Id("writer"),
+								Id("requestBase").Dot("ID"),
+								Id(outResult.Name),
+								Qual(streamPath, "EmptyResult").Call(),
+								Id("heartbeat"),
+							).Op(";").Err().Op("!=").Nil()).Block(Return())
+					} else {
+						wg.Var().Id("final").Qual(PackageStdJSON, "RawMessage")
+						wg.If(List(Id("final"), Err()).Op("=").Qual(streamPath, "MarshalResult").Call(Id("response")).Op(";").Err().Op("!=").Nil()).Block(Return())
+						wg.If(Err().Op("=").Qual(streamPath, "PumpSSEServerStreamTyped").Types(typeGen.FieldTypeFromTypeRef(element, false)).
+							Call(
+								Id("streamCtx"),
+								Id("writer"),
+								Id("requestBase").Dot("ID"),
+								Id(outResult.Name),
+								Id("final"),
+								Id("heartbeat"),
+							).Op(";").Err().Op("!=").Nil()).Block(Return())
+					}
 				}),
 			)
 			bg.Return()

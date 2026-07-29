@@ -159,6 +159,16 @@ func (r *baseRenderer) hasJsonRPC() (ok bool) {
 	return false
 }
 
+func (r *baseRenderer) hasSSE() (ok bool) {
+
+	for _, contract := range r.contractsSorted() {
+		if model.ContractHasSSE(r.project, contract) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *baseRenderer) hasHTTPServerContracts() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {

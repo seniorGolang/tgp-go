@@ -135,6 +135,7 @@ func TestRenderJsonRPCClient_StreamImportsResponseAndSkipsUnusedHelper(t *testin
 	if strings.Contains(liveSrc, "new Error(String(rpc.error.code)") {
 		t.Fatalf("stream helpers must not invent Error from rpc.error fields:\n%s", liveSrc)
 	}
+	assertStreamAbortContract(t, liveSrc, true, true)
 
 	if err = renderer.RenderExchangeTypes(project.Contracts[1]); err != nil {
 		t.Fatalf("RenderExchangeTypes LiveMapping: %v", err)
@@ -156,6 +157,7 @@ func TestRenderJsonRPCClient_StreamImportsResponseAndSkipsUnusedHelper(t *testin
 	if !strings.Contains(mappingSrc, "streamSSE") {
 		t.Fatalf("SSE contract must emit streamSSE")
 	}
+	assertStreamAbortContract(t, mappingSrc, true, true)
 }
 
 func TestRenderJsonRPCClient_StreamServerOnlyOmitsResultHelper(t *testing.T) {
@@ -206,5 +208,96 @@ func TestRenderJsonRPCClient_StreamServerOnlyOmitsResultHelper(t *testing.T) {
 	}
 	if !strings.Contains(source, "streamWebSocket") {
 		t.Fatal("expected streamWebSocket helper")
+	}
+	assertStreamAbortContract(t, source, true, false)
+}
+
+func TestRenderJsonRPCClient_StreamSSEAbortSignal(t *testing.T) {
+
+	project := &model.Project{
+		ModulePath: "example",
+		Version:    "1.0.0",
+		Types:      map[string]*model.Type{},
+		Contracts: []*model.Contract{
+			{
+				Name:    "Feed",
+				PkgPath: "example/contracts",
+				Annotations: tags.DocTags{
+					model.TagServerSSE:  "",
+					model.TagHttpPrefix: "api/v1",
+				},
+				Methods: []*model.Method{
+					{
+						Name: "Follow",
+						Annotations: tags.DocTags{
+							model.TagStream:  model.StreamModeServer,
+							model.TagSSEPath: "/sse/feed/follow",
+						},
+						Args: []*model.Variable{
+							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+							{Name: "topic", TypeRef: model.TypeRef{TypeID: "string"}},
+						},
+						Results: []*model.Variable{
+							{Name: "events", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
+							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+						},
+					},
+				},
+			},
+		},
+	}
+	dir := t.TempDir()
+	renderer := NewClientRenderer(project, dir, false, "", true)
+	if err := renderer.RenderJsonRPCClientClass(project.Contracts[0]); err != nil {
+		t.Fatalf("RenderJsonRPCClientClass: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "feed.ts"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	source := string(content)
+	if strings.Contains(source, "streamWebSocket") {
+		t.Fatal("SSE-only contract must not generate streamWebSocket")
+	}
+	assertStreamAbortContract(t, source, false, true)
+	if !strings.Contains(source, "public async *follow(topic: string, signal?: AbortSignal)") {
+		t.Fatalf("follow must accept optional AbortSignal:\n%s", source)
+	}
+	if !strings.Contains(source, "this.streamSSE<string>(streamPath, \"feed.follow\", params, query, extraHeaders, signal)") {
+		t.Fatalf("follow must forward signal into streamSSE:\n%s", source)
+	}
+	if strings.Contains(source, "signal?: AbortSignal, ") {
+		t.Fatalf("signal must be the last parameter:\n%s", source)
+	}
+}
+
+func assertStreamAbortContract(t *testing.T, source string, wantWS bool, wantSSE bool) {
+
+	t.Helper()
+	if !strings.Contains(source, "signal?: AbortSignal") {
+		t.Fatalf("stream methods must accept signal?: AbortSignal:\n%s", source)
+	}
+	if wantWS {
+		if !strings.Contains(source, "query?: Record<string, string>, signal?: AbortSignal") {
+			t.Fatalf("WS helpers must accept signal:\n%s", source)
+		}
+		if !strings.Contains(source, "signal?.addEventListener(\"abort\"") {
+			t.Fatalf("WS helpers must listen for abort:\n%s", source)
+		}
+	}
+	if !wantSSE {
+		return
+	}
+	if !strings.Contains(source, "extraHeaders?: Record<string, string>, signal?: AbortSignal") {
+		t.Fatalf("streamSSE must accept signal:\n%s", source)
+	}
+	if !strings.Contains(source, "        signal,\n") {
+		t.Fatalf("streamSSE fetch must pass signal:\n%s", source)
+	}
+	if !strings.Contains(source, "await reader.cancel()") {
+		t.Fatalf("streamSSE must cancel reader in finally:\n%s", source)
+	}
+	if !strings.Contains(source, "finally {") {
+		t.Fatalf("streamSSE must use finally for reader cleanup:\n%s", source)
 	}
 }

@@ -22,7 +22,7 @@ Verify availability or polyfills for runtime APIs such as `fetch`, `Blob`, `Form
 
 ## Streams
 
-Consume generated async streams until completion and cancel them when their owning UI/task is disposed. For client or bidirectional streams, propagate producer errors and stop sending after cancellation.
+Consume generated async streams until completion and cancel them when their owning UI/task is disposed. Pass an `AbortSignal` as the last argument of stream methods: SSE forwards it to `fetch` and cancels the body reader; WebSocket closes the socket on abort. For client or bidirectional streams, propagate producer errors and stop sending after cancellation.
 
 ## Binary data
 

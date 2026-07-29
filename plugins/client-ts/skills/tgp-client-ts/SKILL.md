@@ -55,7 +55,7 @@ Browser WebSocket APIs cannot send arbitrary upgrade headers. Generated WS clien
 
 - One binary body/result maps to `Blob`
 - Multiple binary values or `http-multipart` map to `FormData`
-- WS/SSE streams use generated asynchronous helpers; cancellation and completion must be handled
+- WS/SSE streams use generated asynchronous helpers; pass `AbortSignal` to cancel (SSE: fetch + reader.cancel, WS: socket.close)
 - REST/RPC failures are thrown; catch and narrow generated/custom error types
 
 Detailed usage: [references/usage.md](references/usage.md).
@@ -77,7 +77,7 @@ Without `npmName`, `--package-json` fails. For an internal source-only client, o
 - async/static auth headers are sent
 - browser WS works through query fallback where required
 - `X-Client-Id` behavior matches server metrics/logging expectations
-- Blob/FormData and stream cancellation work in the target browser/Node runtime
+- Blob/FormData and stream `AbortSignal` cancellation work in the target browser/Node runtime
 
 ## Diagnose
 

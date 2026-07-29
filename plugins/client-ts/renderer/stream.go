@@ -108,7 +108,7 @@ func (r *ClientRenderer) streamMethodSource(contract *model.Contract, method *mo
 	if mode == model.StreamModeClient {
 		in, _, _ := model.MethodStreamInChan(r.project, method)
 		resultType := r.streamTSResultType(contract, method)
-		return fmt.Sprintf("public async %s(%s): Promise<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    return this.streamWebSocketResult<%s>(streamPath, %q, params, %s, query);\n}",
+		return fmt.Sprintf("public async %s(%s): Promise<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    return this.streamWebSocketResult<%s>(streamPath, %q, params, %s, query, signal);\n}",
 			methodNameTS, params, resultType, paramsObject, pathExpr, queryExpr, resultType, methodName, tsSafeName(in.Name))
 	}
 
@@ -120,10 +120,10 @@ func (r *ClientRenderer) streamMethodSource(contract *model.Contract, method *mo
 		inputArg = tsSafeName(in.Name)
 	}
 	if websocket {
-		return fmt.Sprintf("public async *%s(%s): AsyncGenerator<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    for await (const item of this.streamWebSocket<%s>(streamPath, %q, params, %s, query)) {\n        yield item;\n    }\n}",
+		return fmt.Sprintf("public async *%s(%s): AsyncGenerator<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    for await (const item of this.streamWebSocket<%s>(streamPath, %q, params, %s, query, signal)) {\n        yield item;\n    }\n}",
 			methodNameTS, params, outType, paramsObject, pathExpr, queryExpr, outType, methodName, inputArg)
 	}
-	return fmt.Sprintf("public async *%s(%s): AsyncGenerator<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    const extraHeaders = %s;\n    for await (const item of this.streamSSE<%s>(streamPath, %q, params, query, extraHeaders)) {\n        yield item;\n    }\n}",
+	return fmt.Sprintf("public async *%s(%s): AsyncGenerator<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    const extraHeaders = %s;\n    for await (const item of this.streamSSE<%s>(streamPath, %q, params, query, extraHeaders, signal)) {\n        yield item;\n    }\n}",
 		methodNameTS, params, outType, paramsObject, pathExpr, queryExpr, headersExpr, outType, methodName)
 }
 
@@ -225,7 +225,7 @@ func (r *ClientRenderer) streamTSHeadersExpr(contract *model.Contract, method *m
 
 func (r *ClientRenderer) streamTSParams(contract *model.Contract, method *model.Method, args []*model.Variable, mode string) (params string) {
 
-	parts := make([]string, 0, len(args)+1)
+	parts := make([]string, 0, len(args)+2)
 	for _, arg := range args {
 		parts = append(parts, fmt.Sprintf("%s: %s", tsSafeName(arg.Name), r.streamTSType(contract, method, &arg.TypeRef, true)))
 	}
@@ -233,6 +233,7 @@ func (r *ClientRenderer) streamTSParams(contract *model.Contract, method *model.
 		in, element, _ := model.MethodStreamInChan(r.project, method)
 		parts = append(parts, fmt.Sprintf("%s: AsyncIterable<%s>", tsSafeName(in.Name), r.streamTSType(contract, method, element, true)))
 	}
+	parts = append(parts, "signal?: AbortSignal")
 	return strings.Join(parts, ", ")
 }
 
@@ -310,12 +311,20 @@ const streamHelperOpenWebSocket = `private openWebSocket(streamPath: string, que
     });
 }`
 
-const streamHelperWebSocket = `private async *streamWebSocket<T>(streamPath: string, method: string, params: unknown, input?: AsyncIterable<unknown>, query?: Record<string, string>): AsyncGenerator<T> {
+const streamHelperWebSocket = `private async *streamWebSocket<T>(streamPath: string, method: string, params: unknown, input?: AsyncIterable<unknown>, query?: Record<string, string>, signal?: AbortSignal): AsyncGenerator<T> {
+    if (signal?.aborted) {
+        throw signal.reason instanceof Error ? signal.reason : new DOMException("This operation was aborted", "AbortError");
+    }
     const socket = await this.openWebSocket(streamPath, query);
     const id = crypto.randomUUID();
     const messages: unknown[] = [];
     let done = false;
     let wake: (() => void) | undefined;
+    const onAbort = () => {
+        socket.close();
+        wake?.();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
     socket.addEventListener("message", (event) => {
         messages.push(JSON.parse(String(event.data)));
         wake?.();
@@ -324,16 +333,26 @@ const streamHelperWebSocket = `private async *streamWebSocket<T>(streamPath: str
     if (input) {
         void (async () => {
             for await (const item of input) {
+                if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
+                    return;
+                }
                 socket.send(JSON.stringify({ jsonrpc: "2.0", method: "$/stream", params: { id, item } }));
+            }
+            if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
+                return;
             }
             socket.send(JSON.stringify({ jsonrpc: "2.0", method: "$/stream.end", params: { id } }));
         })();
     }
     try {
         while (!done) {
+            if (signal?.aborted) {
+                throw signal.reason instanceof Error ? signal.reason : new DOMException("This operation was aborted", "AbortError");
+            }
             if (messages.length === 0) {
                 await new Promise<void>((resolve) => { wake = resolve; });
                 wake = undefined;
+                continue;
             }
             for (const message of messages.splice(0)) {
                 const rpc = message as { id?: string; method?: string; params?: { id?: string; item?: T }; error?: { code: number; message: string } };
@@ -350,19 +369,29 @@ const streamHelperWebSocket = `private async *streamWebSocket<T>(streamPath: str
             }
         }
     } finally {
+        signal?.removeEventListener("abort", onAbort);
         socket.close();
     }
 }`
 
-const streamHelperWebSocketResult = `private async streamWebSocketResult<TResult>(streamPath: string, method: string, params: unknown, input: AsyncIterable<unknown>, query?: Record<string, string>): Promise<TResult> {
+const streamHelperWebSocketResult = `private async streamWebSocketResult<TResult>(streamPath: string, method: string, params: unknown, input: AsyncIterable<unknown>, query?: Record<string, string>, signal?: AbortSignal): Promise<TResult> {
+    if (signal?.aborted) {
+        throw signal.reason instanceof Error ? signal.reason : new DOMException("This operation was aborted", "AbortError");
+    }
     const socket = await this.openWebSocket(streamPath, query);
     const id = crypto.randomUUID();
     return new Promise<TResult>((resolve, reject) => {
+        const onAbort = () => {
+            socket.close();
+            reject(signal?.reason instanceof Error ? signal.reason : new DOMException("This operation was aborted", "AbortError"));
+        };
+        signal?.addEventListener("abort", onAbort, { once: true });
         socket.addEventListener("message", (event) => {
             const rpc = JSON.parse(String(event.data)) as { id?: string; result?: TResult; error?: { code: number; message: string } };
             if (rpc.id !== id) {
                 return;
             }
+            signal?.removeEventListener("abort", onAbort);
             socket.close();
             if (rpc.error) {
                 reject(this.baseClient.decodeRPCError(rpc.error));
@@ -374,10 +403,17 @@ const streamHelperWebSocketResult = `private async streamWebSocketResult<TResult
         void (async () => {
             try {
                 for await (const item of input) {
+                    if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
+                        return;
+                    }
                     socket.send(JSON.stringify({ jsonrpc: "2.0", method: "$/stream", params: { id, item } }));
+                }
+                if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
+                    return;
                 }
                 socket.send(JSON.stringify({ jsonrpc: "2.0", method: "$/stream.end", params: { id } }));
             } catch (error) {
+                signal?.removeEventListener("abort", onAbort);
                 socket.close();
                 reject(error);
             }
@@ -385,7 +421,7 @@ const streamHelperWebSocketResult = `private async streamWebSocketResult<TResult
     });
 }`
 
-const streamHelperSSE = `private async *streamSSE<T>(streamPath: string, method: string, params: unknown, query?: Record<string, string>, extraHeaders?: Record<string, string>): AsyncGenerator<T> {
+const streamHelperSSE = `private async *streamSSE<T>(streamPath: string, method: string, params: unknown, query?: Record<string, string>, extraHeaders?: Record<string, string>, signal?: AbortSignal): AsyncGenerator<T> {
     let path = streamPath;
     if (query && Object.keys(query).length > 0) {
         const search = new URLSearchParams(query);
@@ -395,6 +431,7 @@ const streamHelperSSE = `private async *streamSSE<T>(streamPath: string, method:
         method: "POST",
         headers: { ...(await this.baseClient.getHeaders()), Accept: "text/event-stream", "Content-Type": "application/json", ...(extraHeaders ?? {}) },
         body: JSON.stringify({ id: crypto.randomUUID(), jsonrpc: "2.0", method, params }),
+        signal,
     });
     if (!response.ok || !response.body) {
         throw new Error("SSE request failed: " + String(response.status));
@@ -402,25 +439,32 @@ const streamHelperSSE = `private async *streamSSE<T>(streamPath: string, method:
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    for (;;) {
-        const next = await reader.read();
-        if (next.done) {
-            return;
+    try {
+        for (;;) {
+            const next = await reader.read();
+            if (next.done) {
+                return;
+            }
+            buffer += decoder.decode(next.value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+                if (!line.startsWith("data:")) {
+                    continue;
+                }
+                const rpc = JSON.parse(line.slice(5).trim()) as { method?: string; params?: { item?: T }; error?: { code: number; message: string } };
+                if (rpc.error) {
+                    throw this.baseClient.decodeRPCError(rpc.error);
+                }
+                if (rpc.method === "$/stream") {
+                    yield rpc.params?.item as T;
+                }
+            }
         }
-        buffer += decoder.decode(next.value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-            if (!line.startsWith("data:")) {
-                continue;
-            }
-            const rpc = JSON.parse(line.slice(5).trim()) as { method?: string; params?: { item?: T }; error?: { code: number; message: string } };
-            if (rpc.error) {
-                throw this.baseClient.decodeRPCError(rpc.error);
-            }
-            if (rpc.method === "$/stream") {
-                yield rpc.params?.item as T;
-            }
+    } finally {
+        try {
+            await reader.cancel();
+        } catch {
         }
     }
 }`

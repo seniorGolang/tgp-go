@@ -53,6 +53,8 @@ func TestRenderSSE_MixedResultsFinalMarshal(t *testing.T) {
 	}
 	source := string(content)
 	for _, fragment := range []string{
+		"conn := ftx.Context().Conn()",
+		"conn.SetWriteDeadline(time.Time{})",
 		"stream.OpenSSE(writer)",
 		"stream.PumpSSEServerStreamTyped[string]",
 		"stream.MarshalResult(response)",
@@ -64,6 +66,11 @@ func TestRenderSSE_MixedResultsFinalMarshal(t *testing.T) {
 		if !strings.Contains(source, fragment) {
 			t.Fatalf("missing %q in:\n%s", fragment, source)
 		}
+	}
+	if idxConn := strings.Index(source, "conn.SetWriteDeadline(time.Time{})"); idxConn < 0 {
+		t.Fatal("missing SetWriteDeadline")
+	} else if idxOpen := strings.Index(source, "stream.OpenSSE(writer)"); idxOpen < idxConn {
+		t.Fatal("SetWriteDeadline must run before OpenSSE")
 	}
 	if strings.Contains(source, "ticks, err = http.svc.Subscribe") {
 		t.Fatal("SSE must not drop non-chan results")

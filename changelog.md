@@ -1,6 +1,48 @@
 # Changelog
 
-## 1.0.8
+## 1.0.9 — 2026-08-01
+
+### Плагины
+
+| Плагин | Изменение |
+|--------|-----------|
+| `astg-json` | новый: `tg astg json [-o …] [--from-db …]` — экспорт resolved ASTG-модели в JSON |
+
+```mermaid
+flowchart LR
+  contracts[contracts] --> astg[astg]
+  astg --> json[astg-json]
+  db[(локальная БД)] --> astdb[astg-db]
+  astdb --> json
+  json --> out["stdout / файл"]
+```
+
+### Поведение
+
+| Область | Дельта |
+|---------|--------|
+| `astg` | именованные скаляры с typed const (≥2) → `Type.Enums` (без обязательного `@tg enums`) |
+| `swagger` | typed enums → `$ref` + `enum`; `@tg enums` на голых скалярах — как раньше |
+| `client-go` / `client-ts` | генерация типизированных констант из `Type.Enums` |
+| `client-ts` | stream-методы принимают `signal?: AbortSignal` (SSE — `fetch`/`reader`, WS — закрытие сокета) |
+| `server` | SSE pump в runtime: `OpenSSE` / `PumpSSEServerStreamTyped`, `SetSSEHeartbeat`, `X-Accel-Buffering: no` |
+| `server` | write deadline SSE сбрасывается до `OpenSSE` (Fiber переиспользует `Ctx` в `SetBodyStreamWriter`) |
+| `astg-db` | `all-contracts=true` — полная модель из БД без интерактивного выбора контрактов |
+
+| Enums | Было | Стало |
+|-------|------|-------|
+| именованный тип + `const` | только через `@tg enums=…` на поле | автосбор в модель → OpenAPI / клиенты |
+| голый скаляр | `@tg enums=…` | без изменений |
+
+### Установка
+
+```bash
+tg pkg add https://github.com/seniorGolang/tgp-go:astg-json
+```
+
+---
+
+## 1.0.8 — 2026-07-24
 
 ### Плагины
 

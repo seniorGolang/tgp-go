@@ -21,6 +21,7 @@ func (r *contractRenderer) RenderSSE() (err error) {
 	srcFile.PackageComment(generated.ByToolGateway)
 	srcFile.ImportName("bufio", "bufio")
 	srcFile.ImportName(PackageStdJSON, "json")
+	srcFile.ImportName(PackageTime, "time")
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(fmt.Sprintf("%s/stream", r.pkgPath(r.outDir)), "stream")
 
@@ -69,8 +70,9 @@ func (r *contractRenderer) sseHandler(srcFile *GoFile, typeGen *types.Generator,
 			bg.Id(VarNameFtx).Dot("Set").Call(Lit("Content-Type"), Lit("text/event-stream"))
 			bg.Id(VarNameFtx).Dot("Set").Call(Lit("Cache-Control"), Lit("no-cache"))
 			bg.Id(VarNameFtx).Dot("Set").Call(Lit("X-Accel-Buffering"), Lit("no"))
-			bg.Comment("Capture request context before SetBodyStreamWriter: Fiber Ctx is recycled while the writer runs.")
+			bg.Comment("Capture request context and conn before SetBodyStreamWriter: Fiber Ctx is recycled while the writer runs.")
 			bg.Id("streamCtx").Op(":=").Id(VarNameFtx).Dot("UserContext").Call()
+			bg.Id("conn").Op(":=").Id(VarNameFtx).Dot("Context").Call().Dot("Conn").Call()
 			bg.Id("heartbeat").Op(":=").Qual(streamPath, "DefaultSSEHeartbeat")
 			if needsServerRef {
 				bg.If(Id("http").Dot("srv").Op("!=").Nil()).Block(
@@ -79,6 +81,7 @@ func (r *contractRenderer) sseHandler(srcFile *GoFile, typeGen *types.Generator,
 			}
 			bg.Id(VarNameFtx).Dot("Context").Call().Dot("SetBodyStreamWriter").Call(
 				Func().Params(Id("writer").Op("*").Qual("bufio", "Writer")).BlockFunc(func(wg *Group) {
+					wg.Id("_").Op("=").Id("conn").Dot("SetWriteDeadline").Call(Qual(PackageTime, "Time").Values())
 					wg.If(Err().Op("=").Qual(streamPath, "OpenSSE").Call(Id("writer")).Op(";").Err().Op("!=").Nil()).Block(Return())
 					if len(nonChanResults) > 0 {
 						wg.Var().Id("response").Id(responseStructName(r.contract.Name, method.Name))

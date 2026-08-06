@@ -1,4 +1,6 @@
 {
   "Kafka subscriber generator (franz-go)": "Генератор Kafka-подписчика (franz-go)",
-  "Generate Kafka Go subscriber": "Сгенерировать Go-подписчик Kafka"
+  "Generate Kafka Go subscriber": "Сгенерировать Go-подписчик Kafka",
+  "failed to parse contracts": "не удалось разобрать список контрактов",
+  "failed to filter contracts": "не удалось отфильтровать контракты"
 }

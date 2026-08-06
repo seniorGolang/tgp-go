@@ -40,7 +40,7 @@ func typeRefFromExpr(expr ast.Expr, pkgPath string, imports map[string]string, p
 		slog.Error(i18n.Msg("TypeOf returned nil"), slog.String("package", pkgPath), slog.String("expr", types.ExprString(expr)))
 		return
 	}
-	if basic, isBasic := typ.(*types.Basic); isBasic && basic.Name() == "invalid type" {
+	if basic, isBasic := typ.(*types.Basic); isBasic && basic.Name() == errInvalidType {
 		slog.Error(i18n.Msg("TypeOf returned invalid type"), slog.String("package", pkgPath), slog.String("expr", types.ExprString(expr)))
 		return
 	}
@@ -139,7 +139,7 @@ func typeRefFromTypes(typ types.Type, pkgPath string, imports map[string]string,
 
 	default:
 		typeID := generateTypeIDFromGoTypes(typ)
-		if typeID == "" || typeID == "invalid type" {
+		if typeID == "" || typeID == errInvalidType {
 			return
 		}
 		info.TypeID = typeID
@@ -158,7 +158,7 @@ func conversionInfoToTypeRef(info typeConversionInfo) (ref *model.TypeRef) {
 	if info.TypeID == "" && info.MapKey == nil && info.ChanOf == nil {
 		return nil
 	}
-	if info.TypeID == "invalid type" {
+	if info.TypeID == errInvalidType {
 		return nil
 	}
 	return &model.TypeRef{

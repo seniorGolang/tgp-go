@@ -1,3 +1,4 @@
+{{.DoNotEditComment}}
 package srvctx
 
 import (
@@ -5,14 +6,23 @@ import (
 	"sync"
 )
 
-var keyCache sync.Map
+var (
+	keyMu    sync.RWMutex
+	keyCache = make(map[reflect.Type]string)
+)
 
 func cachedKey(rt reflect.Type) (s string) {
 
-	if v, ok := keyCache.Load(rt); ok {
-		return v.(string)
+	var ok bool
+	keyMu.RLock()
+	s, ok = keyCache[rt]
+	keyMu.RUnlock()
+	if ok {
+		return
 	}
 	s = rt.String()
-	keyCache.Store(rt, s)
+	keyMu.Lock()
+	keyCache[rt] = s
+	keyMu.Unlock()
 	return
 }

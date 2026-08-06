@@ -7,28 +7,25 @@ import (
 	"path"
 	"path/filepath"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
-	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
 func (r *transportRenderer) RenderTransportContext() (err error) {
 
-	if err = r.pkgRenderTo("srvctx", r.outDir, newPkgTemplateData()); err != nil {
+	if err = r.pkgRenderTo("srvctx", r.outDir, r.srvctxTemplateData()); err != nil {
 		return
 	}
-	if r.hasHTTPServerContracts() || r.hasStreamContracts() {
+	if r.hasHTTPServerContracts() || r.hasStreamContracts() || r.hasJSONRPC() {
 		if err = r.renderStreamPackage(); err != nil {
 			return fmt.Errorf("render stream package: %w", err)
 		}
 	}
 	contextPath := path.Join(r.outDir, "context.go")
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(srvctxPkgPath, "srvctx")
 	srcFile.ImportName(PackageSlog, "slog")
@@ -50,7 +47,7 @@ func (r *transportRenderer) hasStreamContracts() (ok bool) {
 
 func (r *transportRenderer) withMethodLoggerFunc() Code {
 
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
 
 	return Func().Id("withMethodLogger").
 		Params(

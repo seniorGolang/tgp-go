@@ -15,7 +15,7 @@ import (
 func (r *ClientRenderer) renderBatchSection(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
 
 	batchAnchor := generateAnchor("Batch запросы (JSON-RPC)")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", batchAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", batchAnchor))
 	md.LF()
 	md.H2("Batch запросы (JSON-RPC)")
 	md.PlainText("Для выполнения нескольких JSON-RPC запросов одновременно используйте метод " + markdown.Code("Batch") + ". Это позволяет отправить несколько запросов в одном HTTP запросе.")
@@ -31,20 +31,20 @@ func (r *ClientRenderer) renderBatchSection(md *markdown.Markdown, contracts []*
 func (r *ClientRenderer) renderErrorsSection(md *markdown.Markdown) {
 
 	errorsAnchor := generateAnchor("Обработка ошибок")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", errorsAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", errorsAnchor))
 	md.LF()
 	md.H2("Обработка ошибок")
 
 	jsonrpcErrorsAnchor := generateAnchor("JSON-RPC ошибки")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", jsonrpcErrorsAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", jsonrpcErrorsAnchor))
 	md.LF()
 	md.H3("JSON-RPC ошибки")
-	md.PlainText("При JSON-RPC ошибке вызывается " + markdown.Code("ErrorDecoder") + " с " + markdown.Code("rpcResponse.Error.Raw()") + "; по умолчанию — " + markdown.Code("errorJsonRPC") + " (как в " + markdown.Code("error.go") + "). Свой тип — " + markdown.Code("DecodeError") + ".")
+	md.PlainText("При JSON-RPC ошибке вызывается " + markdown.Code("ErrorDecoder") + " с " + markdown.Code("rpcResponse.Error.Raw()") + "; по умолчанию — " + markdown.Code("errorJSONRPC") + " (как в " + markdown.Code("error.go") + "). Свой тип — " + markdown.Code("DecodeError") + ".")
 
 	pkgPath := r.pkgPath(r.outDir)
 	pkgName := filepath.Base(r.outDir)
 	if pkgName == "" || pkgName == "." {
-		pkgName = "client"
+		pkgName = pkgClient
 	}
 
 	md.CodeBlocks(markdown.SyntaxHighlightGo, fmt.Sprintf(`package main
@@ -79,10 +79,10 @@ func main() {
 	md.BulletList(errorCodes...)
 
 	httpErrorsAnchor := generateAnchor("HTTP ошибки")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", httpErrorsAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", httpErrorsAnchor))
 	md.LF()
 	md.H3("HTTP ошибки")
-	md.PlainText("При работе с HTTP клиентом ошибки обрабатываются автоматически. Если сервер возвращает HTTP статус код, отличный от ожидаемого успешного кода, клиент возвращает ошибку типа " + markdown.Code("error") + " с описанием ошибки.")
+	md.PlainText("При работе с HTTP клиентом ошибки обрабатываются автоматически. Если сервер возвращает HTTP статус код, отличный от ожидаемого успешного кода, клиент возвращает ошибку типа " + markdown.Code(typeError) + " с описанием ошибки.")
 
 	md.CodeBlocks(markdown.SyntaxHighlightGo, fmt.Sprintf(`package main
 
@@ -140,11 +140,11 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 	}
 
 	for _, contract := range contracts {
-		if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 			continue
 		}
 		for _, method := range contract.Methods {
-			if r.methodIsJsonRPC(contract, method) {
+			if r.methodIsJSONRPC(contract, method) {
 				exampleMethods = append(exampleMethods, struct {
 					contract *model.Contract
 					method   *model.Method
@@ -163,7 +163,7 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 	pkgPath := r.pkgPath(outDir)
 	pkgName := filepath.Base(outDir)
 	if pkgName == "" || pkgName == "." {
-		pkgName = "client"
+		pkgName = pkgClient
 	}
 
 	if len(exampleMethods) == 0 {
@@ -319,8 +319,8 @@ func (r *ClientRenderer) renderBatchExample(md *markdown.Markdown, contracts []*
 	}
 
 	templateData := map[string]any{
-		"PkgPath":   pkgPath,
-		"PkgName":   pkgName,
+		tplPkgPath:  pkgPath,
+		tplPkgName:  pkgName,
 		"Services":  services,
 		"Callbacks": callbacks,
 		"Requests":  requests,

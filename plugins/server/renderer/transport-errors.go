@@ -6,9 +6,7 @@ import (
 	"path"
 	"path/filepath"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
-
-	"tgp/internal/generated"
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 )
 
 func (r *transportRenderer) RenderTransportErrors() (err error) {
@@ -16,8 +14,6 @@ func (r *transportRenderer) RenderTransportErrors() (err error) {
 	errorsPath := path.Join(r.outDir, "errors.go")
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	srcFile.ImportName(PackageSlog, "slog")
 
 	srcFile.Line().Add(r.withErrorCodeInterface())
@@ -35,8 +31,8 @@ func (r *transportRenderer) errValidationType() (c Code) {
 
 	return Line().
 		Type().Id("errValidation").Struct(
-		Id("TrKey").String().Tag(map[string]string{"json": "trKey"}),
-		Id("Data").String().Tag(map[string]string{"json": "data,omitempty"}),
+		Id("TrKey").String().Tag(map[string]string{keyJSON: "trKey"}),
+		Id("Data").String().Tag(map[string]string{keyJSON: "data,omitempty"}),
 		Id("code").Int(),
 	).
 		Line().

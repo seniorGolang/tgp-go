@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"tgp/core"
@@ -15,7 +16,7 @@ func TestExecuteNoop(t *testing.T) {
 
 	t.Parallel()
 
-	plugin := &AstgDbPlugin{}
+	plugin := &AstgDBPlugin{}
 
 	t.Run("nil request", func(t *testing.T) {
 		t.Parallel()
@@ -116,10 +117,8 @@ func TestLoadFromDB(t *testing.T) {
 					t.Fatalf("ref select must be single, prompt=%q", prompt)
 				}
 				wantRef := projectKey + "@" + version
-				for _, option := range options {
-					if option == wantRef {
-						return []string{wantRef}, nil
-					}
+				if slices.Contains(options, wantRef) {
+					return []string{wantRef}, nil
 				}
 				t.Fatalf("ref %q not in options %v", wantRef, options)
 				return nil, nil

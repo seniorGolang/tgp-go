@@ -41,7 +41,7 @@ func TestContractWSPathDefault(t *testing.T) {
 	project := &Project{}
 	contract := &Contract{
 		Name:        "Live",
-		Annotations: tags.DocTags{TagHttpPrefix: "api/v1", TagServerWS: ""},
+		Annotations: tags.DocTags{TagHTTPPrefix: "api/v1", TagServerWS: ""},
 	}
 	path := ContractWSPath(project, contract)
 	if path != "/api/v1/ws/live" {

@@ -10,5 +10,5 @@ func init() {
 
 	// При сборке с тегом pluginInfo генерируем манифест
 	// translator уже инициализирован в translate.go через init()
-	manifest.GenerateFromArgs(&AstgJsonPlugin{})
+	manifest.GenerateFromArgs(&AstgJSONPlugin{})
 }

@@ -19,7 +19,9 @@ const (
 	jsonPlaceholderInvalid = "invalid"
 	sliceMaxLen            = 16
 	sliceHeadTail          = 4
+	stringMaxLen           = 1024
 	ptrHexPrefix           = "0x"
+	defaultMaxDepth        = 8
 )
 
 var typeJSONRawMessage = reflect.TypeOf(json.RawMessage(nil))
@@ -38,6 +40,12 @@ func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *Config
 		}
 		return toJSONTree(v.Elem(), depth, pointers, cs, opt)
 	}
+	if v.Type() == typeJSONRawMessage {
+		if opt.enabled && opt.full {
+			return "hidden", nil
+		}
+		return json.RawMessage(v.Bytes()), nil
+	}
 	if v.CanInterface() {
 		if lv, ok := v.Interface().(slog.LogValuer); ok {
 			return slogValueToNode(slog.AnyValue(lv).Resolve(), depth, pointers, cs, opt)
@@ -49,14 +57,14 @@ func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *Config
 		}
 		results := toString.Call(nil)
 		if len(results) == 1 {
-			s := string(applyOptions([]byte(results[0].String()), opt))
+			s := clipViewerString(string(applyOptions([]byte(results[0].String()), opt)))
 			return s, nil
 		}
 	}
 	if method := v.MethodByName(dumpMethod); method.IsValid() {
 		results := method.Call(nil)
 		if len(results) == 1 {
-			return results[0].String(), nil
+			return clipViewerString(results[0].String()), nil
 		}
 	}
 	switch kind {
@@ -71,7 +79,7 @@ func toJSONTree(v reflect.Value, depth int, pointers map[uintptr]int, cs *Config
 	case reflect.Complex64, reflect.Complex128:
 		return optionFromAny(fmt.Sprintf("(%g+%gi)", real(v.Complex()), imag(v.Complex())), opt), nil
 	case reflect.String:
-		return string(applyOptions([]byte(v.String()), opt)), nil
+		return clipViewerString(string(applyOptions([]byte(v.String()), opt))), nil
 	case reflect.Slice:
 		return toJSONTreeSlice(v, depth, pointers, cs, opt)
 	case reflect.Array:
@@ -94,7 +102,7 @@ func slogValueToNode(val slog.Value, depth int, pointers map[uintptr]int, cs *Co
 
 	switch val.Kind() {
 	case slog.KindString:
-		return val.String(), nil
+		return clipViewerString(val.String()), nil
 	case slog.KindInt64:
 		return val.Int64(), nil
 	case slog.KindUint64:

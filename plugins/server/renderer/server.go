@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
-	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
@@ -17,8 +16,6 @@ import (
 func (r *contractRenderer) RenderServer() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	srcFile.ImportName(r.contract.PkgPath, filepath.Base(r.contract.PkgPath))
 
 	typeGen := types.NewGenerator(r.project, &srcFile)
@@ -82,7 +79,7 @@ func (r *contractRenderer) RenderServer() (err error) {
 	return
 }
 
-func (r *contractRenderer) serverType(typeGen *types.Generator) (c Code) {
+func (r *contractRenderer) serverType(_typeGen *types.Generator) (c Code) {
 
 	return Type().Id("server" + r.contract.Name).StructFunc(func(sg *Group) {
 		sg.Id("svc").Qual(r.contract.PkgPath, r.contract.Name)
@@ -92,7 +89,7 @@ func (r *contractRenderer) serverType(typeGen *types.Generator) (c Code) {
 	})
 }
 
-func (r *contractRenderer) middlewareSetType(typeGen *types.Generator) (c Code) {
+func (r *contractRenderer) middlewareSetType(_typeGen *types.Generator) (c Code) {
 
 	return Type().Id("MiddlewareSet" + r.contract.Name).InterfaceFunc(func(ig *Group) {
 		ig.Id("Wrap").Params(Id("m").Id("Middleware" + r.contract.Name))
@@ -112,7 +109,7 @@ func (r *contractRenderer) middlewareSetType(typeGen *types.Generator) (c Code) 
 	})
 }
 
-func (r *contractRenderer) newServerFunc(typeGen *types.Generator) (c Code) {
+func (r *contractRenderer) newServerFunc(_typeGen *types.Generator) (c Code) {
 
 	return Func().Id("newServer" + r.contract.Name).
 		Params(Id("svc").Qual(r.contract.PkgPath, r.contract.Name)).
@@ -127,7 +124,7 @@ func (r *contractRenderer) newServerFunc(typeGen *types.Generator) (c Code) {
 		)
 }
 
-func (r *contractRenderer) wrapFunc(typeGen *types.Generator) (c Code) {
+func (r *contractRenderer) wrapFunc(_typeGen *types.Generator) (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("server" + r.contract.Name)).
 		Id("Wrap").

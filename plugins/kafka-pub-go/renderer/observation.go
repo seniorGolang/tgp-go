@@ -80,7 +80,7 @@ func (r *Renderer) observationCodes(contract *model.Contract, method *model.Meth
 		return codes
 	}
 	codes = append(codes, jen.If(jen.Id("err").Op("!=").Nil()).Block(errorLog).Else().Block(
-		jen.Id("adapter").Dot("client").Dot("log").Dot("Info").Call(append([]jen.Code{jen.Lit("kafka produce completed")}, fields...)...),
+		jen.Id("adapter").Dot("client").Dot("log").Dot("Debug").Call(append([]jen.Code{jen.Lit("kafka produce completed")}, fields...)...),
 	))
 	return codes
 }

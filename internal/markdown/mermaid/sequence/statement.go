@@ -3,12 +3,8 @@
 
 package sequence
 
-import (
-	"fmt"
-)
-
 func (d *Diagram) LoopStart(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    loop %s", description))
+	d.body = append(d.body, "    loop "+description)
 	return d
 }
 
@@ -18,12 +14,12 @@ func (d *Diagram) LoopEnd() (out *Diagram) {
 }
 
 func (d *Diagram) AltStart(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    alt %s", description))
+	d.body = append(d.body, "    alt "+description)
 	return d
 }
 
 func (d *Diagram) AltElse(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    else %s", description))
+	d.body = append(d.body, "    else "+description)
 	return d
 }
 
@@ -33,7 +29,7 @@ func (d *Diagram) AltEnd() (out *Diagram) {
 }
 
 func (d *Diagram) OptStart(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    opt %s", description))
+	d.body = append(d.body, "    opt "+description)
 	return d
 }
 
@@ -43,12 +39,12 @@ func (d *Diagram) OptEnd() (out *Diagram) {
 }
 
 func (d *Diagram) ParallelStart(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    par %s", description))
+	d.body = append(d.body, "    par "+description)
 	return d
 }
 
 func (d *Diagram) ParallelAnd(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    and %s", description))
+	d.body = append(d.body, "    and "+description)
 	return d
 }
 
@@ -58,12 +54,12 @@ func (d *Diagram) ParallelEnd() (out *Diagram) {
 }
 
 func (d *Diagram) CriticalStart(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    critical %s", description))
+	d.body = append(d.body, "    critical "+description)
 	return d
 }
 
 func (d *Diagram) CriticalOption(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    option %s", description))
+	d.body = append(d.body, "    option "+description)
 	return d
 }
 
@@ -73,7 +69,7 @@ func (d *Diagram) CriticalEnd() (out *Diagram) {
 }
 
 func (d *Diagram) BreakStart(description string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    break %s", description))
+	d.body = append(d.body, "    break "+description)
 	return d
 }
 

@@ -58,7 +58,7 @@ func TestRenderPackageJSON_rootPackageOutInSubdir(t *testing.T) {
 
 	root := t.TempDir()
 	outDir := filepath.Join(root, "web")
-	if err := os.Mkdir(outDir, 0700); err != nil {
+	if err := os.Mkdir(outDir, 0o700); err != nil {
 		t.Fatalf("mkdir web: %v", err)
 	}
 	packagePath := filepath.Join(root, "package.json")
@@ -103,8 +103,8 @@ func TestRenderTsConfig_emitDist(t *testing.T) {
 
 	outDir := t.TempDir()
 	renderer := NewClientRenderer(&model.Project{}, outDir, true, filepath.Join(outDir, "package.json"), true)
-	if err := renderer.RenderTsConfig(); err != nil {
-		t.Fatalf("RenderTsConfig: %v", err)
+	if err := renderer.RenderTSConfig(); err != nil {
+		t.Fatalf("RenderTSConfig: %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(outDir, "tsconfig.json"))
 	if err != nil {

@@ -75,7 +75,7 @@ func MethodKafkaAcks(project *Project, contract *Contract, method *Method) (acks
 }
 
 // MethodKafkaMessageArgName — явное имя сообщения: method → interface (без эвристики).
-func MethodKafkaMessageArgName(project *Project, contract *Contract, method *Method) (argName string) {
+func MethodKafkaMessageArgName(_project *Project, contract *Contract, method *Method) (argName string) {
 
 	if method != nil {
 		if raw := strings.TrimSpace(method.Annotations.Value(TagKafkaMessage, "")); raw != "" {
@@ -148,7 +148,7 @@ func TypeRefIsByteSlice(typeRef *TypeRef) (ok bool) {
 	if typeRef == nil || typeRef.IsEllipsis || typeRef.NumberOfPointers != 0 {
 		return false
 	}
-	return typeRef.IsSlice && typeRef.TypeID == "byte" && typeRef.ElementPointers == 0
+	return typeRef.IsSlice && typeRef.TypeID == string(TypeKindByte) && typeRef.ElementPointers == 0
 }
 
 // TypeRefIsByteSliceSlice — [][]byte.
@@ -166,7 +166,7 @@ func TypeRefIsByteSliceEllipsis(typeRef *TypeRef) (ok bool) {
 	if typeRef == nil || !typeRef.IsEllipsis || typeRef.NumberOfPointers != 0 {
 		return false
 	}
-	return typeRef.TypeID == "byte" && typeRef.ElementPointers == 0
+	return typeRef.TypeID == string(TypeKindByte) && typeRef.ElementPointers == 0
 }
 
 // TypeRefIsKafkaKeyOrHeader — допустимый тип ключа/заголовка (§5.3).
@@ -200,7 +200,7 @@ func TypeRefKafkaMessageElement(typeRef *TypeRef) (elem TypeRef, ok bool) {
 		return *typeRef, true
 	}
 	if TypeRefIsByteSliceEllipsis(typeRef) || TypeRefIsByteSliceSlice(typeRef) {
-		return TypeRef{TypeID: "byte", IsSlice: true}, true
+		return TypeRef{TypeID: string(TypeKindByte), IsSlice: true}, true
 	}
 	elem = *typeRef
 	if elem.IsSlice || elem.IsEllipsis {

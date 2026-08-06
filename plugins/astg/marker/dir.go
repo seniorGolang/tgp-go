@@ -4,7 +4,7 @@
 package marker
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,8 +24,8 @@ func findGitDir(startDir string) (gitDir string, err error) {
 			var content []byte
 			if content, err = os.ReadFile(gitPath); err == nil {
 				gitDir = strings.TrimSpace(string(content))
-				if strings.HasPrefix(gitDir, "gitdir: ") {
-					gitDir = strings.TrimPrefix(gitDir, "gitdir: ")
+				if after, ok := strings.CutPrefix(gitDir, "gitdir: "); ok {
+					gitDir = after
 					if !filepath.IsAbs(gitDir) {
 						gitDir = filepath.Join(dir, gitDir)
 					}
@@ -35,7 +35,7 @@ func findGitDir(startDir string) (gitDir string, err error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("git repository not found")
+			return "", errors.New("git repository not found")
 		}
 		dir = parent
 	}

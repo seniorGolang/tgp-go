@@ -56,20 +56,20 @@ func methodHTTPAnnotations(project *model.Project, contract *model.Contract, met
 		}
 	}
 
-	if successValue := model.GetAnnotationValue(project, contract, method, nil, model.TagHttpSuccess, ""); successValue != "" {
+	if successValue := model.GetAnnotationValue(project, contract, method, nil, model.TagHTTPSuccess, ""); successValue != "" {
 		var code int
 		if code, err = strconv.Atoi(successValue); err != nil || code <= 0 {
 			return fmt.Errorf("contract %q: method %q: http-success must be a positive integer", contractName, methodName)
 		}
 	}
 
-	if err = validateArgMapAnnotation(project, contract, method, model.TagHttpArg, "http-args"); err != nil {
+	if err = validateArgMapAnnotation(project, contract, method, model.TagHTTPArg, "http-args"); err != nil {
 		return
 	}
-	if err = validateArgMapAnnotation(project, contract, method, model.TagHttpHeader, "http-headers"); err != nil {
+	if err = validateArgMapAnnotation(project, contract, method, model.TagHTTPHeader, "http-headers"); err != nil {
 		return
 	}
-	if err = validateArgMapAnnotation(project, contract, method, model.TagHttpCookies, "http-cookies"); err != nil {
+	if err = validateArgMapAnnotation(project, contract, method, model.TagHTTPCookies, "http-cookies"); err != nil {
 		return
 	}
 	if err = validateFormRequestAnnotations(project, contract, method); err != nil {

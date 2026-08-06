@@ -5,6 +5,7 @@
 package sequence
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -156,7 +157,7 @@ func TestDiagramError(t *testing.T) {
 		t.Parallel()
 
 		d := NewDiagram(io.Discard)
-		d.err = fmt.Errorf("error")
+		d.err = errors.New("error")
 
 		if d.Error().Error() != "error" {
 			t.Error("value is mismatch, want error")

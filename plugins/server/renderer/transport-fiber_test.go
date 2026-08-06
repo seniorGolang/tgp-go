@@ -58,11 +58,50 @@ func TestRenderTransportFiber_RequestLoggerPreservesClientIDWithLogLevel(t *test
 	}
 	source := string(content)
 
+	if !strings.Contains(source, "if srv.allowClientLogLevel") {
+		t.Fatalf("X-Log-Level must be gated by allowClientLogLevel, got:\n%s", source)
+	}
+	if !strings.Contains(source, "levelName = ftx.Get(logLevelHeader)") {
+		t.Fatalf("X-Log-Level branch must read header when allowed, got:\n%s", source)
+	}
 	if !strings.Contains(source, "log := srv.requestLogger(ctx)") {
 		t.Fatalf("X-Log-Level branch must build level logger from requestLogger, got:\n%s", source)
 	}
 	if !strings.Contains(source, "baseHandler := log.Handler()") {
 		t.Fatalf("level handler must preserve request logger attrs, got:\n%s", source)
+	}
+}
+
+func TestRenderTransportFiber_RecoverUsesRouteAndClip(t *testing.T) {
+
+	project := transportFiberTestProject()
+	dir := filepath.Join(t.TempDir(), "transport")
+	renderer := NewTransportRenderer(project, dir)
+	if err := renderer.RenderTransportFiber(); err != nil {
+		t.Fatalf("RenderTransportFiber: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "fiber.go"))
+	if err != nil {
+		t.Fatalf("read generated file: %v", err)
+	}
+	source := string(content)
+	if !strings.Contains(source, "path := metricRoutePath(ftx)") {
+		t.Fatalf("recover must use metricRoutePath, got:\n%s", source)
+	}
+	if !strings.Contains(source, "clipString(") {
+		t.Fatalf("recover must clip OriginalURL, got:\n%s", source)
+	}
+	if strings.Contains(source, "strings.Clone") {
+		t.Fatalf("fiber.go must not Clone under Immutable, got:\n%s", source)
+	}
+	if !strings.Contains(source, "levelName = ftx.Get(logLevelHeader)") {
+		t.Fatalf("setLogger must read log level via Get, got:\n%s", source)
+	}
+	if !strings.Contains(source, "srv.allowClientLogLevel") {
+		t.Fatalf("setLogger must gate X-Log-Level, got:\n%s", source)
+	}
+	if strings.Contains(source, "Header.Peek(logLevelHeader)") {
+		t.Fatalf("setLogger must not Peek log level header, got:\n%s", source)
 	}
 }
 
@@ -84,15 +123,15 @@ func transportFiberTestProject() (project *model.Project) {
 					{
 						Name: "Ping",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+							{Name: "ctx", TypeID: "context:Context"},
 						},
 						Results: []*model.Variable{
-							{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "out", TypeID: "string"},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
 							model.TagHTTPMethod: "GET",
-							model.TagHttpPath:   "/ping",
+							model.TagHTTPPath:   "/ping",
 						},
 					},
 				},

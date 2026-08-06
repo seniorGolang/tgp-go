@@ -19,9 +19,10 @@ type ClientRenderer struct {
 	clientIdentity           bool
 	contract                 *model.Contract
 	knownTypes               map[string]int
-	typeDefTs                map[string]typeDefTs
+	typeDefTS                map[string]typeDefTS
 	typeAnchorsSet           map[string]bool
 	needParseFormValueHelper bool
+	needParseCSVFormHelper   bool
 	npmRuntimeDeps           map[string]string
 }
 
@@ -34,7 +35,7 @@ func NewClientRenderer(project *model.Project, outDir string, emitDist bool, pac
 		packageJSONPath: packageJSONPath,
 		clientIdentity:  clientIdentity,
 		knownTypes:      make(map[string]int),
-		typeDefTs:       make(map[string]typeDefTs),
+		typeDefTS:       make(map[string]typeDefTS),
 		npmRuntimeDeps:  make(map[string]string),
 	}
 }
@@ -54,10 +55,10 @@ func (r *ClientRenderer) addNpmRuntimeDependency(name string) {
 	r.npmRuntimeDeps[name] = version
 }
 
-func (r *ClientRenderer) HasJsonRPC() (ok bool) {
+func (r *ClientRenderer) HasJSONRPC() (ok bool) {
 
 	for _, contract := range r.project.Contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 			return true
 		}
 	}
@@ -126,7 +127,7 @@ func (r *ClientRenderer) isTypeFromCurrentProject(importPkgPath string) (ok bool
 func (r *ClientRenderer) tsFileName(contract *model.Contract) (s string) {
 
 	name := contract.Name
-	if len(name) == 0 {
+	if name == "" {
 		return ""
 	}
 
@@ -163,7 +164,7 @@ func (r *ClientRenderer) fileNameToMethodName(fileName string) (methodName strin
 			b.WriteString(part)
 			continue
 		}
-		if len(part) > 0 {
+		if part != "" {
 			b.WriteString(strings.ToUpper(string(part[0])))
 			b.WriteString(part[1:])
 		}
@@ -173,7 +174,7 @@ func (r *ClientRenderer) fileNameToMethodName(fileName string) (methodName strin
 
 func (r *ClientRenderer) lcName(s string) (out string) {
 
-	if len(s) == 0 {
+	if s == "" {
 		return ""
 	}
 	return model.LowerCamel(s)
@@ -202,7 +203,7 @@ func toLowerCamel(s string) (out string) {
 	if isAllUpper {
 		return s
 	}
-	if len(s) > 0 {
+	if s != "" {
 		first := rune(s[0])
 		if first >= 'A' && first <= 'Z' {
 			s = strings.ToLower(string(first)) + s[1:]
@@ -210,11 +211,13 @@ func toLowerCamel(s string) (out string) {
 	}
 	parts := strings.Split(s, "_")
 	result := parts[0]
+	var resultSb213 strings.Builder
 	for i := 1; i < len(parts); i++ {
-		if len(parts[i]) > 0 {
-			result += strings.ToUpper(string(parts[i][0])) + parts[i][1:]
+		if parts[i] != "" {
+			resultSb213.WriteString(strings.ToUpper(string(parts[i][0])) + parts[i][1:])
 		}
 	}
+	result += resultSb213.String()
 	out = result
 	return
 }

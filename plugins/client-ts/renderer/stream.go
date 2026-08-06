@@ -3,9 +3,6 @@
 package renderer
 
 import (
-	"fmt"
-	"strings"
-
 	"tgp/internal/model"
 	"tgp/plugins/client-ts/tsg"
 )
@@ -16,21 +13,24 @@ func (r *ClientRenderer) renderStreamSupport(grp *tsg.Group, contract *model.Con
 	if !needWSOut && !needWSResult && !needSSE {
 		return
 	}
-	parts := make([]string, 0, 4)
 	if needWSOut || needWSResult {
-		parts = append(parts, streamHelperWebSocketURL, streamHelperOpenWebSocket)
+		grp.Add(renderStreamHelperWebSocketURL())
+		grp.Line()
+		grp.Add(renderStreamHelperOpenWebSocket())
+		grp.Line()
 	}
 	if needWSOut {
-		parts = append(parts, streamHelperWebSocket)
+		grp.Add(renderStreamHelperWebSocket())
+		grp.Line()
 	}
 	if needWSResult {
-		parts = append(parts, streamHelperWebSocketResult)
+		grp.Add(renderStreamHelperWebSocketResult())
+		grp.Line()
 	}
 	if needSSE {
-		parts = append(parts, streamHelperSSE)
+		grp.Add(renderStreamHelperSSE())
+		grp.Line()
 	}
-	grp.Add(tsg.TypeFromString(strings.Join(parts, "\n\n")))
-	grp.Line()
 }
 
 func (r *ClientRenderer) streamHelperNeeds(contract *model.Contract) (needWSOut bool, needWSResult bool, needSSE bool) {
@@ -75,7 +75,7 @@ func (r *ClientRenderer) appendStreamExchangeTypes(contract *model.Contract, met
 func (r *ClientRenderer) renderStreamMethods(grp *tsg.Group, contract *model.Contract, method *model.Method) {
 
 	if model.MethodIsWS(r.project, contract, method) {
-		grp.Add(tsg.TypeFromString(r.streamMethodSource(contract, method, method.Name, true)))
+		grp.Add(r.renderStreamMethod(contract, method, method.Name, true))
 		grp.Line()
 	}
 	if model.MethodIsSSE(r.project, contract, method) {
@@ -83,19 +83,19 @@ func (r *ClientRenderer) renderStreamMethods(grp *tsg.Group, contract *model.Con
 		if model.MethodIsWS(r.project, contract, method) {
 			name += "SSE"
 		}
-		grp.Add(tsg.TypeFromString(r.streamMethodSource(contract, method, name, false)))
+		grp.Add(r.renderStreamMethod(contract, method, name, false))
 		grp.Line()
 	}
 }
 
-func (r *ClientRenderer) streamMethodSource(contract *model.Contract, method *model.Method, name string, websocket bool) (source string) {
+func (r *ClientRenderer) renderStreamMethod(contract *model.Contract, method *model.Method, name string, websocket bool) (stmt *tsg.Statement) {
 
 	mode := model.MethodStreamMode(r.project, contract, method)
 	clientArgs := r.streamClientArgs(contract, method)
 	bodyArgs := r.argsForExchangeRequest(contract, method)
 	params := r.streamTSParams(contract, method, clientArgs, mode)
 	paramsObject := r.streamTSParamsObject(bodyArgs)
-	methodName := model.JsonRPCWireMethod(contract.Name, method.Name)
+	methodName := model.JSONRPCWireMethod(contract.Name, method.Name)
 	rawPath := model.MethodSSEPath(r.project, contract, method)
 	if websocket {
 		rawPath = model.ContractWSPath(r.project, contract)
@@ -105,26 +105,76 @@ func (r *ClientRenderer) streamMethodSource(contract *model.Contract, method *mo
 	headersExpr := r.streamTSHeadersExpr(contract, method)
 	methodNameTS := r.lcName(name)
 
+	stmt = tsg.NewStatement()
+	stmt.Public()
 	if mode == model.StreamModeClient {
 		in, _, _ := model.MethodStreamInChan(r.project, method)
 		resultType := r.streamTSResultType(contract, method)
-		return fmt.Sprintf("public async %s(%s): Promise<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    return this.streamWebSocketResult<%s>(streamPath, %q, params, %s, query, signal);\n}",
-			methodNameTS, params, resultType, paramsObject, pathExpr, queryExpr, resultType, methodName, tsSafeName(in.Name))
+		returnType := tsg.NewStatement().ID("Promise").Generic(resultType)
+		stmt.AsyncMethod(methodNameTS, params, returnType, func(mg *tsg.Group) {
+			addStreamMethodLocals(mg, paramsObject, pathExpr, queryExpr, nil)
+			mg.Return(tsg.NewStatement().This().Dot("streamWebSocketResult").Generic(resultType).Call(
+				tsg.NewStatement().ID("streamPath"),
+				tsg.NewStatement().Lit(methodName),
+				tsg.NewStatement().ID("params"),
+				tsg.NewStatement().ID(tsSafeName(in.Name)),
+				tsg.NewStatement().ID("query"),
+				tsg.NewStatement().ID("signal"),
+				tsg.NewStatement().ID("onReady"),
+			))
+		})
+		return stmt
 	}
 
 	_, element, _ := model.MethodStreamOutChan(r.project, method)
 	outType := r.streamTSType(contract, method, element, false)
-	inputArg := "undefined"
+	inputArg := typeUndefined
 	if mode == model.StreamModeBidi {
 		in, _, _ := model.MethodStreamInChan(r.project, method)
 		inputArg = tsSafeName(in.Name)
 	}
-	if websocket {
-		return fmt.Sprintf("public async *%s(%s): AsyncGenerator<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    for await (const item of this.streamWebSocket<%s>(streamPath, %q, params, %s, query, signal)) {\n        yield item;\n    }\n}",
-			methodNameTS, params, outType, paramsObject, pathExpr, queryExpr, outType, methodName, inputArg)
+	returnType := tsg.NewStatement().ID("AsyncGenerator").Generic(outType)
+	stmt.AsyncGeneratorMethod(methodNameTS, params, returnType, func(mg *tsg.Group) {
+		if websocket {
+			addStreamMethodLocals(mg, paramsObject, pathExpr, queryExpr, nil)
+			mg.ForAwait("item", tsg.NewStatement().This().Dot("streamWebSocket").Generic(outType).Call(
+				tsg.NewStatement().ID("streamPath"),
+				tsg.NewStatement().Lit(methodName),
+				tsg.NewStatement().ID("params"),
+				tsg.NewStatement().ID(inputArg),
+				tsg.NewStatement().ID("query"),
+				tsg.NewStatement().ID("signal"),
+				tsg.NewStatement().ID("onReady"),
+			), func(fg *tsg.Group) {
+				fg.Yield(tsg.NewStatement().ID("item"))
+			})
+			return
+		}
+		addStreamMethodLocals(mg, paramsObject, pathExpr, queryExpr, headersExpr)
+		mg.ForAwait("item", tsg.NewStatement().This().Dot("streamSSE").Generic(outType).Call(
+			tsg.NewStatement().ID("streamPath"),
+			tsg.NewStatement().Lit(methodName),
+			tsg.NewStatement().ID("params"),
+			tsg.NewStatement().ID("query"),
+			tsg.NewStatement().ID("extraHeaders"),
+			tsg.NewStatement().ID("signal"),
+			tsg.NewStatement().ID("onReady"),
+		), func(fg *tsg.Group) {
+			fg.Yield(tsg.NewStatement().ID("item"))
+		})
+	})
+	return stmt
+}
+
+func addStreamMethodLocals(mg *tsg.Group, paramsObject *tsg.Statement, pathExpr *tsg.Statement, queryExpr *tsg.Statement, headersExpr *tsg.Statement) {
+
+	mg.Add(tsg.NewStatement().Const("params").Op("=").Add(paramsObject).Semicolon())
+	mg.Add(tsg.NewStatement().Const("streamPath").Op("=").Add(pathExpr).Semicolon())
+	mg.Add(tsg.NewStatement().Const("query").Op("=").Add(queryExpr).Semicolon())
+	if headersExpr == nil {
+		return
 	}
-	return fmt.Sprintf("public async *%s(%s): AsyncGenerator<%s> {\n    const params = %s;\n    const streamPath = %s;\n    const query = %s;\n    const extraHeaders = %s;\n    for await (const item of this.streamSSE<%s>(streamPath, %q, params, query, extraHeaders, signal)) {\n        yield item;\n    }\n}",
-		methodNameTS, params, outType, paramsObject, pathExpr, queryExpr, headersExpr, outType, methodName)
+	mg.Add(tsg.NewStatement().Const("extraHeaders").Op("=").Add(headersExpr).Semicolon())
 }
 
 func (r *ClientRenderer) streamClientArgs(contract *model.Contract, method *model.Method) (out []*model.Variable) {
@@ -138,19 +188,23 @@ func (r *ClientRenderer) streamClientArgs(contract *model.Contract, method *mode
 	return out
 }
 
-func (r *ClientRenderer) streamTSPathExpr(contract *model.Contract, method *model.Method, rawPath string) (expr string) {
+func (r *ClientRenderer) streamTSPathExpr(contract *model.Contract, method *model.Method, rawPath string) (expr *tsg.Statement) {
 
-	expr = fmt.Sprintf("%q", rawPath)
+	expr = tsg.NewStatement().Lit(rawPath)
 	for argName, segment := range model.StreamPathParamArgMap(r.project, contract, method) {
-		expr = fmt.Sprintf("(%s).split(%q).join(encodeURIComponent(String(%s)))", expr, ":"+segment, tsSafeName(argName))
+		expr = tsg.NewStatement().Paren(expr).Dot("split").Call(tsg.NewStatement().Lit(":" + segment)).Dot("join").Call(
+			tsg.NewStatement().ID("encodeURIComponent").Call(
+				tsg.NewStatement().ID("String").Call(tsg.NewStatement().ID(tsSafeName(argName))),
+			),
+		)
 	}
 	return expr
 }
 
-func (r *ClientRenderer) streamTSQueryExpr(contract *model.Contract, method *model.Method, websocket bool) (expr string) {
+func (r *ClientRenderer) streamTSQueryExpr(contract *model.Contract, method *model.Method, websocket bool) (expr *tsg.Statement) {
 
 	implicit := model.HTTPImplicitArgSet(model.BuildHTTPArgMappings(r.project, contract, method))
-	parts := make([]string, 0)
+	fields := make([]*tsg.Statement, 0)
 	for argName, key := range model.HTTPArgQueryMapForRequest(r.project, contract, method) {
 		if _, skip := implicit[argName]; skip {
 			continue
@@ -158,95 +212,115 @@ func (r *ClientRenderer) streamTSQueryExpr(contract *model.Contract, method *mod
 		if r.clientArgByName(contract, method, argName) == nil {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%q: String(%s)", key, tsSafeName(argName)))
+		fields = append(fields, streamStringField(key, argName))
 	}
 	if websocket {
 		// Browser WebSocket cannot set custom headers/cookies; mirror them as query for WS upgrade fallback.
-		headerMap := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
-		for argName, headerName := range headerMap {
+		for argName, headerName := range model.HTTPHeaderArgMapForRequest(r.project, contract, method) {
 			if _, skip := implicit[argName]; skip {
 				continue
 			}
 			if r.clientArgByName(contract, method, argName) == nil {
 				continue
 			}
-			parts = append(parts, fmt.Sprintf("%q: String(%s)", headerName, tsSafeName(argName)))
+			fields = append(fields, streamStringField(headerName, argName))
 		}
-		cookieMap := model.HTTPCookieArgMapForRequest(r.project, contract, method)
-		for argName, cookieName := range cookieMap {
+		for argName, cookieName := range model.HTTPCookieArgMapForRequest(r.project, contract, method) {
 			if _, skip := implicit[argName]; skip {
 				continue
 			}
 			if r.clientArgByName(contract, method, argName) == nil {
 				continue
 			}
-			parts = append(parts, fmt.Sprintf("%q: String(%s)", cookieName, tsSafeName(argName)))
+			fields = append(fields, streamStringField(cookieName, argName))
 		}
 	}
-	if len(parts) == 0 {
-		return "undefined"
+	if len(fields) == 0 {
+		return tsg.NewStatement().ID(typeUndefined)
 	}
-	return "{ " + strings.Join(parts, ", ") + " }"
+	return streamObjectLit(fields...)
 }
 
-func (r *ClientRenderer) streamTSHeadersExpr(contract *model.Contract, method *model.Method) (expr string) {
+func (r *ClientRenderer) streamTSHeadersExpr(contract *model.Contract, method *model.Method) (expr *tsg.Statement) {
 
 	implicit := model.HTTPImplicitArgSet(model.BuildHTTPArgMappings(r.project, contract, method))
-	parts := make([]string, 0)
-	headerMap := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
-	for argName, headerName := range headerMap {
+	fields := make([]*tsg.Statement, 0)
+	for argName, headerName := range model.HTTPHeaderArgMapForRequest(r.project, contract, method) {
 		if _, skip := implicit[argName]; skip {
 			continue
 		}
 		if r.clientArgByName(contract, method, argName) == nil {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%q: String(%s)", headerName, tsSafeName(argName)))
+		fields = append(fields, streamStringField(headerName, argName))
 	}
-	cookieMap := model.HTTPCookieArgMapForRequest(r.project, contract, method)
-	cookieParts := make([]string, 0)
-	for argName, cookieName := range cookieMap {
+	cookieParts := make([]*tsg.Statement, 0)
+	for argName, cookieName := range model.HTTPCookieArgMapForRequest(r.project, contract, method) {
 		if _, skip := implicit[argName]; skip {
 			continue
 		}
 		if r.clientArgByName(contract, method, argName) == nil {
 			continue
 		}
-		cookieParts = append(cookieParts, fmt.Sprintf("%q + \"=\" + encodeURIComponent(String(%s))", cookieName, tsSafeName(argName)))
+		cookieParts = append(cookieParts, tsg.NewStatement().Lit(cookieName).Op("+").Lit("=").Op("+").ID("encodeURIComponent").Call(
+			tsg.NewStatement().ID("String").Call(tsg.NewStatement().ID(tsSafeName(argName))),
+		))
 	}
 	if len(cookieParts) > 0 {
-		parts = append(parts, fmt.Sprintf("%q: [%s].join(\"; \")", "Cookie", strings.Join(cookieParts, ", ")))
+		fields = append(fields, tsg.NewStatement().ObjectField("Cookie", tsg.NewStatement().ArrayLit(cookieParts...).Dot("join").Call(tsg.NewStatement().Lit("; "))))
 	}
-	if len(parts) == 0 {
-		return "undefined"
+	if len(fields) == 0 {
+		return tsg.NewStatement().ID(typeUndefined)
 	}
-	return "{ " + strings.Join(parts, ", ") + " }"
+	return streamObjectLit(fields...)
 }
 
-func (r *ClientRenderer) streamTSParams(contract *model.Contract, method *model.Method, args []*model.Variable, mode string) (params string) {
+func streamStringField(key string, argName string) (field *tsg.Statement) {
 
-	parts := make([]string, 0, len(args)+2)
-	for _, arg := range args {
-		parts = append(parts, fmt.Sprintf("%s: %s", tsSafeName(arg.Name), r.streamTSType(contract, method, &arg.TypeRef, true)))
-	}
-	if mode == model.StreamModeClient || mode == model.StreamModeBidi {
-		in, element, _ := model.MethodStreamInChan(r.project, method)
-		parts = append(parts, fmt.Sprintf("%s: AsyncIterable<%s>", tsSafeName(in.Name), r.streamTSType(contract, method, element, true)))
-	}
-	parts = append(parts, "signal?: AbortSignal")
-	return strings.Join(parts, ", ")
+	return tsg.NewStatement().ObjectField(key, tsg.NewStatement().ID("String").Call(tsg.NewStatement().ID(tsSafeName(argName))))
 }
 
-func (r *ClientRenderer) streamTSParamsObject(args []*model.Variable) (object string) {
+func streamObjectLit(fields ...*tsg.Statement) (expr *tsg.Statement) {
+
+	expr = tsg.NewStatement()
+	expr.Values(func(vg *tsg.Group) {
+		for _, field := range fields {
+			vg.Add(field)
+		}
+	})
+	return expr
+}
+
+func (r *ClientRenderer) streamTSParams(contract *model.Contract, method *model.Method, args []*model.Variable, mode string) (params *tsg.Statement) {
+
+	params = tsg.NewStatement()
+	params.Params(func(pg *tsg.Group) {
+		for _, arg := range args {
+			pg.Add(tsg.NewStatement().ID(tsSafeName(arg.Name)).Add(tsg.TypeFromString(": " + r.streamTSType(contract, method, &arg.TypeRef, true))))
+		}
+		if mode == model.StreamModeClient || mode == model.StreamModeBidi {
+			in, element, _ := model.MethodStreamInChan(r.project, method)
+			pg.Add(tsg.NewStatement().ID(tsSafeName(in.Name)).Add(tsg.TypeFromString(": AsyncIterable<" + r.streamTSType(contract, method, element, true) + ">")))
+		}
+		pg.Add(tsg.NewStatement().ID("signal").Optional().Add(tsg.TypeFromString(": AbortSignal")))
+		pg.Add(tsg.NewStatement().ID("onReady").Optional().Add(tsg.TypeFromString(": () => void")))
+	})
+	return params
+}
+
+func (r *ClientRenderer) streamTSParamsObject(args []*model.Variable) (object *tsg.Statement) {
 
 	if len(args) == 0 {
-		return "{}"
+		return tsg.NewStatement().ObjectLiteral(nil)
 	}
-	parts := make([]string, 0, len(args))
-	for _, arg := range args {
-		parts = append(parts, fmt.Sprintf("%s: %s", tsSafeName(arg.Name), tsSafeName(arg.Name)))
-	}
-	return "{ " + strings.Join(parts, ", ") + " }"
+	object = tsg.NewStatement()
+	object.Values(func(vg *tsg.Group) {
+		for _, arg := range args {
+			name := tsSafeName(arg.Name)
+			vg.Add(tsg.NewStatement().ID(name).Colon().ID(name))
+		}
+	})
+	return object
 }
 
 func (r *ClientRenderer) streamTSType(contract *model.Contract, method *model.Method, typeRef *model.TypeRef, input bool) (typeName string) {
@@ -289,182 +363,3 @@ func (r *ClientRenderer) clientArgByName(contract *model.Contract, method *model
 	}
 	return nil
 }
-
-const streamHelperWebSocketURL = `private websocketURL(streamPath: string, query?: Record<string, string>): string {
-    const url = new URL(this.baseClient.getEndpoint());
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    url.pathname = streamPath;
-    url.search = "";
-    if (query) {
-        for (const [key, value] of Object.entries(query)) {
-            url.searchParams.set(key, value);
-        }
-    }
-    return url.toString();
-}`
-
-const streamHelperOpenWebSocket = `private openWebSocket(streamPath: string, query?: Record<string, string>): Promise<WebSocket> {
-    return new Promise((resolve, reject) => {
-        const socket = new WebSocket(this.websocketURL(streamPath, query));
-        socket.addEventListener("open", () => resolve(socket), { once: true });
-        socket.addEventListener("error", () => reject(new Error("WebSocket connection failed")), { once: true });
-    });
-}`
-
-const streamHelperWebSocket = `private async *streamWebSocket<T>(streamPath: string, method: string, params: unknown, input?: AsyncIterable<unknown>, query?: Record<string, string>, signal?: AbortSignal): AsyncGenerator<T> {
-    if (signal?.aborted) {
-        throw signal.reason instanceof Error ? signal.reason : new DOMException("This operation was aborted", "AbortError");
-    }
-    const socket = await this.openWebSocket(streamPath, query);
-    const id = crypto.randomUUID();
-    const messages: unknown[] = [];
-    let done = false;
-    let wake: (() => void) | undefined;
-    const onAbort = () => {
-        socket.close();
-        wake?.();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-    socket.addEventListener("message", (event) => {
-        messages.push(JSON.parse(String(event.data)));
-        wake?.();
-    });
-    socket.send(JSON.stringify({ id, jsonrpc: "2.0", method, params }));
-    if (input) {
-        void (async () => {
-            for await (const item of input) {
-                if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
-                    return;
-                }
-                socket.send(JSON.stringify({ jsonrpc: "2.0", method: "$/stream", params: { id, item } }));
-            }
-            if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
-                return;
-            }
-            socket.send(JSON.stringify({ jsonrpc: "2.0", method: "$/stream.end", params: { id } }));
-        })();
-    }
-    try {
-        while (!done) {
-            if (signal?.aborted) {
-                throw signal.reason instanceof Error ? signal.reason : new DOMException("This operation was aborted", "AbortError");
-            }
-            if (messages.length === 0) {
-                await new Promise<void>((resolve) => { wake = resolve; });
-                wake = undefined;
-                continue;
-            }
-            for (const message of messages.splice(0)) {
-                const rpc = message as { id?: string; method?: string; params?: { id?: string; item?: T }; error?: { code: number; message: string } };
-                if (rpc.method === "$/stream" && rpc.params?.id === id) {
-                    yield rpc.params.item as T;
-                    continue;
-                }
-                if (rpc.id === id) {
-                    if (rpc.error) {
-                        throw this.baseClient.decodeRPCError(rpc.error);
-                    }
-                    done = true;
-                }
-            }
-        }
-    } finally {
-        signal?.removeEventListener("abort", onAbort);
-        socket.close();
-    }
-}`
-
-const streamHelperWebSocketResult = `private async streamWebSocketResult<TResult>(streamPath: string, method: string, params: unknown, input: AsyncIterable<unknown>, query?: Record<string, string>, signal?: AbortSignal): Promise<TResult> {
-    if (signal?.aborted) {
-        throw signal.reason instanceof Error ? signal.reason : new DOMException("This operation was aborted", "AbortError");
-    }
-    const socket = await this.openWebSocket(streamPath, query);
-    const id = crypto.randomUUID();
-    return new Promise<TResult>((resolve, reject) => {
-        const onAbort = () => {
-            socket.close();
-            reject(signal?.reason instanceof Error ? signal.reason : new DOMException("This operation was aborted", "AbortError"));
-        };
-        signal?.addEventListener("abort", onAbort, { once: true });
-        socket.addEventListener("message", (event) => {
-            const rpc = JSON.parse(String(event.data)) as { id?: string; result?: TResult; error?: { code: number; message: string } };
-            if (rpc.id !== id) {
-                return;
-            }
-            signal?.removeEventListener("abort", onAbort);
-            socket.close();
-            if (rpc.error) {
-                reject(this.baseClient.decodeRPCError(rpc.error));
-                return;
-            }
-            resolve(rpc.result as TResult);
-        });
-        socket.send(JSON.stringify({ id, jsonrpc: "2.0", method, params }));
-        void (async () => {
-            try {
-                for await (const item of input) {
-                    if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
-                        return;
-                    }
-                    socket.send(JSON.stringify({ jsonrpc: "2.0", method: "$/stream", params: { id, item } }));
-                }
-                if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
-                    return;
-                }
-                socket.send(JSON.stringify({ jsonrpc: "2.0", method: "$/stream.end", params: { id } }));
-            } catch (error) {
-                signal?.removeEventListener("abort", onAbort);
-                socket.close();
-                reject(error);
-            }
-        })();
-    });
-}`
-
-const streamHelperSSE = `private async *streamSSE<T>(streamPath: string, method: string, params: unknown, query?: Record<string, string>, extraHeaders?: Record<string, string>, signal?: AbortSignal): AsyncGenerator<T> {
-    let path = streamPath;
-    if (query && Object.keys(query).length > 0) {
-        const search = new URLSearchParams(query);
-        path = streamPath + "?" + search.toString();
-    }
-    const response = await fetch(this.baseClient.getEndpoint().replace(/\/$/, "") + path, {
-        method: "POST",
-        headers: { ...(await this.baseClient.getHeaders()), Accept: "text/event-stream", "Content-Type": "application/json", ...(extraHeaders ?? {}) },
-        body: JSON.stringify({ id: crypto.randomUUID(), jsonrpc: "2.0", method, params }),
-        signal,
-    });
-    if (!response.ok || !response.body) {
-        throw new Error("SSE request failed: " + String(response.status));
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    try {
-        for (;;) {
-            const next = await reader.read();
-            if (next.done) {
-                return;
-            }
-            buffer += decoder.decode(next.value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-            for (const line of lines) {
-                if (!line.startsWith("data:")) {
-                    continue;
-                }
-                const rpc = JSON.parse(line.slice(5).trim()) as { method?: string; params?: { item?: T }; error?: { code: number; message: string } };
-                if (rpc.error) {
-                    throw this.baseClient.decodeRPCError(rpc.error);
-                }
-                if (rpc.method === "$/stream") {
-                    yield rpc.params?.item as T;
-                }
-            }
-        }
-    } finally {
-        try {
-            await reader.cancel();
-        } catch {
-        }
-    }
-}`

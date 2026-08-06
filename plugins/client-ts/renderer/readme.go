@@ -6,9 +6,12 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"maps"
 	"os"
 	"path"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -24,6 +27,23 @@ var templatesFS embed.FS
 type DocOptions struct {
 	Enabled  bool   // Включена ли генерация документации (по умолчанию true)
 	FilePath string // Полный путь к файлу документации (пусто = outDir/readme.md)
+}
+
+func camelFromUnderscoreParts(parts []string) (out string) {
+
+	var b strings.Builder
+	for i, part := range parts {
+		if i == 0 {
+			b.WriteString(part)
+			continue
+		}
+		if part == "" {
+			continue
+		}
+		b.WriteString(strings.ToUpper(string(part[0])))
+		b.WriteString(part[1:])
+	}
+	return b.String()
 }
 
 func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
@@ -46,7 +66,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
 		return contracts[i].Name < contracts[j].Name
 	})
 
-	hasJsonRPC := false
+	hasJSONRPC := false
 
 	md.H2("Оглавление")
 	md.PlainText(fmt.Sprintf("- [Описание клиента](#%s)", generateAnchor("Описание клиента")))
@@ -55,17 +75,17 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
 	md.LF()
 
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-			hasJsonRPC = true
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
+			hasJSONRPC = true
 		}
 
 		contractAnchor := contractAnchorID(contract.Name)
 		md.PlainText(fmt.Sprintf("- [%s](#%s)", contract.Name, contractAnchor))
 		md.LF()
 
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 			for _, method := range contract.Methods {
-				if r.methodIsJsonRPC(contract, method) {
+				if r.methodIsJSONRPC(contract, method) {
 					methodAnchor := methodAnchorID(contract.Name, method.Name)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", method.Name, methodAnchor))
 					md.LF()
@@ -75,24 +95,22 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
 
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
-				if r.methodIsHTTP(method, contract) {
-					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.MethodHTTPFullPath(r.project, contract, method)
-					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
-					methodAnchor := methodAnchorID(contract.Name, methodTitle)
-					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
-					md.LF()
+				if !r.methodIsHTTP(method, contract) {
+					continue
 				}
+				httpMethod := model.GetHTTPMethod(r.project, contract, method)
+				httpPath := model.MethodHTTPFullPath(r.project, contract, method)
+				methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
+				methodAnchor := methodAnchorID(contract.Name, methodTitle)
+				md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
+				md.LF()
 			}
 		}
 	}
 	md.LF()
 
 	typeUsages := r.collectStructTypesTS()
-	allTypes := make(map[string]*typeUsageTS)
-	for key, usage := range common.SortedPairs(typeUsages) {
-		allTypes[key] = usage
-	}
+	allTypes := maps.Collect(common.SortedPairs(typeUsages))
 
 	r.typeAnchorsSet = make(map[string]bool)
 	for _, usage := range allTypes {
@@ -168,7 +186,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
 
 	md.PlainText(markdown.Bold("Вспомогательные разделы:"))
 	md.LF()
-	if hasJsonRPC {
+	if hasJSONRPC {
 		md.PlainText(fmt.Sprintf("- [Batch запросы (JSON-RPC)](#%s)", generateAnchor("Batch запросы (JSON-RPC)")))
 		md.LF()
 	}
@@ -186,7 +204,7 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
 		r.renderAllTypesTS(md, allTypes)
 	}
 
-	if hasJsonRPC {
+	if hasJSONRPC {
 		r.renderBatchSectionTS(md, contracts, outDir)
 	}
 
@@ -200,12 +218,12 @@ func (r *ClientRenderer) RenderReadmeTS(docOpts DocOptions) (err error) {
 	if docOpts.FilePath != "" {
 		outFilename = docOpts.FilePath
 		readmeDir := path.Dir(outFilename)
-		if err = os.MkdirAll(readmeDir, 0777); err != nil {
+		if err = os.MkdirAll(readmeDir, 0o777); err != nil {
 			return
 		}
 	}
 
-	return os.WriteFile(outFilename, buf.Bytes(), 0600)
+	return os.WriteFile(outFilename, buf.Bytes(), 0o600)
 }
 
 func generateAnchor(title string) (s string) {
@@ -247,7 +265,7 @@ func typeAnchorID(typeName string) (s string) {
 	return "type-" + generateAnchor(typeName)
 }
 
-func (r *ClientRenderer) methodIsJsonRPC(contract *model.Contract, method *model.Method) (ok bool) {
+func (r *ClientRenderer) methodIsJSONRPC(contract *model.Contract, method *model.Method) (ok bool) {
 
 	return model.MethodIsJSONRPC(r.project, contract, method)
 }
@@ -298,9 +316,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 		return contracts[i].Name < contracts[j].Name
 	})
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 			for _, method := range contract.Methods {
-				if r.methodIsJsonRPC(contract, method) {
+				if r.methodIsJSONRPC(contract, method) {
 					exampleContract = contract
 					exampleMethod = method
 					break
@@ -330,16 +348,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	if exampleContract != nil && exampleMethod != nil {
 		fileName := r.tsFileName(exampleContract)
 		parts := strings.Split(fileName, "_")
-		serviceVar := ""
-		for i, part := range parts {
-			if i == 0 {
-				serviceVar += part
-			} else if len(part) > 0 {
-				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
-			}
-		}
+		serviceVar := camelFromUnderscoreParts(parts)
 		if exampleContract.Annotations.IsSet(model.TagServerHTTP) {
-			serviceVar += "HTTP"
+			serviceVar += suffixHTTP
 		}
 		args := r.argsWithoutContext(exampleMethod)
 		results := r.resultsWithoutError(exampleMethod)
@@ -359,15 +370,15 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 
 		var resultVar string
 		if len(results) > 0 {
-			resultVar = "result"
+			resultVar = nameResult
 		}
 
 		clientMethodName := r.getClientMethodName(exampleContract)
 
 		templateData := map[string]any{
-			"ServiceVar":       serviceVar,
-			"ClientMethodName": clientMethodName,
-			"MethodCall":       methodCall,
+			tplServiceVar:       serviceVar,
+			tplClientMethodName: clientMethodName,
+			tplMethodCall:       methodCall,
 		}
 
 		var codeExample string
@@ -392,16 +403,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	if exampleContract != nil && exampleMethod != nil {
 		fileName := r.tsFileName(exampleContract)
 		parts := strings.Split(fileName, "_")
-		serviceVar := ""
-		for i, part := range parts {
-			if i == 0 {
-				serviceVar += part
-			} else if len(part) > 0 {
-				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
-			}
-		}
+		serviceVar := camelFromUnderscoreParts(parts)
 		if exampleContract.Annotations.IsSet(model.TagServerHTTP) {
-			serviceVar += "HTTP"
+			serviceVar += suffixHTTP
 		}
 		args := r.argsWithoutContext(exampleMethod)
 		results := r.resultsWithoutError(exampleMethod)
@@ -421,15 +425,15 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 
 		var resultVar string
 		if len(results) > 0 {
-			resultVar = "result"
+			resultVar = nameResult
 		}
 
 		clientMethodName := r.getClientMethodName(exampleContract)
 
 		templateData := map[string]any{
-			"ServiceVar":       serviceVar,
-			"ClientMethodName": clientMethodName,
-			"MethodCall":       methodCall,
+			tplServiceVar:       serviceVar,
+			tplClientMethodName: clientMethodName,
+			tplMethodCall:       methodCall,
 		}
 
 		var codeExample string
@@ -454,16 +458,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	if exampleContract != nil && exampleMethod != nil {
 		fileName := r.tsFileName(exampleContract)
 		parts := strings.Split(fileName, "_")
-		serviceVar := ""
-		for i, part := range parts {
-			if i == 0 {
-				serviceVar += part
-			} else if len(part) > 0 {
-				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
-			}
-		}
+		serviceVar := camelFromUnderscoreParts(parts)
 		if exampleContract.Annotations.IsSet(model.TagServerHTTP) {
-			serviceVar += "HTTP"
+			serviceVar += suffixHTTP
 		}
 		args := r.argsWithoutContext(exampleMethod)
 		results := r.resultsWithoutError(exampleMethod)
@@ -483,16 +480,16 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 
 		var resultVar string
 		if len(results) > 0 {
-			resultVar = "result"
+			resultVar = nameResult
 		}
 
 		clientMethodName := r.getClientMethodName(exampleContract)
 
 		templateData := map[string]any{
-			"ServiceVar":       serviceVar,
-			"ClientMethodName": clientMethodName,
-			"MethodName":       exampleMethod.Name,
-			"MethodCall":       methodCall,
+			tplServiceVar:       serviceVar,
+			tplClientMethodName: clientMethodName,
+			"MethodName":        exampleMethod.Name,
+			tplMethodCall:       methodCall,
 		}
 
 		var codeExample string
@@ -519,16 +516,9 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 	if exampleContract != nil && exampleMethod != nil {
 		fileName := r.tsFileName(exampleContract)
 		parts := strings.Split(fileName, "_")
-		serviceVar := ""
-		for i, part := range parts {
-			if i == 0 {
-				serviceVar += part
-			} else if len(part) > 0 {
-				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
-			}
-		}
+		serviceVar := camelFromUnderscoreParts(parts)
 		if exampleContract.Annotations.IsSet(model.TagServerHTTP) {
-			serviceVar += "HTTP"
+			serviceVar += suffixHTTP
 		}
 		args := r.argsWithoutContext(exampleMethod)
 		results := r.resultsWithoutError(exampleMethod)
@@ -548,16 +538,16 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 
 		var resultVar string
 		if len(results) > 0 {
-			resultVar = "result"
+			resultVar = nameResult
 		}
 
 		clientMethodName := r.getClientMethodName(exampleContract)
 
 		templateData := map[string]any{
-			"ServiceVar":       serviceVar,
-			"ClientMethodName": clientMethodName,
-			"MethodName":       exampleMethod.Name,
-			"MethodCall":       methodCall,
+			tplServiceVar:       serviceVar,
+			tplClientMethodName: clientMethodName,
+			"MethodName":        exampleMethod.Name,
+			tplMethodCall:       methodCall,
 		}
 
 		var codeExample string
@@ -583,7 +573,7 @@ func (r *ClientRenderer) renderClientDescriptionTS(md *markdown.Markdown) {
 func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model.Contract, outDir string) {
 
 	contractAnchor := contractAnchorID(contract.Name)
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", contractAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", contractAnchor))
 	md.LF()
 	md.H2(contract.Name)
 
@@ -593,9 +583,9 @@ func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model
 		md.LF()
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 		for _, method := range contract.Methods {
-			if !r.methodIsJsonRPC(contract, method) {
+			if !r.methodIsJSONRPC(contract, method) {
 				continue
 			}
 			r.renderMethodDocTS(md, method, contract, outDir)
@@ -614,10 +604,10 @@ func (r *ClientRenderer) renderContractTS(md *markdown.Markdown, contract *model
 	md.HorizontalRule()
 }
 
-func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string) {
+func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, _outDir string) {
 
 	methodAnchor := methodAnchorID(contract.Name, method.Name)
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", methodAnchor))
 	md.LF()
 	md.H3(method.Name)
 
@@ -652,14 +642,14 @@ func (r *ClientRenderer) renderMethodDocTS(md *markdown.Markdown, method *model.
 	md.LF()
 }
 
-func (r *ClientRenderer) renderHTTPMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string) {
+func (r *ClientRenderer) renderHTTPMethodDocTS(md *markdown.Markdown, method *model.Method, contract *model.Contract, _outDir string) {
 
 	httpMethod := model.GetHTTPMethod(r.project, contract, method)
 	httpPath := model.MethodHTTPFullPath(r.project, contract, method)
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 	methodAnchor := methodAnchorID(contract.Name, methodTitle)
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", methodAnchor))
 	md.LF()
 	md.H3(methodTitle)
 
@@ -727,16 +717,9 @@ func (r *ClientRenderer) renderMethodSignatureTS(md *markdown.Markdown, method *
 	var sigBuilder strings.Builder
 	fileName := r.tsFileName(contract)
 	parts := strings.Split(fileName, "_")
-	serviceVar := ""
-	for i, part := range parts {
-		if i == 0 {
-			serviceVar += part
-		} else if len(part) > 0 {
-			serviceVar += strings.ToUpper(string(part[0])) + part[1:]
-		}
-	}
+	serviceVar := camelFromUnderscoreParts(parts)
 	if isHTTP {
-		serviceVar += "HTTP"
+		serviceVar += suffixHTTP
 	}
 	sigBuilder.WriteString(serviceVar)
 	sigBuilder.WriteString(".")
@@ -808,7 +791,7 @@ func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, m
 			})
 		}
 
-		headers := []string{"Имя", "Тип", "Ссылка на тип"}
+		headers := []string{labelName, labelType, labelTypeRef}
 		tableSet := markdown.TableSet{
 			Header: headers,
 			Rows:   rows,
@@ -835,7 +818,7 @@ func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, m
 			})
 		}
 
-		headers := []string{"Имя", "Тип", "Ссылка на тип"}
+		headers := []string{labelName, labelType, labelTypeRef}
 		tableSet := markdown.TableSet{
 			Header: headers,
 			Rows:   rows,
@@ -845,7 +828,7 @@ func (r *ClientRenderer) renderMethodParamsAndResultsTS(md *markdown.Markdown, m
 	}
 }
 
-func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *model.Method, contract *model.Contract) {
+func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *model.Method, _contract *model.Contract) {
 
 	if len(method.Errors) == 0 {
 		return
@@ -870,9 +853,9 @@ func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *mod
 	for _, errInfo := range errors {
 		if errInfo.HTTPCode != 0 {
 			errorDesc := fmt.Sprintf("%s (%d)", errInfo.HTTPCodeText, errInfo.HTTPCode)
-			md.PlainText(fmt.Sprintf("- %s - %s", markdown.Code(fmt.Sprintf("%d", errInfo.HTTPCode)), errorDesc))
+			md.PlainText(fmt.Sprintf("- %s - %s", markdown.Code(strconv.Itoa(errInfo.HTTPCode)), errorDesc))
 		} else {
-			md.PlainText(fmt.Sprintf("- %s", markdown.Code(errInfo.TypeName)))
+			md.PlainText("- " + markdown.Code(errInfo.TypeName))
 		}
 		md.LF()
 	}
@@ -881,7 +864,7 @@ func (r *ClientRenderer) renderMethodErrorsTS(md *markdown.Markdown, method *mod
 func (r *ClientRenderer) renderBatchSectionTS(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
 
 	batchAnchor := generateAnchor("Batch запросы (JSON-RPC)")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", batchAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", batchAnchor))
 	md.LF()
 	md.H2("Batch запросы (JSON-RPC)")
 	md.PlainText("Для выполнения нескольких JSON-RPC запросов одновременно используйте метод " + markdown.Code("batch") + ". Это позволяет отправить несколько запросов в одном HTTP запросе.")
@@ -896,19 +879,19 @@ func (r *ClientRenderer) renderBatchSectionTS(md *markdown.Markdown, contracts [
 	md.HorizontalRule()
 }
 
-func (r *ClientRenderer) renderBatchExampleTS(md *markdown.Markdown, contracts []*model.Contract, outDir string) {
+func (r *ClientRenderer) renderBatchExampleTS(md *markdown.Markdown, contracts []*model.Contract, _outDir string) {
 
 	var jsonRPCContracts []*model.Contract
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
-			hasJsonRPCMethods := false
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
+			hasJSONRPCMethods := false
 			for _, method := range contract.Methods {
-				if r.methodIsJsonRPC(contract, method) {
-					hasJsonRPCMethods = true
+				if r.methodIsJSONRPC(contract, method) {
+					hasJSONRPCMethods = true
 					break
 				}
 			}
-			if hasJsonRPCMethods {
+			if hasJSONRPCMethods {
 				jsonRPCContracts = append(jsonRPCContracts, contract)
 			}
 		}
@@ -931,7 +914,7 @@ await client.batch(
 	var exampleMethod1 *model.Method
 	var exampleMethod2 *model.Method
 	for _, method := range exampleContract.Methods {
-		if r.methodIsJsonRPC(exampleContract, method) {
+		if r.methodIsJSONRPC(exampleContract, method) {
 			if exampleMethod1 == nil {
 				exampleMethod1 = method
 			} else {
@@ -945,7 +928,7 @@ await client.batch(
 	if exampleMethod2 == nil && len(jsonRPCContracts) > 1 {
 		for _, contract := range jsonRPCContracts[1:] {
 			for _, method := range contract.Methods {
-				if r.methodIsJsonRPC(contract, method) {
+				if r.methodIsJSONRPC(contract, method) {
 					exampleMethod2 = method
 					break
 				}
@@ -1047,10 +1030,10 @@ await client.batch(
 	md.CodeBlocks(markdown.SyntaxHighlightTypeScript, codeBuilder.String())
 }
 
-func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, outDir string) {
+func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, _outDir string) {
 
 	errorsAnchor := generateAnchor("Обработка ошибок")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", errorsAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", errorsAnchor))
 	md.LF()
 	md.H2("Обработка ошибок")
 
@@ -1062,9 +1045,9 @@ func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, outDir str
 		return contracts[i].Name < contracts[j].Name
 	})
 	for _, contract := range contracts {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 			for _, method := range contract.Methods {
-				if r.methodIsJsonRPC(contract, method) {
+				if r.methodIsJSONRPC(contract, method) {
 					jsonrpcContract = contract
 					jsonrpcMethod = method
 					break
@@ -1077,7 +1060,7 @@ func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, outDir str
 	}
 
 	jsonrpcErrorsAnchor := generateAnchor("JSON-RPC ошибки")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", jsonrpcErrorsAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", jsonrpcErrorsAnchor))
 	md.LF()
 	md.H3("JSON-RPC ошибки")
 	md.PlainText("При работе с JSON-RPC клиентом ошибки обрабатываются автоматически. Если сервер возвращает ошибку в формате JSON-RPC 2.0, клиент выбрасывает исключение.")
@@ -1086,14 +1069,7 @@ func (r *ClientRenderer) renderErrorsSectionTS(md *markdown.Markdown, outDir str
 	if jsonrpcContract != nil && jsonrpcMethod != nil {
 		fileName := r.tsFileName(jsonrpcContract)
 		parts := strings.Split(fileName, "_")
-		serviceVar := ""
-		for i, part := range parts {
-			if i == 0 {
-				serviceVar += part
-			} else if len(part) > 0 {
-				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
-			}
-		}
+		serviceVar := camelFromUnderscoreParts(parts)
 		clientMethodName := r.getClientMethodName(jsonrpcContract)
 		methodName := r.lcName(jsonrpcMethod.Name)
 		args := r.argsWithoutContext(jsonrpcMethod)
@@ -1165,7 +1141,7 @@ try {
 	}
 
 	httpErrorsAnchor := generateAnchor("HTTP ошибки")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", httpErrorsAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", httpErrorsAnchor))
 	md.LF()
 	md.H3("HTTP ошибки")
 	md.PlainText("При работе с HTTP клиентом ошибки обрабатываются автоматически. Если сервер возвращает HTTP статус код, отличный от ожидаемого успешного кода, клиент выбрасывает исключение.")
@@ -1174,15 +1150,8 @@ try {
 	if httpContract != nil && httpMethod != nil {
 		fileName := r.tsFileName(httpContract)
 		parts := strings.Split(fileName, "_")
-		serviceVar := ""
-		for i, part := range parts {
-			if i == 0 {
-				serviceVar += part
-			} else if len(part) > 0 {
-				serviceVar += strings.ToUpper(string(part[0])) + part[1:]
-			}
-		}
-		serviceVar += "HTTP"
+		serviceVar := camelFromUnderscoreParts(parts)
+		serviceVar += suffixHTTP
 		clientMethodName := r.getClientMethodName(httpContract)
 		methodName := r.lcName(httpMethod.Name)
 		args := r.argsWithoutContext(httpMethod)
@@ -1260,7 +1229,7 @@ func (r *ClientRenderer) renderTemplate(templatePath string, data any) (s string
 	return buf.String(), nil
 }
 
-func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variable, docs, pkgPath string) (s string) {
+func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variable, _docs, pkgPath string) (s string) {
 
 	if variable.IsSlice || variable.ArrayLen > 0 {
 		return "[]"
@@ -1272,13 +1241,13 @@ func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variab
 
 	typeStr := r.tsTypeStringFromVariable(variable, pkgPath)
 	switch typeStr {
-	case "string":
+	case typeString:
 		return `"example"`
-	case "number", "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "float32", "float64":
+	case typeNumber, typeInt, typeInt8, typeInt16, typeInt32, typeInt64, typeUint, typeUint8, typeUint16, typeUint32, typeUint64, typeFloat32, typeFloat64:
 		return "0"
-	case "boolean", "bool":
+	case typeBoolean, typeBool:
 		return "false"
-	case "Date":
+	case nameDate:
 		return "new Date()"
 	default:
 		if variable.NumberOfPointers > 0 || strings.Contains(typeStr, "| null") || strings.Contains(typeStr, "| undefined") {
@@ -1287,25 +1256,18 @@ func (r *ClientRenderer) generateExampleValueFromVariable(variable *model.Variab
 		if strings.Contains(typeStr, "{") || strings.Contains(typeStr, "Record") {
 			return "{}"
 		}
-		return fmt.Sprintf("{} as %s", typeStr)
+		return "{} as " + typeStr
 	}
 }
 
 func (r *ClientRenderer) getClientMethodName(contract *model.Contract) (s string) {
 
 	fileName := r.tsFileName(contract)
-	methodName := ""
 	parts := strings.Split(fileName, "_")
-	for i, part := range parts {
-		if i == 0 {
-			methodName += part
-		} else if len(part) > 0 {
-			methodName += strings.ToUpper(string(part[0])) + part[1:]
-		}
-	}
+	methodName := camelFromUnderscoreParts(parts)
 
 	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
-		methodName += "HTTP"
+		methodName += suffixHTTP
 	}
 
 	return methodName
@@ -1384,8 +1346,8 @@ func (r *ClientRenderer) getTypeLinkTS(typeID, pkgPath string) string {
 	if structType, _, typePkg := r.getStructType(typeID, pkgPath); structType != nil {
 		typeStr := r.tsTypeString(typeID, pkgPath)
 
-		typ, ok := r.project.Types[typeID]
-		if !ok {
+		typ, typeOK := r.project.Types[typeID]
+		if !typeOK {
 			return "-"
 		}
 
@@ -1457,14 +1419,14 @@ func (r *ClientRenderer) tsTypeString(typeID, pkgPath string) string {
 	}
 
 	if r.isExplicitlyExcludedType(typ) {
-		if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
-			return "Date"
+		if typ.ImportPkgPath == pkgTime && typ.TypeName == nameTime {
+			return nameDate
 		}
 		return r.typeIDToTSType(typeID)
 	}
 
 	if r.hasMarshaler(typ, true) || r.hasMarshaler(typ, false) {
-		return "any"
+		return typeAny
 	}
 
 	typeName := typ.TypeName
@@ -1486,11 +1448,11 @@ func (r *ClientRenderer) tsTypeString(typeID, pkgPath string) string {
 			}
 		}
 		if namespace != "" {
-			return fmt.Sprintf("%s.%s", namespace, castTypeTs(typeName))
+			return fmt.Sprintf("%s.%s", namespace, castTypeTS(typeName))
 		}
 	}
 
-	return castTypeTs(typeName)
+	return castTypeTS(typeName)
 }
 
 type typeUsageTS struct {
@@ -1513,34 +1475,36 @@ func (r *ClientRenderer) collectStructTypesTS() map[string]*typeUsageTS {
 		for _, method := range contract.Methods {
 			args := r.argsWithoutContext(method)
 			for _, arg := range args {
-				if structType, typeName, pkg := r.getStructType(arg.TypeID, contract.PkgPath); structType != nil {
-					keyTypeName := typeName
-					if typeName == "" {
-						typeName = arg.Name
-						keyTypeName = arg.Name
-					}
-					if strings.Contains(keyTypeName, ".") {
-						parts := strings.Split(keyTypeName, ".")
-						keyTypeName = parts[len(parts)-1]
-					}
-					key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
-
-					fullTypeNameForKey := r.tsTypeString(arg.TypeID, contract.PkgPath)
-					if fullTypeNameForKey == "" {
-						fullTypeNameForKey = typeName
-					}
-
-					if _, ok := typeUsages[key]; !ok {
-						typeUsages[key] = &typeUsageTS{
-							typeName:     keyTypeName,
-							pkgPath:      pkg,
-							fullTypeName: fullTypeNameForKey,
-							locations:    make([]string, 0),
-						}
-					}
-					location := fmt.Sprintf("%s.%s.%s", contract.Name, method.Name, arg.Name)
-					typeUsages[key].locations = append(typeUsages[key].locations, location)
+				structType, typeName, pkg := r.getStructType(arg.TypeID, contract.PkgPath)
+				if structType == nil {
+					continue
 				}
+				keyTypeName := typeName
+				if typeName == "" {
+					typeName = arg.Name
+					keyTypeName = arg.Name
+				}
+				if strings.Contains(keyTypeName, ".") {
+					parts := strings.Split(keyTypeName, ".")
+					keyTypeName = parts[len(parts)-1]
+				}
+				key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
+
+				fullTypeNameForKey := r.tsTypeString(arg.TypeID, contract.PkgPath)
+				if fullTypeNameForKey == "" {
+					fullTypeNameForKey = typeName
+				}
+
+				if _, ok := typeUsages[key]; !ok {
+					typeUsages[key] = &typeUsageTS{
+						typeName:     keyTypeName,
+						pkgPath:      pkg,
+						fullTypeName: fullTypeNameForKey,
+						locations:    make([]string, 0),
+					}
+				}
+				location := fmt.Sprintf("%s.%s.%s", contract.Name, method.Name, arg.Name)
+				typeUsages[key].locations = append(typeUsages[key].locations, location)
 			}
 
 			results := r.resultsWithoutError(method)
@@ -1593,7 +1557,7 @@ func (r *ClientRenderer) collectStructTypesTS() map[string]*typeUsageTS {
 func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[string]*typeUsageTS) {
 
 	sharedTypesAnchor := generateAnchor("Общие типы")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", sharedTypesAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", sharedTypesAnchor))
 	md.LF()
 	md.H2("Общие типы")
 	md.PlainText("Типы данных, используемые в клиенте. Типы, используемые в нескольких методах, описаны здесь для избежания дублирования.")
@@ -1626,9 +1590,9 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 			return types[i].fullTypeName < types[j].fullTypeName
 		})
 
-		if namespace != "" && namespace != "time" {
+		if namespace != "" && namespace != pkgTime {
 			namespaceAnchor := generateAnchor(namespace)
-			md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", namespaceAnchor))
+			md.PlainText(fmt.Sprintf("<a id=%q></a>", namespaceAnchor))
 			md.LF()
 			md.H3(namespace)
 			md.LF()
@@ -1665,7 +1629,7 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 				r.renderStructTypeTableTS(md, typ, usage.fullTypeName, usage.pkgPath)
 			} else if typ != nil && !isExternal {
 				typeAnchor := typeAnchorID(usage.fullTypeName)
-				md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", typeAnchor))
+				md.PlainText(fmt.Sprintf("<a id=%q></a>", typeAnchor))
 				md.LF()
 				md.H4(usage.fullTypeName)
 				md.LF()
@@ -1679,12 +1643,12 @@ func (r *ClientRenderer) renderAllTypesTS(md *markdown.Markdown, allTypes map[st
 func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structType *model.Type, typeName string, pkgPath string) {
 
 	typeAnchor := typeAnchorID(typeName)
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", typeAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", typeAnchor))
 	md.LF()
 	md.H4(typeName)
 
 	rows := make([][]string, 0)
-	for _, field := range structType.StructFields {
+	for _, field := range r.collectStructReadmeFields(structType) {
 		fieldName, _ := r.jsonName(field)
 		if fieldName == "-" {
 			continue
@@ -1694,27 +1658,22 @@ func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structTy
 
 		fieldTags := parseTagsFromDocs(field.Docs)
 		isRequired := fieldTags[tagRequired] != ""
-		requiredStr := "Нет"
+		requiredStr := labelNo
 		if isRequired {
 			requiredStr = "Да"
 		}
 
 		isNullable := field.NumberOfPointers > 0
-		nullableStr := "Нет"
+		nullableStr := labelNo
 		if isNullable {
 			nullableStr = "Да"
 		}
 
 		hasOmitempty := false
 		if tagValues, ok := field.Tags["json"]; ok {
-			for _, val := range tagValues {
-				if val == "omitempty" {
-					hasOmitempty = true
-					break
-				}
-			}
+			hasOmitempty = slices.Contains(tagValues, "omitempty")
 		}
-		omitemptyStr := "Нет"
+		omitemptyStr := labelNo
 		if hasOmitempty {
 			omitemptyStr = "Да"
 		}
@@ -1731,7 +1690,7 @@ func (r *ClientRenderer) renderStructTypeTableTS(md *markdown.Markdown, structTy
 		})
 	}
 
-	headers := []string{"Поле", "Тип", "Обязательное", "Nullable", "Omitempty", "Ссылка на тип"}
+	headers := []string{labelField, labelType, "Обязательное", "Nullable", "Omitempty", labelTypeRef}
 
 	tableSet := markdown.TableSet{
 		Header: headers,
@@ -1748,11 +1707,11 @@ func (r *ClientRenderer) tsTypeStringFromStructField(field *model.StructField, p
 func (r *ClientRenderer) tsTypeStringFromTypeRef(typeRef *model.TypeRef, pkgPath string) string {
 
 	if typeRef == nil {
-		return "any"
+		return typeAny
 	}
 	if typeRef.IsSlice || typeRef.ArrayLen > 0 {
 		elemType := r.tsTypeString(typeRef.TypeID, pkgPath)
-		return fmt.Sprintf("%s[]", elemType)
+		return elemType + "[]"
 	}
 
 	if typeRef.MapKey != nil && typeRef.MapValue != nil {

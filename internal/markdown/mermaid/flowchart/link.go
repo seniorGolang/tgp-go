@@ -11,7 +11,7 @@ func (f *Flowchart) LinkWithArrowHead(from, to string) *Flowchart {
 }
 
 func (f *Flowchart) LinkWithArrowHeadAndText(from, to, text string) *Flowchart {
-	f.body = append(f.body, fmt.Sprintf("    %s-->|\"%s\"|%s", from, text, to))
+	f.body = append(f.body, fmt.Sprintf("    %s-->|%q|%s", from, text, to))
 	return f
 }
 
@@ -21,7 +21,7 @@ func (f *Flowchart) OpenLink(from, to string) *Flowchart {
 }
 
 func (f *Flowchart) OpenLinkWithText(from, to, text string) *Flowchart {
-	f.body = append(f.body, fmt.Sprintf("    %s---|\"%s\"|%s", from, text, to))
+	f.body = append(f.body, fmt.Sprintf("    %s---|%q|%s", from, text, to))
 	return f
 }
 
@@ -31,7 +31,7 @@ func (f *Flowchart) DottedLink(from, to string) *Flowchart {
 }
 
 func (f *Flowchart) DottedLinkWithText(from, to, text string) *Flowchart {
-	f.body = append(f.body, fmt.Sprintf("    %s-. \"%s\" .-> %s", from, text, to))
+	f.body = append(f.body, fmt.Sprintf("    %s-. %q .-> %s", from, text, to))
 	return f
 }
 
@@ -41,7 +41,7 @@ func (f *Flowchart) ThickLink(from, to string) *Flowchart {
 }
 
 func (f *Flowchart) ThickLinkWithText(from, to, text string) *Flowchart {
-	f.body = append(f.body, fmt.Sprintf("    %s == \"%s\" ==> %s", from, text, to))
+	f.body = append(f.body, fmt.Sprintf("    %s == %q ==> %s", from, text, to))
 	return f
 }
 

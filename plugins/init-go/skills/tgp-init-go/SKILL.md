@@ -10,7 +10,7 @@ disable-model-invocation: true
 
 # tgp-init-go
 
-Manual skill (`/tgp-init-go`). It is a one-time bootstrap, not a daily generator.
+Manual skill (`/tgp-init-go`). One-time bootstrap, not a daily generator.
 
 ## Choose the scaffold
 
@@ -25,7 +25,7 @@ Names become PascalCase Go interfaces and snake_case files (`siteNova` → `Site
 
 ## Preflight
 
-1. Use a new directory or one containing no `.go` files.
+1. Use a new directory or one containing no `.go` files (non-Go files are OK).
 2. Choose the final Go module path; changing it after generation causes unnecessary import rewrites.
 3. Do not point `--out` at an existing service repository.
 
@@ -43,8 +43,9 @@ The command writes the scaffold, then runs `go generate ./...` and `go mod tidy`
 - `internal/services/` — handwritten implementations; replace `NotImplemented` stubs
 - `internal/transport/` and `api/swagger.json` — generated; regenerate, never patch
 - `cmd/<module>/`, `internal/config/`, `pkg/errs/` — application/runtime code
+- `.golangci.yml`, `.gitignore` — project tooling defaults; adjust locally if needed
 
-`contracts/dto/` is created only for REST scaffolds.
+`contracts/dto/` is created only for REST scaffolds. Kafka is **not** part of init — add later via kafka skills.
 
 ## Verify
 
@@ -55,20 +56,21 @@ go build ./...
 go test ./...
 ```
 
-Confirm that `go.mod`, `contracts/tg.go`, `internal/services/`, `internal/transport/`, and `api/swagger.json` exist. Expected `NotImplemented` errors belong only to service stubs that have not been implemented yet.
+Confirm that `go.mod`, `.golangci.yml`, `contracts/tg.go`, `internal/services/`, `internal/transport/`, and `api/swagger.json` exist. Expected `NotImplemented` errors belong only to unimplemented stubs. Health uses `transport.ServeHealth`; process lifecycle uses `signal.NotifyContext` and `srv.ShutdownWithTimeout(cfg.ShutdownTimeout)` (`SHUTDOWN_TIMEOUT`, default `10s`).
 
 ## Continue
 
 1. Design real API methods and DTO with `tgp-contracts`.
-2. Implement the interfaces in `internal/services/`.
-3. Regenerate server/OpenAPI after contract changes.
-4. Add `tgp-client-go` or `tgp-client-ts` only when consumers need an SDK.
+2. Implement interfaces in `internal/services/`.
+3. Regenerate server/OpenAPI after contract changes (`tgp-pipeline`).
+4. Add `tgp-client-go` / `tgp-client-ts` when consumers need an SDK.
+5. Add Kafka pub/sub skills only when event contracts exist.
 
 ## Troubleshoot
 
-- `directory is not empty` — choose another `--out` or remove/move existing Go sources deliberately
-- generation failure — inspect the nested `go generate` error and plugin availability
-- build failure in a service — update handwritten implementation to the generated interface; do not patch transport
+- `directory is not empty` — rejects directories that already contain `.go` files (message may say “not empty” even when only non-Go files exist)
+- generation failure — inspect nested `go generate` error and plugin availability
+- build failure in a service — update handwritten implementation; do not patch transport
 
 ## Never
 
@@ -78,4 +80,4 @@ Confirm that `go.mod`, `contracts/tg.go`, `internal/services/`, `internal/transp
 
 ## Dig deeper
 
-`tg plugin doc init-go`
+`tg plugin doc init-go` · skills `tgp-contracts`, `tgp-pipeline`

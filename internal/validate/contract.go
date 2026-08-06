@@ -3,12 +3,13 @@
 package validate
 
 import (
+	"errors"
 	"fmt"
 
 	"tgp/internal/model"
 )
 
-const tagHttpServer = "http-server"
+const tagHTTPServer = "http-server"
 
 const (
 	typeIDIOReader     = "io:Reader"
@@ -18,18 +19,18 @@ const (
 func Contract(contract *model.Contract, project *model.Project) (err error) {
 
 	if contract == nil {
-		return fmt.Errorf("contract cannot be nil")
+		return errors.New("contract cannot be nil")
 	}
 
 	for _, method := range contract.Methods {
 		for i, arg := range method.Args {
-			if arg.Name == "" && arg.TypeID != "context:Context" {
+			if arg.Name == "" && arg.TypeID != typeIDContext {
 				return fmt.Errorf("contract %q: method %q: argument #%d has no name (all arguments except context.Context must be named)", contract.Name, method.Name, i+1)
 			}
 		}
 
 		for i, result := range method.Results {
-			if result.Name == "" && result.TypeID != "error" {
+			if result.Name == "" && result.TypeID != typeIDError {
 				return fmt.Errorf("contract %q: method %q: result #%d has no name (all results except error must be named)", contract.Name, method.Name, i+1)
 			}
 		}
@@ -70,7 +71,7 @@ func Contract(contract *model.Contract, project *model.Project) (err error) {
 
 func validateContractStreamTypes(contract *model.Contract, project *model.Project) (err error) {
 
-	hasHTTPServer := model.IsAnnotationSet(project, contract, nil, nil, tagHttpServer)
+	hasHTTPServer := model.IsAnnotationSet(project, contract, nil, nil, tagHTTPServer)
 
 	for _, method := range contract.Methods {
 		if !hasHTTPServer {

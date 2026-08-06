@@ -24,7 +24,7 @@ func (r *contractRenderer) requestStructFieldName(method *model.Method, v *model
 func (r *contractRenderer) responseStructFieldName(method *model.Method, ret *model.Variable) (s string) {
 
 	results := resultsWithoutError(method)
-	if len(results) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
+	if len(results) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPEnableInlineSingle) {
 		if model.TypeIsEmbeddable(r.project, ret.TypeID) {
 			return model.TypeNameFromTypeID(r.project, ret.TypeID)
 		}

@@ -93,7 +93,7 @@ func ExampleArchitecture() {
 				ServiceID: "junctionRight",
 				Position:  arch.PositionBottom,
 				Arrow:     arch.ArrowNone,
-			}).String() // nolint
+			}).String()
 
 	_ = markdown.NewMarkdown(os.Stdout).
 		H2("Architecture Diagram").

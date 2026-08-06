@@ -15,23 +15,23 @@ var (
 )
 
 type generationStats struct {
-	filesGenerated int64
-	linesGenerated int64
-	cacheHits      int64
-	cacheMisses    int64
+	filesGenerated atomic.Int64
+	linesGenerated atomic.Int64
+	cacheHits      atomic.Int64
+	cacheMisses    atomic.Int64
 }
 
 func incrementFilesGenerated() {
 
-	atomic.AddInt64(&stats.filesGenerated, 1)
+	stats.filesGenerated.Add(1)
 }
 
 func addLinesGenerated(lines int64) {
 
-	atomic.AddInt64(&stats.linesGenerated, lines)
+	stats.linesGenerated.Add(lines)
 }
 
-func onFileSaved(filepath string, lines int64) {
+func onFileSaved(_filepath string, lines int64) {
 
 	incrementFilesGenerated()
 	addLinesGenerated(lines)
@@ -39,28 +39,28 @@ func onFileSaved(filepath string, lines int64) {
 
 func incrementCacheHits() {
 
-	atomic.AddInt64(&stats.cacheHits, 1)
+	stats.cacheHits.Add(1)
 }
 
 func incrementCacheMisses() {
 
-	atomic.AddInt64(&stats.cacheMisses, 1)
+	stats.cacheMisses.Add(1)
 }
 
 func resetStats() {
 
-	atomic.StoreInt64(&stats.filesGenerated, 0)
-	atomic.StoreInt64(&stats.linesGenerated, 0)
-	atomic.StoreInt64(&stats.cacheHits, 0)
-	atomic.StoreInt64(&stats.cacheMisses, 0)
+	stats.filesGenerated.Store(0)
+	stats.linesGenerated.Store(0)
+	stats.cacheHits.Store(0)
+	stats.cacheMisses.Store(0)
 }
 
 func logStats(contractID ...string) {
 
-	files := atomic.LoadInt64(&stats.filesGenerated)
-	lines := atomic.LoadInt64(&stats.linesGenerated)
-	hits := atomic.LoadInt64(&stats.cacheHits)
-	misses := atomic.LoadInt64(&stats.cacheMisses)
+	files := stats.filesGenerated.Load()
+	lines := stats.linesGenerated.Load()
+	hits := stats.cacheHits.Load()
+	misses := stats.cacheMisses.Load()
 
 	totalCacheRequests := hits + misses
 	cacheHitRate := float64(0)

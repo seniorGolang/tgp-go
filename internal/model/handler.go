@@ -3,13 +3,14 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
 
 const (
 	TagHandler      = "handler"
-	TagHttpResponse = "http-response"
+	TagHTTPResponse = "http-response"
 )
 
 // ParseHandlerRef разбирает значение аннотаций handler и http-response: module/path:FuncName.
@@ -17,7 +18,7 @@ func ParseHandlerRef(value string) (pkgPath string, funcName string, err error) 
 
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "", "", fmt.Errorf("handler annotation must be in format module/path:FuncName")
+		return "", "", errors.New("handler annotation must be in format module/path:FuncName")
 	}
 
 	parts := strings.Split(value, ":")
@@ -42,7 +43,7 @@ func HandlerInfoFromAnnotations(annotations map[string]string) (handlerInfo *Han
 
 	value := annotations[TagHandler]
 	if value == "" {
-		value = annotations[TagHttpResponse]
+		value = annotations[TagHTTPResponse]
 	}
 	if value == "" {
 		return nil

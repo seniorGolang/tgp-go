@@ -3,7 +3,7 @@
 package renderer
 
 import (
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
@@ -11,7 +11,7 @@ import (
 // Логика метрик вынесена в хелпер, чтобы не дублировать код в каждом HTTP-методе.
 func (r *ClientRenderer) httpMetricsDefer(contract *model.Contract, method *model.Method) (c Code) {
 
-	return Defer().Func().Params(Id("_begin").Qual(PackageTime, "Time")).Block(
+	return Defer().Func().Params(Id("_begin").Qual(PackageTime, nameTime)).Block(
 		Id("cli").Dot("recordHTTPMetrics").Call(
 			Lit(r.contractNameToLowerCamel(contract)),
 			Lit(r.methodNameToLowerCamel(method)),
@@ -28,7 +28,7 @@ func (r *ClientRenderer) rpcRecordMetricsHelper(contract *model.Contract) (c Cod
 		Func().Params(Id("cli").Op("*").Id("Client"+contract.Name)).
 		Id("recordRPCMetrics").Params(
 		Id("method").String(),
-		Id("_begin").Qual(PackageTime, "Time"),
+		Id("_begin").Qual(PackageTime, nameTime),
 		Err().Error(),
 	).
 		Block(
@@ -77,9 +77,9 @@ func (r *ClientRenderer) rpcRecordMetricsHelper(contract *model.Contract) (c Cod
 		)
 }
 
-func (r *ClientRenderer) rpcMetricsDefer(contract *model.Contract, method *model.Method) (c Code) {
+func (r *ClientRenderer) rpcMetricsDefer(_contract *model.Contract, method *model.Method) (c Code) {
 
-	return Defer().Func().Params(Id("_begin").Qual(PackageTime, "Time")).Block(
+	return Defer().Func().Params(Id("_begin").Qual(PackageTime, nameTime)).Block(
 		Id("cli").Dot("recordRPCMetrics").Call(
 			Lit(r.methodNameToLowerCamel(method)),
 			Id("_begin"),

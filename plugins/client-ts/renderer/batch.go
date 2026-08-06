@@ -5,7 +5,6 @@ package renderer
 import (
 	"path"
 
-	"tgp/internal/generated"
 	"tgp/plugins/client-ts/tsg"
 )
 
@@ -13,8 +12,6 @@ func (r *ClientRenderer) RenderClientBatch() (err error) {
 
 	outDir := r.outDir
 	file := tsg.NewFile()
-	file.Comment(generated.ByToolGatewayComment)
-
 	// Импорты
 	file.ImportType("./jsonrpc/utils/jsonrpc", "RequestRPC", "ResponseRPC")
 
@@ -24,9 +21,9 @@ func (r *ClientRenderer) RenderClientBatch() (err error) {
 	stmt.Op("=")
 	stmt.Values(func(vg *tsg.Group) {
 		retHandlerType := tsg.NewStatement()
-		retHandlerType.Id("RpcCallback").Op("|").Id("undefined")
+		retHandlerType.ID("RpcCallback").Op("|").ID(typeUndefined)
 		vg.Add(tsg.NewStatement().ObjectField("retHandler", retHandlerType))
-		vg.Add(tsg.NewStatement().ObjectField("rpcRequest", tsg.NewStatement().Id("RequestRPC")))
+		vg.Add(tsg.NewStatement().ObjectField("rpcRequest", tsg.NewStatement().ID("RequestRPC")))
 	})
 	file.Add(stmt.Semicolon())
 	file.Line()
@@ -36,9 +33,9 @@ func (r *ClientRenderer) RenderClientBatch() (err error) {
 	stmt2.Op("=")
 	fnType := tsg.NewStatement()
 	fnType.Params(func(fg *tsg.Group) {
-		fg.Add(tsg.NewStatement().Id("error").Colon().Id("Error").Op("|").Id("null"))
-		fg.Add(tsg.NewStatement().Id("response").Colon().Id("ResponseRPC").Op("|").Id("null"))
-	}).Op("=>").Id("void")
+		fg.Add(tsg.NewStatement().ID(typeError).Colon().ID("Error").Op("|").ID("null"))
+		fg.Add(tsg.NewStatement().ID("response").Colon().ID("ResponseRPC").Op("|").ID("null"))
+	}).Op("=>").ID("void")
 	stmt2.Add(fnType).Semicolon()
 	file.Add(stmt2)
 	file.Line()

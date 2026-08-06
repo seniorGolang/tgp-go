@@ -33,8 +33,8 @@ func TestRoot_emptyPaths(t *testing.T) {
 func TestRoot_deterministic(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
-	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0o600)
 
 	m1, err := Root(dir, []string{"a.go", "b.go"})
 	if err != nil {
@@ -54,13 +54,13 @@ func TestRoot_contentChange(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "x.go")
 
-	_ = os.WriteFile(p, []byte("v1"), 0600)
+	_ = os.WriteFile(p, []byte("v1"), 0o600)
 	m1, err := Root(dir, []string{"x.go"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_ = os.WriteFile(p, []byte("v2"), 0600)
+	_ = os.WriteFile(p, []byte("v2"), 0o600)
 	m2, err := Root(dir, []string{"x.go"})
 	if err != nil {
 		t.Fatal(err)
@@ -73,8 +73,8 @@ func TestRoot_contentChange(t *testing.T) {
 func TestRoot_pathNormalization(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
-	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0o600)
 
 	base, err := Root(dir, []string{"a.go", "b.go"})
 	if err != nil {
@@ -99,7 +99,7 @@ func TestRoot_pathNormalization(t *testing.T) {
 func TestRoot_duplicatePaths(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
 
 	m1, err := Root(dir, []string{"a.go", "a.go", "a.go"})
 	if err != nil {
@@ -117,7 +117,7 @@ func TestRoot_duplicatePaths(t *testing.T) {
 func TestRoot_missingFile(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
 
 	_, err := Root(dir, []string{"a.go", "missing.go"})
 	if err == nil {
@@ -129,7 +129,7 @@ func TestRoot_pathEscapesRoot(t *testing.T) {
 
 	dir := t.TempDir()
 	parent := filepath.Dir(dir)
-	_ = os.WriteFile(filepath.Join(parent, "outside"), []byte("x"), 0600)
+	_ = os.WriteFile(filepath.Join(parent, "outside"), []byte("x"), 0o600)
 
 	escape := filepath.Join("..", "outside")
 	_, err := Root(dir, []string{escape})
@@ -141,9 +141,9 @@ func TestRoot_pathEscapesRoot(t *testing.T) {
 func TestRoot_excludePrefixes(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
-	_ = os.MkdirAll(filepath.Join(dir, "vendor", "x"), 0700)
-	_ = os.WriteFile(filepath.Join(dir, "vendor", "x", "y.go"), []byte("y"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
+	_ = os.MkdirAll(filepath.Join(dir, "vendor", "x"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "vendor", "x", "y.go"), []byte("y"), 0o600)
 
 	withVendor, err := Root(dir, []string{"a.go", "vendor/x/y.go"})
 	if err != nil {
@@ -168,8 +168,8 @@ func TestRoot_excludePrefixes(t *testing.T) {
 func TestRoot_excludePrefix_exactMatch(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(dir, "astg"), 0700)
-	_ = os.WriteFile(filepath.Join(dir, "astg", "gen.go"), []byte("gen"), 0600)
+	_ = os.MkdirAll(filepath.Join(dir, "astg"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "astg", "gen.go"), []byte("gen"), 0o600)
 
 	included, _ := Root(dir, []string{"astg/gen.go"})
 	excluded, _ := Root(dir, []string{"astg/gen.go"}, ExcludePrefixes("astg/"))
@@ -185,9 +185,9 @@ func TestRoot_excludePrefix_exactMatch(t *testing.T) {
 func TestRoot_excludePrefix_withTrailingSlash(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "vendors"), []byte("file"), 0600)
-	_ = os.MkdirAll(filepath.Join(dir, "vendor", "x"), 0700)
-	_ = os.WriteFile(filepath.Join(dir, "vendor", "x", "y.go"), []byte("y"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "vendors"), []byte("file"), 0o600)
+	_ = os.MkdirAll(filepath.Join(dir, "vendor", "x"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "vendor", "x", "y.go"), []byte("y"), 0o600)
 
 	all, _ := Root(dir, []string{"vendors", "vendor/x/y.go"})
 	excl, _ := Root(dir, []string{"vendors", "vendor/x/y.go"}, ExcludePrefixes("vendor/"))
@@ -203,11 +203,11 @@ func TestRoot_excludePrefix_withTrailingSlash(t *testing.T) {
 func TestRoot_multipleExcludePrefixes(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
-	_ = os.MkdirAll(filepath.Join(dir, "vendor", "x"), 0700)
-	_ = os.WriteFile(filepath.Join(dir, "vendor", "x", "v.go"), []byte("v"), 0600)
-	_ = os.MkdirAll(filepath.Join(dir, "astg"), 0700)
-	_ = os.WriteFile(filepath.Join(dir, "astg", "g.go"), []byte("g"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
+	_ = os.MkdirAll(filepath.Join(dir, "vendor", "x"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "vendor", "x", "v.go"), []byte("v"), 0o600)
+	_ = os.MkdirAll(filepath.Join(dir, "astg"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "astg", "g.go"), []byte("g"), 0o600)
 
 	onlyA, _ := Root(dir, []string{"a.go"})
 	allThree, _ := Root(dir, []string{"a.go", "vendor/x/v.go", "astg/g.go"}, ExcludePrefixes("vendor/", "astg/"))
@@ -219,7 +219,7 @@ func TestRoot_multipleExcludePrefixes(t *testing.T) {
 func TestRoot_emptyFile(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "empty.go"), nil, 0600)
+	_ = os.WriteFile(filepath.Join(dir, "empty.go"), nil, 0o600)
 
 	m, err := Root(dir, []string{"empty.go"})
 	if err != nil {
@@ -233,7 +233,7 @@ func TestRoot_emptyFile(t *testing.T) {
 func TestRoot_rootDirCleaned(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "f.go"), []byte("x"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "f.go"), []byte("x"), 0o600)
 
 	clean := filepath.Clean(dir)
 	m1, err := Root(dir, []string{"f.go"})
@@ -266,8 +266,8 @@ func TestBuilder_emptyRoot(t *testing.T) {
 func TestBuilder_sameAsRoot(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
-	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0o600)
 	paths := []string{"a.go", "b.go"}
 
 	funcMarker, err := Root(dir, paths)
@@ -288,8 +288,8 @@ func TestBuilder_sameAsRoot(t *testing.T) {
 func TestBuilder_addPathIncremental(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
-	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0o600)
 
 	b := NewBuilder(dir)
 	b.AddPath("a.go")
@@ -307,7 +307,7 @@ func TestBuilder_addPathIncremental(t *testing.T) {
 func TestBuilder_dedupe(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "x.go"), []byte("x"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "x.go"), []byte("x"), 0o600)
 
 	b := NewBuilder(dir)
 	b.AddPath("x.go")
@@ -326,9 +326,9 @@ func TestBuilder_dedupe(t *testing.T) {
 func TestBuilder_excludeViaAddPath(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
-	_ = os.MkdirAll(filepath.Join(dir, "vendor", "x"), 0700)
-	_ = os.WriteFile(filepath.Join(dir, "vendor", "v.go"), []byte("v"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
+	_ = os.MkdirAll(filepath.Join(dir, "vendor", "x"), 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "vendor", "v.go"), []byte("v"), 0o600)
 
 	b := NewBuilder(dir, ExcludePrefixes("vendor/"))
 	b.AddPath("a.go")
@@ -358,7 +358,7 @@ func TestBuilder_pathEscapesRoot(t *testing.T) {
 
 	dir := t.TempDir()
 	parent := filepath.Dir(dir)
-	_ = os.WriteFile(filepath.Join(parent, "out"), []byte("x"), 0600)
+	_ = os.WriteFile(filepath.Join(parent, "out"), []byte("x"), 0o600)
 
 	b := NewBuilder(dir)
 	b.AddPath(filepath.Join("..", "out"))
@@ -371,7 +371,7 @@ func TestBuilder_pathEscapesRoot(t *testing.T) {
 func TestRoot_hexFormat(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "f.go"), []byte("x"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "f.go"), []byte("x"), 0o600)
 	m, err := Root(dir, []string{"f.go"})
 	if err != nil {
 		t.Fatal(err)
@@ -391,8 +391,8 @@ func TestRoot_hexFormat(t *testing.T) {
 func TestFileHashes(t *testing.T) {
 
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0600)
-	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "a.go"), []byte("a"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "b.go"), []byte("b"), 0o600)
 	paths := []string{"a.go", "b.go"}
 
 	files, err := FileHashes(dir, paths)

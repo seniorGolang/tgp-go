@@ -16,7 +16,7 @@ import (
 func (g *generator) registerStruct(name string, pkgPath string, method *model.Method, variables []*model.Variable, requestContentType string, isRequest bool) {
 
 	if len(variables) == 0 {
-		g.schemas[name] = types.Schema{Type: "object"}
+		g.schemas[name] = types.Schema{Type: typeObject}
 		return
 	}
 
@@ -34,7 +34,7 @@ func (g *generator) registerStruct(name string, pkgPath string, method *model.Me
 		if g.isContextType(effective.TypeID) {
 			continue
 		}
-		if effective.TypeID == "error" {
+		if effective.TypeID == typeError {
 			continue
 		}
 
@@ -63,7 +63,7 @@ func (g *generator) registerStruct(name string, pkgPath string, method *model.Me
 	}
 
 	g.schemas[name] = types.Schema{
-		Type:       "object",
+		Type:       typeObject,
 		Properties: properties,
 		Required:   required,
 	}
@@ -100,13 +100,13 @@ func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.Doc
 			return nil
 		}
 		return &types.Schema{
-			Type:                 "object",
+			Type:                 typeObject,
 			AdditionalProperties: valueSchema,
 		}
 	}
 
 	if typeRef.TypeID == typeIDIOReader || typeRef.TypeID == typeIDIOReadCloser {
-		return &types.Schema{Type: "string", Format: "binary"}
+		return &types.Schema{Type: typeString, Format: formatBinary}
 	}
 
 	typeInfo, found := g.project.Types[typeRef.TypeID]
@@ -163,9 +163,9 @@ func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.Doc
 		}
 
 		anySchema := types.Schema{
-			Type: "object",
+			Type: typeObject,
 		}
-		anySchema.AdditionalProperties = &types.Schema{Type: "object"}
+		anySchema.AdditionalProperties = &types.Schema{Type: typeObject}
 
 		g.schemas[typeName] = anySchema
 
@@ -331,7 +331,7 @@ func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.Doc
 				return
 			}
 			mapSchema := &types.Schema{
-				Type:                 "object",
+				Type:                 typeObject,
 				AdditionalProperties: valueSchema,
 			}
 			if typeRef.NumberOfPointers > 0 {
@@ -402,7 +402,7 @@ func (g *generator) typeRefToSchema(typeRef *model.TypeRef, annotations tags.Doc
 	return
 }
 
-func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTags) (schema *types.Schema) {
+func (g *generator) structTypeToSchema(typeInfo *model.Type, _varTags tags.DocTags) (schema *types.Schema) {
 
 	var typeID string
 	for id, typ := range common.SortedPairs(g.project.Types) {
@@ -427,7 +427,7 @@ func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTag
 	}
 
 	g.schemas[typeName] = types.Schema{
-		Type:       "object",
+		Type:       typeObject,
 		Properties: make(types.Properties),
 	}
 
@@ -435,6 +435,26 @@ func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTag
 	properties := make(types.Properties)
 
 	for _, field := range typeInfo.StructFields {
+		if model.StructFieldEmbedded(g.project, field) {
+			fieldVar := &model.Variable{
+				TypeRef:     field.TypeRef,
+				Name:        field.Name,
+				Docs:        field.Docs,
+				Directives:  field.Directives,
+				Annotations: field.Annotations,
+			}
+			if fieldSchema := g.variableToSchema(fieldVar, typeInfo.ImportPkgPath, true); fieldSchema != nil {
+				toMerge := g.resolveSchemaForMerge(fieldSchema)
+				if len(toMerge.Properties) > 0 {
+					merged := types.Schema{Properties: properties, Required: required}
+					g.mergeSchema(&merged, toMerge)
+					properties = merged.Properties
+					required = merged.Required
+				}
+			}
+			continue
+		}
+
 		jsonName := g.getJSONFieldNameFromStructField(field)
 		if jsonName == "" || jsonName == "-" {
 			continue
@@ -468,7 +488,7 @@ func (g *generator) structTypeToSchema(typeInfo *model.Type, varTags tags.DocTag
 	}
 
 	schemaObj := types.Schema{
-		Type:        "object",
+		Type:        typeObject,
 		Properties:  properties,
 		Required:    required,
 		Description: descriptionFromType(typeInfo),
@@ -542,7 +562,7 @@ func (g *generator) namedEnumToSchema(typeInfo *model.Type, typeRef *model.TypeR
 	underlyingID := enumUnderlyingTypeID(typeInfo)
 	schema := g.basicTypeToSchema(underlyingID, nil)
 	if schema == nil {
-		schema = &types.Schema{Type: "string"}
+		schema = &types.Schema{Type: typeString}
 	}
 	schema.Enum = enumSchemaValues(typeInfo.Enums)
 	g.schemas[typeName] = *schema
@@ -571,7 +591,7 @@ func hasEnumsAnnotation(annotations tags.DocTags) (ok bool) {
 func enumUnderlyingTypeID(typeInfo *model.Type) (typeID string) {
 
 	if typeInfo == nil {
-		return "string"
+		return typeString
 	}
 	if typeInfo.UnderlyingTypeID != "" {
 		return typeInfo.UnderlyingTypeID
@@ -584,7 +604,7 @@ func enumUnderlyingTypeID(typeInfo *model.Type) (typeID string) {
 		if typeInfo.AliasOf != "" {
 			return typeInfo.AliasOf
 		}
-		return "string"
+		return typeString
 	case model.TypeKindString, model.TypeKindInt, model.TypeKindInt8, model.TypeKindInt16,
 		model.TypeKindInt32, model.TypeKindInt64, model.TypeKindUint, model.TypeKindUint8,
 		model.TypeKindUint16, model.TypeKindUint32, model.TypeKindUint64,
@@ -592,7 +612,7 @@ func enumUnderlyingTypeID(typeInfo *model.Type) (typeID string) {
 		model.TypeKindByte, model.TypeKindRune:
 		return string(typeInfo.Kind)
 	default:
-		return "string"
+		return typeString
 	}
 }
 
@@ -699,21 +719,18 @@ func (g *generator) getJSONFieldName(variable *model.Variable) (jsonName string)
 
 func (g *generator) getJSONFieldNameFromStructField(field *model.StructField) (jsonName string) {
 
-	fieldName := types.ToLowerCamel(field.Name)
-
-	if jsonTag, ok := field.Tags["json"]; ok && len(jsonTag) > 0 {
-		jsonName = strings.TrimSpace(jsonTag[0])
-		if jsonName != "" && jsonName != "-" {
-			return
-		}
+	name, inline := tags.StructFieldJSONName(field.Tags, field.Name)
+	if inline {
 		return ""
 	}
-
-	if strings.HasPrefix(field.Name, strings.ToLower(string(field.Name[0]))) {
-		return ""
+	if name == "" || name == "-" {
+		return name
+	}
+	if _, ok := field.Tags["json"]; ok {
+		return name
 	}
 
-	return fieldName
+	return types.ToLowerCamel(name)
 }
 
 func (g *generator) hasMarshaler(typ *model.Type, isArgument bool) (hasMarshaler bool) {
@@ -746,7 +763,7 @@ func (g *generator) hasMarshaler(typ *model.Type, isArgument bool) (hasMarshaler
 }
 
 func (g *generator) isContextType(typeID string) (isContext bool) {
-	return typeID == "context:Context" || typeID == "Context"
+	return typeID == typeIDContext || typeID == "Context"
 }
 
 func (g *generator) toSchema(typeName string) (schema types.Schema) {

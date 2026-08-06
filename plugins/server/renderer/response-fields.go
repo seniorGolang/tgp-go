@@ -3,7 +3,7 @@
 package renderer
 
 import (
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
@@ -40,27 +40,48 @@ func (r *contractRenderer) responseAssignmentTargets(method *model.Method, respo
 	return
 }
 
-// responseLogValues — composite literal для логирования response (модель полей как в exchange).
-func (r *contractRenderer) responseLogValues(method *model.Method) (values Code) {
+// responseLogValues — значение response для лога: exchange-struct, либо map при nested projection.
+func (r *contractRenderer) responseLogValues(method *model.Method, names map[string]struct{}) (values Code) {
 
 	results := streamVariables(r.project, resultsWithoutError(method), false)
-	if len(results) == 0 {
+	logged := make([]*model.Variable, 0, len(results))
+	for _, ret := range results {
+		if model.VariableLogSkipped(method, ret, names) {
+			continue
+		}
+		logged = append(logged, ret)
+	}
+	if len(logged) == 0 {
 		return nil
 	}
 
-	respType := Id(responseStructName(r.contract.Name, method.Name))
-	if len(results) == 1 && r.responseFieldEmbedded(method, results[0]) {
-		ret := results[0]
+	useMap := r.varsNeedLogProjection(logged)
+	if len(results) == 1 && len(logged) == 1 && r.responseFieldEmbedded(method, results[0]) {
+		ret := logged[0]
 		embedField := model.TypeNameFromTypeID(r.project, ret.TypeID)
-		if embedField == "" {
-			return respType.Values(r.loggerResultExpr(ret))
+		expr := r.loggerResultExpr(ret)
+		if useMap {
+			expr = r.logViewExpr(&ret.TypeRef, expr)
 		}
-
-		return respType.Values(Dict{Id(embedField): r.loggerResultExpr(ret)})
+		if embedField == "" {
+			return expr
+		}
+		if useMap {
+			return Map(String()).Any().Values(Dict{Lit(embedField): expr})
+		}
+		return Id(responseStructName(r.contract.Name, method.Name)).Values(Dict{Id(embedField): expr})
 	}
 
-	return respType.Values(DictFunc(func(d Dict) {
-		for _, ret := range results {
+	if useMap {
+		return Map(String()).Any().Values(DictFunc(func(d Dict) {
+			for _, ret := range logged {
+				d[Lit(r.responseStructFieldName(method, ret))] = r.logViewExpr(&ret.TypeRef, r.loggerResultExpr(ret))
+			}
+		}))
+	}
+
+	return Id(responseStructName(r.contract.Name, method.Name)).Values(DictFunc(func(d Dict) {
+		for _, ret := range logged {
 			d[Id(r.responseStructFieldName(method, ret))] = r.loggerResultExpr(ret)
 		}
 	}))
@@ -71,7 +92,7 @@ func (r *contractRenderer) responseMarshalArg(method *model.Method, responseVar 
 
 	results := resultsWithoutError(method)
 	if len(results) == 1 && !r.responseFieldEmbedded(method, results[0]) &&
-		model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
+		model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPEnableInlineSingle) {
 
 		return Id(responseVar).Dot(r.responseStructFieldName(method, results[0]))
 	}

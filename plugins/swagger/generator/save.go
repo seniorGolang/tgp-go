@@ -15,7 +15,7 @@ import (
 func SaveFile(swaggerDoc types.Object, outFilePath string) (err error) {
 
 	dir := filepath.Dir(outFilePath)
-	if err = os.MkdirAll(dir, 0700); err != nil {
+	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("%s: %w", fmt.Sprintf(i18n.Msg("failed to create directory %s"), dir), err)
 	}
 
@@ -34,7 +34,7 @@ func SaveFile(swaggerDoc types.Object, outFilePath string) (err error) {
 		return fmt.Errorf(i18n.Msg("unsupported file format: %s (supported: .json, .yaml, .yml)"), ext)
 	}
 
-	if err = os.WriteFile(outFilePath, docData, 0600); err != nil {
+	if err = os.WriteFile(outFilePath, docData, 0o600); err != nil {
 		return fmt.Errorf("%s: %w", fmt.Sprintf(i18n.Msg("failed to write file %s"), outFilePath), err)
 	}
 

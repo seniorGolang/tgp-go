@@ -1,7 +1,7 @@
 package cdb
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -18,7 +18,7 @@ func ParseRef(ref string) (parsed Ref, err error) {
 
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return Ref{}, fmt.Errorf("empty ref")
+		return Ref{}, errors.New("empty ref")
 	}
 
 	at := strings.LastIndex(ref, "@")
@@ -50,7 +50,7 @@ func ParseRef(ref string) (parsed Ref, err error) {
 	}
 	projectKey := strings.TrimSpace(head)
 	if projectKey == "" {
-		return Ref{}, fmt.Errorf("empty project key in ref")
+		return Ref{}, errors.New("empty project key in ref")
 	}
 
 	contractsHead = append(contractsHead, contractsTail...)
@@ -69,7 +69,7 @@ func splitContractList(s string) (list []string) {
 	if s == "" {
 		return
 	}
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		part = strings.TrimSpace(part)
 		if part != "" {
 			list = append(list, part)

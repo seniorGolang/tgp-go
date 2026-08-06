@@ -35,7 +35,7 @@ func LoadProject(rootDir string, projectFile string) (project *model.Project, er
 func SaveProject(rootDir string, projectFile string, project *model.Project) (err error) {
 
 	path := filepath.Join(rootDir, projectFile)
-	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir project dir: %w", err)
 	}
 

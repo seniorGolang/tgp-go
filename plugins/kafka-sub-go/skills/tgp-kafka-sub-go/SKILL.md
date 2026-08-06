@@ -16,8 +16,9 @@ description: >-
 3. Generate into a package inside the target Go module:
 
 ```bash
-tg kafka sub go -o internal/subscriber/kafka
+tg kafka sub go --out internal/subscriber/kafka
 # optional: --contracts OrderEvents,AuditEvents
+# pinned model (requires astg-db): --from-db name@version
 ```
 
 4. Implement one generated handler form per contract.
@@ -55,25 +56,22 @@ Registering none, nil, or more than one form for a contract is an error. Details
 ## Consumer decisions
 
 - `Brokers` and `Group` are required
-- `ResetOffset(AtStart|AtEnd)` applies only when no committed offset exists; default is `AtStart`
-- Default behavior commits after a successfully dispatched batch
-- `CommitAuto` enables franz-go auto-commit instead
-- `CommitAfterBatch` and `CommitAuto` are mutually exclusive
+- `ResetOffset(AtStart|AtEnd)` applies only when no committed offset exists; default `AtStart`
+- `CommitAfterBatch` (default, at-least-once) vs `CommitAuto` (at-most-once) — mutually exclusive
+- `ShutdownTimeout` limits how long `Close` waits for `Run` (default 30s)
 - `MaxPollRecords`, `FetchMinBytes`, `FetchMaxWait` tune polling
-- `Codec` registers/overrides message decoding
-- `Auth` and `SASL` must be configured together; `TLS` is independent
-- `Metrics` enables consumer metrics; `LagInterval` controls lag refresh
-- `Trace` enables handler spans when generated
+- `Codec` registers/overrides decoding
+- `Auth` + `SASL` together; `TLS` independent
+- `Metrics` / `LagInterval` / `Trace` when generated
 
-Choose commit policy from processing semantics. Do not use auto-commit merely to hide handler or commit failures.
+Choose commit policy from processing semantics — do not use auto-commit to hide handler failures.
 
 ## Processing semantics
 
-- `Run(ctx)` has one active loop and rejects a concurrent second run
-- Context cancellation stops polling; handle `context.Canceled` as expected shutdown where appropriate
-- Decode or handler error stops `Run`
-- Under default commit-after-batch, offsets are committed only after successful dispatch
-- Commit failure stops `Run`
+- `Run(ctx)` has one active loop; a concurrent second run is rejected
+- Context cancellation stops polling
+- Decode, handler, or commit error stops `Run`
+- Under default commit-after-batch, offsets commit only after successful dispatch
 - `Close()` stops the loop/client and observation workers
 
 ## Verify
@@ -82,26 +80,22 @@ Choose commit policy from processing semantics. Do not use auto-commit merely to
 go test ./...
 ```
 
-Confirm generated handlers/options/subscriber exist and test:
-
-- topic-to-method dispatch
-- codec success/failure
-- metadata key/headers/offset
-- selected plain/Slice/Batch semantics
-- handler error prevents successful commit
-- cancellation and `Close`
-- consumer lag metrics and traces when enabled
+- [ ] Handlers/options/subscriber exist
+- [ ] Topic-to-method dispatch and codec behavior
+- [ ] Metadata key/headers/offset for Meta/Batch
+- [ ] Handler error prevents successful commit (default policy)
+- [ ] Cancellation and `Close`
+- [ ] Lag metrics and traces when enabled
 
 ## Diagnose
 
 - `no kafka contracts` — filter/model contains no Kafka family
 - handler required/conflict/nil — register exactly one valid form
 - brokers/group required — configure both
-- codec required — selected contract codec is not registered/generated
+- codec required — selected codec not registered/generated
 - commit modes conflict — choose one policy
 - Auth/SASL mismatch — configure both
 - repeated `Run` — keep one lifecycle owner
-- Kafka contract validation — fix via `tgp-contracts`, inspect via `tgp-astg-json`
 
 ## Never
 
@@ -113,4 +107,4 @@ Confirm generated handlers/options/subscriber exist and test:
 
 ## Dig deeper
 
-`tg plugin doc kafka-sub-go` · skills `tgp-contracts`, `tgp-astg-json`, `tgp-kafka-pub-go`
+`tg plugin doc kafka-sub-go` · [references/handlers.md](references/handlers.md) · skills `tgp-contracts`, `tgp-astg-json`, `tgp-astg-db`, `tgp-kafka-pub-go`, `tgp-pipeline`

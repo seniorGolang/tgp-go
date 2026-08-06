@@ -130,7 +130,7 @@ func validateKafkaResults(contract *model.Contract, method *model.Method) (err e
 
 	hasError := false
 	for _, res := range method.Results {
-		if res.TypeID == "error" {
+		if res.TypeID == typeIDError {
 			hasError = true
 			continue
 		}
@@ -221,5 +221,5 @@ func isContextArgName(arg *model.Variable) (ok bool) {
 	if arg == nil {
 		return false
 	}
-	return arg.TypeID == "context:Context" || arg.TypeID == "context.Context"
+	return arg.TypeID == typeIDContext || arg.TypeID == "context.Context"
 }

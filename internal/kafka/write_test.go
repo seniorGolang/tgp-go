@@ -39,7 +39,7 @@ func TestWriteRuntime(t *testing.T) {
 
 	wantSymbols := map[string][]string{
 		"codec.go":    {"type codec interface", `codecs["msgpack"]`, `codecs["cbor"]`, `codecs["yaml"]`, `codecs["xml"]`},
-		"produce.go":  {"func produceAndWait", "func joinOutcomes"},
+		"produce.go":  {"func produceAndWait", "func joinOutcomes", "outcome.err = <-completion"},
 		"record.go":   {"type Meta struct", "func HeaderValue", "AtStart"},
 		"poll.go":     {"func groupRecordsByTopic", "func sortedTopics", "func dispatchTopics", "type TopicHandler"},
 		"security.go": {"func saslMechanism", `case "PLAIN"`, `case "SCRAM-SHA-256"`, `case "SCRAM-SHA-512"`},

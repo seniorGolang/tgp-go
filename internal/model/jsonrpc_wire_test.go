@@ -19,9 +19,9 @@ func TestJsonRPCWireMethod(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.contract+"."+tt.method, func(t *testing.T) {
-			got := JsonRPCWireMethod(tt.contract, tt.method)
+			got := JSONRPCWireMethod(tt.contract, tt.method)
 			if got != tt.want {
-				t.Fatalf("JsonRPCWireMethod(%q, %q) = %q, want %q", tt.contract, tt.method, got, tt.want)
+				t.Fatalf("JSONRPCWireMethod(%q, %q) = %q, want %q", tt.contract, tt.method, got, tt.want)
 			}
 		})
 	}

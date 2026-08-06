@@ -5,7 +5,7 @@ package renderer
 import (
 	"path/filepath"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 )
 
 func (r *Renderer) renderOptions() (err error) {
@@ -29,6 +29,7 @@ func (r *Renderer) renderOptions() (err error) {
 		group.Id("commitAuto").Bool()
 		group.Id("commitAfterSet").Bool()
 		group.Id("commitAutoSet").Bool()
+		group.Id("shutdownTimeout").Qual("time", "Duration")
 		group.Id("handlerConflict").String()
 		group.Id("codecs").Map(String()).Id("codec")
 		group.Id("tlsConfig").Op("*").Qual("crypto/tls", "Config")
@@ -67,10 +68,12 @@ func (r *Renderer) writeOptions(file GoFile, hasMetrics bool, hasTrace bool) {
 	r.writeOption(file, "FetchMaxWait", Id("duration").Qual("time", "Duration"), Id("setup").Dot("fetchMaxWait").Op("=").Id("duration"))
 	file.Line().Comment("ResetOffset задаёт позицию чтения без committed offset.")
 	r.writeOption(file, "ResetOffset", Id("position").Id("ResetPosition"), Id("setup").Dot("resetPosition").Op("=").Id("position"))
-	file.Line().Comment("CommitAfterBatch выключает автокоммит offset.")
+	file.Line().Comment("CommitAfterBatch выключает автокоммит и коммитит offset после успешного handler (at-least-once, default).")
 	r.writeOption(file, "CommitAfterBatch", Null(), Id("setup").Dot("commitAfter").Op("=").True(), Id("setup").Dot("commitAfterSet").Op("=").True())
-	file.Line().Comment("CommitAuto включает автокоммит offset franz-go.")
+	file.Line().Comment("CommitAuto включает автокоммит franz-go во время handler (at-most-once: offset может уйти до успеха handler). Для обычных handlers не использовать — берите CommitAfterBatch.")
 	r.writeOption(file, "CommitAuto", Null(), Id("setup").Dot("commitAuto").Op("=").True(), Id("setup").Dot("commitAutoSet").Op("=").True())
+	file.Line().Comment("ShutdownTimeout — лимит ожидания завершения Run в Close. По умолчанию 30s.")
+	r.writeOption(file, "ShutdownTimeout", Id("duration").Qual("time", "Duration"), Id("setup").Dot("shutdownTimeout").Op("=").Id("duration"))
 	file.Line().Comment("Codec регистрирует или переопределяет кодек тела.")
 	file.Func().Id("Codec").Params(Id("name").String(), Id("c").Id("codec")).Id("Option").Block(
 		Return(Func().Params(Id("setup").Op("*").Id("setup")).Block(
@@ -151,13 +154,14 @@ func (r *Renderer) writeOptions(file GoFile, hasMetrics bool, hasTrace bool) {
 
 	file.Line().Func().Id("defaultSetup").Params().Params(Id("result").Op("*").Id("setup")).BlockFunc(func(group *Group) {
 		values := Dict{
-			Id("maxPollRecords"): Lit(500),
-			Id("fetchMinBytes"):  Lit(1),
-			Id("fetchMaxWait"):   Lit(5).Op("*").Qual("time", "Second"),
-			Id("resetPosition"):  Id("AtStart"),
-			Id("commitAfter"):    True(),
-			Id("codecs"):         Id("defaultCodecs").Call(),
-			Id("handlers"):       Make(Map(String()).Id("registeredHandler")),
+			Id("maxPollRecords"):  Lit(500),
+			Id("fetchMinBytes"):   Lit(1),
+			Id("fetchMaxWait"):    Lit(5).Op("*").Qual("time", "Second"),
+			Id("resetPosition"):   Id("AtStart"),
+			Id("commitAfter"):     True(),
+			Id("shutdownTimeout"): Lit(30).Op("*").Qual("time", "Second"),
+			Id("codecs"):          Id("defaultCodecs").Call(),
+			Id("handlers"):        Make(Map(String()).Id("registeredHandler")),
 		}
 		if hasMetrics {
 			values[Id("lagInterval")] = Lit(15).Op("*").Qual("time", "Second")

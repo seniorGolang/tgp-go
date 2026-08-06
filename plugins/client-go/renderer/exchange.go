@@ -10,11 +10,10 @@ import (
 	"slices"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/common"
 	"tgp/internal/content"
-	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/internal/tags"
 )
@@ -24,14 +23,12 @@ func (r *ClientRenderer) RenderExchange(contract *model.Contract) (err error) {
 	outDir := r.outDir
 	pkgName := filepath.Base(outDir)
 	srcFile := NewSrcFile(pkgName)
-	srcFile.PackageComment(generated.ByToolGateway)
-
-	ctx := context.WithValue(context.Background(), keyCode, srcFile) // nolint
-	ctx = context.WithValue(ctx, keyPackage, pkgName)                // nolint
+	ctx := context.WithValue(context.Background(), keyCode, srcFile)
+	ctx = context.WithValue(ctx, keyPackage, pkgName)
 
 	for _, method := range contract.Methods {
 		isHTTP := r.methodIsHTTP(contract, method)
-		isJSONRPC := r.methodIsJsonRPC(contract, method)
+		isJSONRPC := r.methodIsJSONRPC(contract, method)
 		isStream := model.MethodIsStream(r.project, contract, method)
 		reqXML := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/json")) == content.KindXML
 		respXML := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json")) == content.KindXML
@@ -82,7 +79,7 @@ func (r *ClientRenderer) RenderExchange(contract *model.Contract) (err error) {
 
 func (r *ClientRenderer) shouldGenerateResponseExchange(contract *model.Contract, method *model.Method, isHTTP bool, isJSONRPC bool) (ok bool) {
 
-	if isHTTP && !isJSONRPC && len(r.resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) {
+	if isHTTP && !isJSONRPC && len(r.resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPEnableInlineSingle) {
 		return false
 	}
 
@@ -121,10 +118,10 @@ func (r *ClientRenderer) exchange(ctx context.Context, contract *model.Contract,
 func (r *ClientRenderer) structField(ctx context.Context, field exchangeField, template string, withXML bool) *Statement {
 
 	var isInlined bool
-	fieldTags := map[string]string{"json": fmt.Sprintf(template, field.name)}
+	fieldTags := map[string]string{keyJSON: fmt.Sprintf(template, field.name)}
 	for tag, value := range common.SortedPairs(field.tags) {
-		if tag == "json" {
-			fieldTags["json"] = value
+		if tag == keyJSON {
+			fieldTags[keyJSON] = value
 			if strings.Contains(value, "inline") {
 				isInlined = true
 			}
@@ -136,11 +133,11 @@ func (r *ClientRenderer) structField(ctx context.Context, field exchangeField, t
 	if isInlined {
 		// Для inline используем версию fieldType, которая использует локальные типы
 		s = r.fieldType(ctx, field.typeID, field.numberOfPointers, false)
-		s.Tag(map[string]string{"json": ",inline"})
+		s.Tag(map[string]string{keyJSON: ",inline"})
 	} else {
 		if withXML {
 			if _, hasXML := fieldTags["xml"]; !hasXML {
-				if xmlTag := tags.ExchangeXMLTag(fieldTags["json"]); xmlTag != "" {
+				if xmlTag := tags.ExchangeXMLTag(fieldTags[keyJSON]); xmlTag != "" {
 					fieldTags["xml"] = xmlTag
 				}
 			}

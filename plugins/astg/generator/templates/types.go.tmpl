@@ -75,9 +75,10 @@ type Type struct {
 
 // StructField — поле структуры. Содержит TypeRef + имя поля, теги и документацию.
 type StructField struct {
-	TypeRef `json:",inline"`
-	Name    string              `json:"name"`
-	Tags    map[string][]string `json:"tags,omitempty"`
+	TypeRef   `json:",inline"`
+	Name      string              `json:"name"`
+	Anonymous bool                `json:"anonymous,omitempty"`
+	Tags      map[string][]string `json:"tags,omitempty"`
 	Docs    []string            `json:"docs,omitempty"`
 }
 

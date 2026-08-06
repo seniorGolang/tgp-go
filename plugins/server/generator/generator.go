@@ -74,14 +74,14 @@ func GenerateServer(project *model.Project, contractID string, outDir string) (e
 func getServerType(project *model.Project, contract *model.Contract) (serverType string) {
 
 	for annotation := range common.SortedPairs(contract.Annotations) {
-		if strings.HasSuffix(annotation, "-server") {
-			return strings.TrimSuffix(annotation, "-server")
+		if before, ok := strings.CutSuffix(annotation, "-server"); ok {
+			return before
 		}
 	}
 	if project != nil && project.Annotations != nil {
 		for annotation := range common.SortedPairs(project.Annotations) {
-			if strings.HasSuffix(annotation, "-server") {
-				return strings.TrimSuffix(annotation, "-server")
+			if before, ok := strings.CutSuffix(annotation, "-server"); ok {
+				return before
 			}
 		}
 	}
@@ -174,7 +174,7 @@ func (g *generator) generate() (err error) {
 		}
 	}
 	if model.IsAnnotationSet(g.project, g.contract, nil, nil, "jsonRPC-server") {
-		if err = g.contractRenderer.RenderJsonRPC(); err != nil {
+		if err = g.contractRenderer.RenderJSONRPC(); err != nil {
 			return fmt.Errorf("render JSON-RPC: %w", err)
 		}
 	}
@@ -203,6 +203,10 @@ func (g *generator) generateTransport() (err error) {
 		return fmt.Errorf("render transport context: %w", err)
 	}
 
+	if err = g.transportRenderer.RenderTransportLimits(); err != nil {
+		return fmt.Errorf("render transport limits: %w", err)
+	}
+
 	if err = g.transportRenderer.RenderTransportFiber(); err != nil {
 		return fmt.Errorf("render transport fiber: %w", err)
 	}
@@ -223,6 +227,14 @@ func (g *generator) generateTransport() (err error) {
 		return fmt.Errorf("render transport options: %w", err)
 	}
 
+	if err = g.transportRenderer.RenderTransportAuth(); err != nil {
+		return fmt.Errorf("render transport auth: %w", err)
+	}
+
+	if err = g.transportRenderer.RenderTransportSecurity(); err != nil {
+		return fmt.Errorf("render transport security: %w", err)
+	}
+
 	if err = g.transportRenderer.RenderTransportMetrics(); err != nil {
 		return fmt.Errorf("render transport metrics: %w", err)
 	}
@@ -231,10 +243,14 @@ func (g *generator) generateTransport() (err error) {
 		return fmt.Errorf("render transport version: %w", err)
 	}
 
-	if g.hasJsonRPC() {
-		if err = g.transportRenderer.RenderTransportJsonRPC(); err != nil {
+	if g.hasJSONRPC() {
+		if err = g.transportRenderer.RenderTransportJSONRPC(); err != nil {
 			return fmt.Errorf("render transport JSON-RPC: %w", err)
 		}
+	}
+
+	if err = g.transportRenderer.RenderLogViews(); err != nil {
+		return fmt.Errorf("render log views: %w", err)
 	}
 
 	return
@@ -260,7 +276,7 @@ func filterContracts(project *model.Project, contractNames []string) (filteredPr
 	return
 }
 
-func (g *generator) hasJsonRPC() (found bool) {
+func (g *generator) hasJSONRPC() (found bool) {
 
 	for _, contract := range g.project.Contracts {
 		if model.IsAnnotationSet(g.project, contract, nil, nil, "jsonRPC-server") {

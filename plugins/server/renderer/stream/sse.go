@@ -18,15 +18,30 @@ const (
 	DefaultSSEHeartbeat = 15 * time.Second
 )
 
-// OpenSSE немедленно открывает SSE-поток (первый chunk + flush).
-func OpenSSE(writer *bufio.Writer) (err error) {
+// WriteSSEError пишет JSON-RPC error как SSE data:-событие.
+func WriteSSEError(writer *bufio.Writer, id json.RawMessage, err error, beforeWrite func() error) (writeErr error) {
 
-	return WriteSSEComment(writer, "connected")
+	if err == nil {
+		return
+	}
+	code, message := publicRPCError(err)
+	return WriteSSEBuf(writer, errorMessage(id, code, message), beforeWrite)
+}
+
+// OpenSSE немедленно открывает SSE-поток (первый chunk + flush).
+func OpenSSE(writer *bufio.Writer, beforeWrite func() error) (err error) {
+
+	return WriteSSEComment(writer, "connected", beforeWrite)
 }
 
 // WriteSSEBuf пишет SSE data:-событие с JSON-RPC payload и flush.
-func WriteSSEBuf(writer *bufio.Writer, msg Message) (err error) {
+func WriteSSEBuf(writer *bufio.Writer, msg Message, beforeWrite func() error) (err error) {
 
+	if beforeWrite != nil {
+		if err = beforeWrite(); err != nil {
+			return
+		}
+	}
 	if msg.Version == "" {
 		msg.Version = Version
 	}
@@ -41,33 +56,21 @@ func WriteSSEBuf(writer *bufio.Writer, msg Message) (err error) {
 }
 
 // WriteSSEComment пишет SSE comment (keepalive) и flush.
-func WriteSSEComment(writer *bufio.Writer, comment string) (err error) {
+func WriteSSEComment(writer *bufio.Writer, comment string, beforeWrite func() error) (err error) {
 
+	if beforeWrite != nil {
+		if err = beforeWrite(); err != nil {
+			return
+		}
+	}
 	if _, err = fmt.Fprintf(writer, ": %s\n\n", comment); err != nil {
 		return
 	}
 	return writer.Flush()
 }
 
-// WriteSSEError пишет JSON-RPC error как SSE data:-событие.
-func WriteSSEError(writer *bufio.Writer, id json.RawMessage, err error) (writeErr error) {
-
-	if err == nil {
-		return
-	}
-	var rpcErr *Error
-	if errors.As(err, &rpcErr) {
-		return WriteSSEBuf(writer, Message{ID: id, Version: Version, Error: rpcErr})
-	}
-	code := internalError
-	if coder, ok := err.(interface{ Code() int }); ok {
-		code = coder.Code()
-	}
-	return WriteSSEBuf(writer, errorMessage(id, code, err.Error()))
-}
-
 // PumpSSEServerStreamTyped читает out, шлёт chunks и final result; heartbeat в том же select.
-func PumpSSEServerStreamTyped[T any](ctx context.Context, writer *bufio.Writer, id json.RawMessage, out <-chan T, final json.RawMessage, heartbeat time.Duration) (err error) {
+func PumpSSEServerStreamTyped[T any](ctx context.Context, writer *bufio.Writer, id json.RawMessage, out <-chan T, final json.RawMessage, heartbeat time.Duration, beforeWrite func() error) (err error) {
 
 	var ticker *time.Ticker
 	var tick <-chan time.Time
@@ -85,7 +88,7 @@ func PumpSSEServerStreamTyped[T any](ctx context.Context, writer *bufio.Writer, 
 			if !ok {
 				continue
 			}
-			if err = WriteSSEComment(writer, "heartbeat"); err != nil {
+			if err = WriteSSEComment(writer, "heartbeat", beforeWrite); err != nil {
 				return
 			}
 		case item, open := <-out:
@@ -93,7 +96,7 @@ func PumpSSEServerStreamTyped[T any](ctx context.Context, writer *bufio.Writer, 
 				if final == nil {
 					final = EmptyResult()
 				}
-				return WriteSSEBuf(writer, Message{ID: id, Version: Version, Result: final})
+				return WriteSSEBuf(writer, Message{ID: id, Version: Version, Result: final}, beforeWrite)
 			}
 			seq++
 			var raw []byte
@@ -104,7 +107,7 @@ func PumpSSEServerStreamTyped[T any](ctx context.Context, writer *bufio.Writer, 
 			if params, err = json.Marshal(ChunkParams{ID: id, Seq: seq, Item: raw}); err != nil {
 				return
 			}
-			if err = WriteSSEBuf(writer, Message{Version: Version, Method: MethodStream, Params: params}); err != nil {
+			if err = WriteSSEBuf(writer, Message{Version: Version, Method: MethodStream, Params: params}, beforeWrite); err != nil {
 				return
 			}
 		}
@@ -133,7 +136,7 @@ func ServeSSEServerStream(ctx context.Context, w http.ResponseWriter, id json.Ra
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		return fmt.Errorf("streaming unsupported")
+		return errors.New("streaming unsupported")
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -191,7 +194,7 @@ func DecodeSSEMessages(r io.Reader, emit func(msg Message) error) (err error) {
 			continue
 		}
 		payload := line[5:]
-		if len(payload) > 0 && payload[0] == ' ' {
+		if payload != "" && payload[0] == ' ' {
 			payload = payload[1:]
 		}
 		var msg Message

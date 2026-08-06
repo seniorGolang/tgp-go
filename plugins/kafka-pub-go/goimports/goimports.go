@@ -57,9 +57,9 @@ func (r Runner) processFile(file File, modulePath string) (err error) {
 		}
 	}
 
-	res, err := formatImports(src, file.Name, modulePath)
-	if err != nil {
-		err = nil
+	res, formatErr := formatImports(src, file.Name, modulePath)
+	if formatErr != nil {
+		_ = formatErr // best-effort: leave file unchanged on format failure
 		return
 	}
 
@@ -164,8 +164,8 @@ func GetModuleInfo(path string) (modulePath string, moduleRoot string) {
 	for {
 		goModPath := filepath.Join(dir, "go.mod")
 		if data, err := os.ReadFile(goModPath); err == nil {
-			lines := strings.Split(string(data), "\n")
-			for _, line := range lines {
+			lines := strings.SplitSeq(string(data), "\n")
+			for line := range lines {
 				line = strings.TrimSpace(line)
 				if strings.HasPrefix(line, "module ") {
 					modulePath = strings.TrimSpace(strings.TrimPrefix(line, "module"))

@@ -6,7 +6,7 @@ import (
 
 func init() {
 
-	core.InitPlugin(&AstgDbPlugin{})
+	core.InitPlugin(&AstgDBPlugin{})
 }
 
 func main() {

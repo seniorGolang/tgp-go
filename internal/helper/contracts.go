@@ -9,26 +9,8 @@ import (
 	"tgp/internal/model"
 )
 
-func FilterContracts(project *model.Project, filterNames []string) (filteredContracts []*model.Contract) {
-
-	if len(filterNames) == 0 {
-		return project.Contracts
-	}
-
-	filteredContracts = make([]*model.Contract, 0)
-	for _, contract := range project.Contracts {
-		for _, filterName := range filterNames {
-			if contract.Name == filterName || contract.ID == filterName {
-				filteredContracts = append(filteredContracts, contract)
-				break
-			}
-		}
-	}
-
-	return
-}
-
-// FilterContractsByInterfaces: префикс "!" в имени интерфейса означает exclude; include и exclude одновременно не допускаются.
+// FilterContractsByInterfaces: префикс "!" в имени означает exclude; include и exclude одновременно не допускаются.
+// Имена сопоставляются с Contract.Name и Contract.ID.
 func FilterContractsByInterfaces(project *model.Project, ifaces []string) (filteredContracts []*model.Contract, err error) {
 
 	if len(ifaces) == 0 {
@@ -38,8 +20,8 @@ func FilterContractsByInterfaces(project *model.Project, ifaces []string) (filte
 	include := make([]string, 0, len(ifaces))
 	exclude := make([]string, 0, len(ifaces))
 	for _, iface := range ifaces {
-		if strings.HasPrefix(iface, "!") {
-			exclude = append(exclude, strings.TrimPrefix(iface, "!"))
+		if after, ok := strings.CutPrefix(iface, "!"); ok {
+			exclude = append(exclude, after)
 			continue
 		}
 		include = append(include, iface)
@@ -55,13 +37,13 @@ func FilterContractsByInterfaces(project *model.Project, ifaces []string) (filte
 	switch {
 	case len(include) != 0:
 		for _, contract := range project.Contracts {
-			if contains(include, contract.Name) {
+			if contractMatches(contract, include) {
 				filteredContracts = append(filteredContracts, contract)
 			}
 		}
 	case len(exclude) != 0:
 		for _, contract := range project.Contracts {
-			if !contains(exclude, contract.Name) {
+			if !contractMatches(contract, exclude) {
 				filteredContracts = append(filteredContracts, contract)
 			}
 		}
@@ -72,11 +54,30 @@ func FilterContractsByInterfaces(project *model.Project, ifaces []string) (filte
 	return
 }
 
-func contains(slice []string, item string) (found bool) {
+// ProjectWithFilter возвращает shallow-копию project с отфильтрованными контрактами.
+// При пустом ifaces возвращает тот же project без копии. Исходный project не мутируется.
+func ProjectWithFilter(project *model.Project, ifaces []string) (out *model.Project, err error) {
 
-	for _, s := range slice {
-		if s == item {
-			found = true
+	if len(ifaces) == 0 {
+		return project, nil
+	}
+
+	var filtered []*model.Contract
+	if filtered, err = FilterContractsByInterfaces(project, ifaces); err != nil {
+		return
+	}
+
+	clone := *project
+	clone.Contracts = filtered
+	out = &clone
+	return
+}
+
+func contractMatches(contract *model.Contract, names []string) (matched bool) {
+
+	for _, name := range names {
+		if contract.Name == name || contract.ID == name {
+			matched = true
 			return
 		}
 	}

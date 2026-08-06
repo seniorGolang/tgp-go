@@ -1,0 +1,69 @@
+{{.DoNotEditComment}}
+package token
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"strings"
+
+	"golang.org/x/oauth2"
+)
+
+type exchange struct {
+	tokenURL string
+	subject  oauth2.TokenSource
+	audience string
+}
+
+func Exchange(tokenURL string, subject oauth2.TokenSource, audience string, opts ...Option) (src oauth2.TokenSource, err error) {
+
+	tokenURL = strings.TrimSpace(tokenURL)
+	audience = strings.TrimSpace(audience)
+	if tokenURL == "" {
+		err = fmt.Errorf("token: tokenURL is empty")
+		return
+	}
+	if subject == nil {
+		err = fmt.Errorf("token: subject source is nil")
+		return
+	}
+	if audience == "" {
+		err = fmt.Errorf("token: audience is empty")
+		return
+	}
+
+	cfg := applyOptions(opts)
+	src = wrapReuse(&exchange{
+		tokenURL: tokenURL,
+		subject:  subject,
+		audience: audience,
+	}, cfg)
+	return
+}
+
+func (src *exchange) Token() (token *oauth2.Token, err error) {
+
+	return src.TokenContext(context.Background())
+}
+
+func (src *exchange) TokenContext(ctx context.Context) (token *oauth2.Token, err error) {
+
+	var subjectToken *oauth2.Token
+	if contextSource, ok := src.subject.(contextTokenSource); ok {
+		subjectToken, err = contextSource.TokenContext(ctx)
+	} else {
+		subjectToken, err = src.subject.Token()
+	}
+	if err != nil {
+		err = fmt.Errorf("token: subject: %w", err)
+		return
+	}
+
+	form := url.Values{}
+	form.Set("grant_type", grantTokenExchange)
+	form.Set("subject_token", subjectToken.AccessToken)
+	form.Set("subject_token_type", tokenTypeAccess)
+	form.Set("audience", src.audience)
+	return fetchToken(ctx, src.tokenURL, form)
+}

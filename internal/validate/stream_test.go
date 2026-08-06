@@ -23,12 +23,12 @@ func TestContractStreamAnnotations_ServerOK(t *testing.T) {
 				Name:        "Subscribe",
 				Annotations: tags.DocTags{model.TagStream: model.StreamModeServer},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-					{Name: "symbol", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "ctx", TypeID: "context:Context"},
+					{Name: "symbol", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "ticks", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
-					{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+					{Name: "ticks", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2},
+					{Name: "err", TypeID: "error"},
 				},
 			},
 		},
@@ -50,11 +50,11 @@ func TestContractStreamAnnotations_ChanWithoutStream(t *testing.T) {
 			{
 				Name: "Bad",
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+					{Name: "ctx", TypeID: "context:Context"},
 				},
 				Results: []*model.Variable{
-					{Name: "ticks", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
-					{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+					{Name: "ticks", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2},
+					{Name: "err", TypeID: "error"},
 				},
 			},
 		},
@@ -78,22 +78,22 @@ func TestContractStreamAnnotations_SSERequiresServer(t *testing.T) {
 				Name:        "Subscribe",
 				Annotations: tags.DocTags{model.TagStream: model.StreamModeServer},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+					{Name: "ctx", TypeID: "context:Context"},
 				},
 				Results: []*model.Variable{
-					{Name: "ticks", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
-					{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+					{Name: "ticks", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2},
+					{Name: "err", TypeID: "error"},
 				},
 			},
 			{
 				Name:        "Ingest",
 				Annotations: tags.DocTags{model.TagStream: model.StreamModeClient},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-					{Name: "samples", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
+					{Name: "ctx", TypeID: "context:Context"},
+					{Name: "samples", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2},
 				},
 				Results: []*model.Variable{
-					{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+					{Name: "err", TypeID: "error"},
 				},
 			},
 		},
@@ -117,11 +117,11 @@ func TestContractStreamAnnotations_SSEPathOnlyServer(t *testing.T) {
 					model.TagSSEPath: "/sse/x",
 				},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-					{Name: "samples", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
+					{Name: "ctx", TypeID: "context:Context"},
+					{Name: "samples", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2},
 				},
 				Results: []*model.Variable{
-					{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+					{Name: "err", TypeID: "error"},
 				},
 			},
 		},

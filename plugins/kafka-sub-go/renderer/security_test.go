@@ -28,10 +28,10 @@ func TestRenderSubscriberSecurityOptions(t *testing.T) {
 				Name:        "OrderCreated",
 				Annotations: tags.DocTags{"kafka-topic": "orders"},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-					{Name: "event", TypeRef: model.TypeRef{TypeID: "example.com/contracts:Order"}},
+					{Name: "ctx", TypeID: "context:Context"},
+					{Name: "event", TypeID: "example.com/contracts:Order"},
 				},
-				Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}},
+				Results: []*model.Variable{{Name: "err", TypeID: "error"}},
 			}},
 		}},
 	}

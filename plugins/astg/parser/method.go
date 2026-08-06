@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/types"
@@ -110,7 +111,7 @@ func ensureTypeInProject(typeID string, typ types.Type, pkgPath string, imports 
 		return existing, nil
 	}
 	if loader == nil || loader.resolver == nil {
-		return nil, fmt.Errorf("package loader is not initialized")
+		return nil, errors.New("package loader is not initialized")
 	}
 	parts := splitTypeID(typeID)
 	if len(parts) != 2 {

@@ -8,22 +8,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
-	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *contractRenderer) RenderJsonRPC() (err error) {
+func (r *contractRenderer) RenderJSONRPC() (err error) {
 
-	if err = r.pkgRenderTo("srvctx", r.outDir, newPkgTemplateData()); err != nil {
+	if err = r.pkgRenderTo("srvctx", r.outDir, r.srvctxTemplateData()); err != nil {
 		return fmt.Errorf("render srvctx package: %w", err)
 	}
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	jsonPkg := r.getPackageJSON()
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(PackageErrors, "errors")
@@ -33,15 +30,16 @@ func (r *contractRenderer) RenderJsonRPC() (err error) {
 	srcFile.ImportName(PackageBytes, "bytes")
 	srcFile.ImportName(PackageTime, "time")
 	srcFile.ImportName(r.contract.PkgPath, filepath.Base(r.contract.PkgPath))
-	srcFile.ImportName(jsonPkg, "json")
+	srcFile.ImportName(jsonPkg, keyJSON)
 	srcFile.ImportName(PackageReflect, "reflect")
 	srcFile.ImportName(PackageContext, "context")
-	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
+	srcFile.ImportName(r.pkgPath(r.outDir)+"/srvctx", "srvctx")
+	srcFile.ImportName(r.pkgPath(r.outDir)+"/stream", "stream")
 
 	typeGen := types.NewGenerator(r.project, &srcFile)
 
 	for _, method := range r.contract.Methods {
-		if !r.methodIsJsonRPC(method) {
+		if !r.methodIsJSONRPC(method) {
 			continue
 		}
 		methodName := strings.ToLower(method.Name)
@@ -62,12 +60,12 @@ func (r *contractRenderer) RenderJsonRPC() (err error) {
 	return
 }
 
-func (r *contractRenderer) rpcMethodFuncWithFiberCtx(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) (c Code) {
+func (r *contractRenderer) rpcMethodFuncWithFiberCtx(_srcFile *GoFile, _typeGen *types.Generator, method *model.Method, _jsonPkg string) (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
 		Id(toLowerCamel(method.Name)).
-		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requestBase").Id("baseJsonRPC")).
-		Params(Id("responseBase").Op("*").Id("baseJsonRPC")).
+		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requestBase").Id("baseJSONRPC")).
+		Params(Id("responseBase").Op("*").Id("baseJSONRPC")).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
 			bg.Return(Id("http").Dot(toLowerCamel(method.Name)+"WithContext").Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("requestBase")))
@@ -78,8 +76,8 @@ func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *ty
 
 	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
 		Id(toLowerCamel(method.Name)+"WithContext").
-		Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("requestBase").Id("baseJsonRPC")).
-		Params(Id("responseBase").Op("*").Id("baseJsonRPC")).
+		Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("requestBase").Id("baseJSONRPC")).
+		Params(Id("responseBase").Op("*").Id("baseJSONRPC")).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
 			bg.Id(VarNameCtx).Op("=").Id("withMethodLogger").Call(Id(VarNameCtx), Lit(toLowerCamel(r.contract.Name)), Lit(toLowerCamel(method.Name)))
@@ -118,20 +116,31 @@ func (r *contractRenderer) rpcMethodFuncWithContext(srcFile *GoFile, typeGen *ty
 				ig.If(List(Id("errCoder"), Id("ok")).Op(":=").Err().Op(".").Call(Id("withErrorCode")).Op(";").Id("ok")).Block(
 					Id("code").Op("=").Id("errCoder").Dot("Code").Call(),
 				)
+				ig.If(Id("code").Op("==").Id("internalError")).Block(
+					If(Id("logger").Op(":=").Qual(r.pkgPath(r.outDir)+"/srvctx", "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id(VarNameCtx)).Op(";").Id("logger").Op("!=").Nil()).Block(
+						Id("logger").Dot("Error").Call(Lit("JSON-RPC internal error"), Qual(PackageSlog, "Any").Call(Lit("error"), Err())),
+					),
+				)
 				ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("code"), Err().Dot("Error").Call(), Nil()))
 			})
-			bg.Id("responseBase").Op("=").Op("&").Id("baseJsonRPC").Values(Dict{
+			bg.Id("responseBase").Op("=").Op("&").Id("baseJSONRPC").Values(Dict{
 				Id("ID"):      Id("requestBase").Dot("ID"),
 				Id("Version"): Id("Version"),
 			})
 			if len(r.resultNamesExcludeFromBody(method)) > 0 {
 				bg.Id("resultForMarshal").Op(":=").Add(r.resultForMarshalValues(method, "response"))
 				bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(Op("&").Id("resultForMarshal")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-					ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("parseError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
+					ig.If(Id("logger").Op(":=").Qual(r.pkgPath(r.outDir)+"/srvctx", "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id(VarNameCtx)).Op(";").Id("logger").Op("!=").Nil()).Block(
+						Id("logger").Dot("Error").Call(Lit("JSON-RPC response marshal error"), Qual(PackageSlog, "Any").Call(Lit("error"), Err())),
+					)
+					ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("internalError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
 				})
 			} else {
 				bg.If(List(Id("responseBase").Dot("Result"), Err()).Op("=").Qual(jsonPkg, "Marshal").Call(r.responseMarshalArg(method, "response")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
-					ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("parseError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
+					ig.If(Id("logger").Op(":=").Qual(r.pkgPath(r.outDir)+"/srvctx", "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id(VarNameCtx)).Op(";").Id("logger").Op("!=").Nil()).Block(
+						Id("logger").Dot("Error").Call(Lit("JSON-RPC response marshal error"), Qual(PackageSlog, "Any").Call(Lit("error"), Err())),
+					)
+					ig.Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("internalError"), Lit("response body could not be encoded: ").Op("+").Err().Dot("Error").Call(), Nil()))
 				})
 			}
 			bg.Line()
@@ -151,6 +160,9 @@ func (r *contractRenderer) serveMethodFunc(jsonPkg string) (c Code) {
 		Params(Err().Error()).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
+			if r.jsonRPCNeedsOverlay(r.contract) {
+				bg.Add(setRequestOverlayContext())
+			}
 			bg.Id("methodHTTP").Op(":=").Id(VarNameFtx).Dot("Method").Call()
 			bg.If(Id("methodHTTP").Op("!=").Qual(PackageFiber, "MethodPost")).BlockFunc(func(ig *Group) {
 				ig.Id(VarNameFtx).Dot("Response").Call().Dot("SetStatusCode").Call(Qual(PackageFiber, "StatusMethodNotAllowed"))
@@ -158,35 +170,43 @@ func (r *contractRenderer) serveMethodFunc(jsonPkg string) (c Code) {
 					Return(),
 				)
 			})
-			bg.Var().Id("request").Id("baseJsonRPC")
-			bg.Var().Id("response").Op("*").Id("baseJsonRPC")
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+			bg.Var().Id("request").Id("baseJSONRPC")
+			bg.Var().Id("response").Op("*").Id("baseJSONRPC")
+			bg.Id("bodyStream").Op(":=").Id("decodeBodyReader").Call(Id(VarNameFtx))
 			bg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+				ig.If(Qual(PackageErrors, "Is").Call(Err(), Id("errBodyTooLarge"))).Block(
+					Return().Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusRequestEntityTooLarge"), Lit("request body too large")),
+				)
 				ig.Return().Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call())
 			})
 			bg.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+				ig.If(Id("request").Dot("ID").Op("==").Nil()).Block(
+					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusNoContent")),
+					Return(Nil()),
+				)
 				ig.Return().Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("invalid JSON-RPC request: ").Op("+").Err().Dot("Error").Call())
 			})
 			bg.If(Id(VarNameFtx).Dot("UserContext").Call().Dot("Err").Call().Op("!=").Nil()).Block(
-				Return().Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("invalidRequestError"), Lit("request context cancelled"), Nil())),
+				Return().Id("sendJSONRPCResponse").Call(Id(VarNameFtx), Id("request").Dot("ID"), Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("invalidRequestError"), Lit("request context cancelled"), Nil())),
 			)
 			bg.Id("methodNameOrigin").Op(":=").Id("request").Dot("Method")
 			bg.Id("method").Op(":=").Id("toLowercaseMethod").Call(Id("request").Dot("Method"))
 
 			bg.If(Id("method").Op("!=").Lit("").Op("&&").Id("method").Op("!=").Id("methodName")).BlockFunc(func(ig *Group) {
-				ig.Return().Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("methodNotFoundError"), Lit("invalid method ").Op("+").Id("methodNameOrigin"), Nil()))
+				ig.Return().Id("sendJSONRPCResponse").Call(Id(VarNameFtx), Id("request").Dot("ID"), Id("makeErrorResponseJsonRPC").Call(Id("request").Dot("ID"), Id("methodNotFoundError"), Lit("invalid method ").Op("+").Id("methodNameOrigin"), Nil()))
 			})
 			bg.Id("response").Op("=").Id("methodHandler").Call(Id(VarNameFtx), Id("request"))
 			bg.If(Id("response").Op("!=").Nil()).Block(
-				Return().Id("sendResponse").Call(Id(VarNameFtx), Id("response")),
+				Return().Id("sendJSONRPCResponse").Call(Id(VarNameFtx), Id("request").Dot("ID"), Id("response")),
 			)
 			bg.Return()
 		})
 }
 
-func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
+func (r *contractRenderer) serviceServeBatchFunc(_jsonPkg string) (c Code) {
 
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
+	streamPkg := r.pkgPath(r.outDir) + "/stream"
 	servicePath := r.batchPath()
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("serveBatch").
@@ -194,8 +214,11 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 		Params(Id("err").Error()).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
+			if r.jsonRPCNeedsOverlay(r.contract) {
+				bg.Add(setRequestOverlayContext())
+			}
 			bg.Var().Id("single").Bool()
-			bg.Var().Id("requests").Op("[]").Id("baseJsonRPC")
+			bg.Var().Id("requests").Op("[]").Id("baseJSONRPC")
 			bg.Id("clientID").Op(":=").Qual(srvctxPkgPath, "GetClientID").Call(Id(VarNameFtx).Dot("UserContext").Call())
 			bg.Id("methods").Op(":=").Id("http").Dot("srv").Dot("jsonRPCMethodMaps").Index(Lit(servicePath))
 			bg.Id("methodHTTP").Op(":=").Id(VarNameFtx).Dot("Method").Call()
@@ -209,65 +232,20 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 				)
 				ig.Return()
 			})
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-			bg.List(Id("firstByte"), Err()).Op(":=").Id("readUntilFirstNonWhitespace").Call(Id("bodyStream"))
-			bg.If(Err().Op("!=").Nil().Op("&&").Op("!").Qual("errors", "Is").Call(Err(), Qual("io", "EOF"))).BlockFunc(func(ig *Group) {
-				ig.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-					Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
-				)
-				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())))
-			})
-			bg.If(Id("firstByte").Op("==").Lit(0)).BlockFunc(func(ig *Group) {
-				ig.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-					Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("empty_body"), Id("clientID")).Dot("Inc").Call(),
-				)
-				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: empty body"), Nil())))
-			})
-			bg.Id("r").Op(":=").Qual("io", "MultiReader").Call(Qual(PackageBytes, "NewReader").Call(Index().Byte().Values(Id("firstByte"))), Id("bodyStream"))
-			bg.Switch(Id("firstByte")).BlockFunc(func(sg *Group) {
-				sg.Case(Lit(123)).BlockFunc(func(cg *Group) {
-					cg.Var().Id("request").Id("baseJsonRPC")
-					cg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("r")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(dg *Group) {
-						dg.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-							Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
-						)
-						dg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())))
-					})
-					cg.Id("single").Op("=").True()
-					cg.Id("requests").Op("=").Append(Id("requests"), Id("request"))
-				})
-				sg.Case(Lit(91)).BlockFunc(func(cg *Group) {
-					cg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("r")).Dot("Decode").Call(Op("&").Id("requests")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(dg *Group) {
-						dg.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-							Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
-						)
-						dg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())))
-					})
-					cg.If(Len(Id("requests")).Op("==").Lit(0)).BlockFunc(func(eg *Group) {
-						eg.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-							Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("invalid_request"), Id("clientID")).Dot("Inc").Call(),
-						)
-						eg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("invalidRequestError"), Lit("empty batch request"), Nil())))
-					})
-				})
-				sg.Default().BlockFunc(func(dg *Group) {
-					dg.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-						Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
-					)
-					dg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: expected { or ["), Nil())))
-				})
-			})
-			bg.If(Len(Id("requests")).Op(">").Id("http").Dot("srv").Dot("maxBatchSize")).BlockFunc(func(ig *Group) {
-				ig.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
-					Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("batch_size_exceeded"), Id("clientID")).Dot("Inc").Call(),
-				)
-				ig.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded")))
+			writeJSONRPCEnvelopeDecode(bg, streamPkg, Id("http").Dot("srv").Dot("maxBatchSize"), func(g *Group, stmt Code) {
+				g.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(stmt)
+			}, func(reason string) Code {
+				return Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit(reason), Id("clientID")).Dot("Inc").Call()
 			})
 			bg.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
 				Id("http").Dot("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit(servicePath), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
 			)
 			bg.If(Id("single")).BlockFunc(func(ig *Group) {
 				ig.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("requests").Op("[").Lit(0).Op("]")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(vg *Group) {
+					vg.If(Id("requests").Op("[").Lit(0).Op("]").Dot("ID").Op("==").Nil()).Block(
+						Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusNoContent")),
+						Return(Nil()),
+					)
 					vg.If(Id("http").Dot("srv").Op("!=").Nil().Op("&&").Id("http").Dot("srv").Dot("metrics").Op("!=").Nil()).Block(
 						Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("invalid_request"), Id("clientID")).Dot("Inc").Call(),
 					)
@@ -278,7 +256,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 						Id("http").Dot("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("ok"), Id("clientID")).Dot("Inc").Call(),
 					),
 				).Call()
-				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("http").Dot("srv").Dot("doSingleBatch").
+				ig.Return(Id("sendJSONRPCResponse").Call(Id(VarNameFtx), Id("requests").Op("[").Lit(0).Op("]").Dot("ID"), Id("http").Dot("srv").Dot("doSingleBatch").
 					Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("requests").Op("[").Lit(0).Op("]"), Id("methods")),
 				))
 			})
@@ -295,7 +273,7 @@ func (r *contractRenderer) serviceServeBatchFunc(jsonPkg string) (c Code) {
 
 func (r *contractRenderer) jsonRPCArgErrReturn() func(arg, header string) []Code {
 
-	return func(arg, header string) []Code {
+	return func(_arg, _header string) []Code {
 		return []Code{
 			Return(Id("makeErrorResponseJsonRPC").Call(Id("requestBase").Dot("ID"), Id("invalidParamsError"), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())),
 		}

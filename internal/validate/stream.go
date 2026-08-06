@@ -82,7 +82,7 @@ func validateStreamSignature(project *model.Project, contract *model.Contract, m
 
 	chanArgs := 0
 	for _, arg := range method.Args {
-		if arg.TypeID == "context:Context" {
+		if arg.TypeID == typeIDContext {
 			continue
 		}
 		if model.TypeRefIsChan(project, &arg.TypeRef) {
@@ -91,7 +91,7 @@ func validateStreamSignature(project *model.Project, contract *model.Contract, m
 	}
 	chanResults := 0
 	for _, res := range method.Results {
-		if res.TypeID == "error" {
+		if res.TypeID == typeIDError {
 			continue
 		}
 		if model.TypeRefIsChan(project, &res.TypeRef) {

@@ -20,7 +20,7 @@ func DefaultMethodHTTPPath(contract *Contract, method *Method) (methodPath strin
 // MethodHTTPPathValue возвращает @tg http-path или DefaultMethodHTTPPath.
 func MethodHTTPPathValue(project *Project, contract *Contract, method *Method) (methodPath string) {
 
-	return GetAnnotationValue(project, contract, method, nil, TagHttpPath, DefaultMethodHTTPPath(contract, method))
+	return GetAnnotationValue(project, contract, method, nil, TagHTTPPath, DefaultMethodHTTPPath(contract, method))
 }
 
 // JoinHTTPPath склеивает @tg http-prefix и path метода (как server, swagger, HTTP-клиенты).
@@ -37,7 +37,7 @@ func JoinHTTPPath(prefix string, pathValue string) (fullPath string) {
 // MethodHTTPFullPath — итоговый HTTP-маршрут: prefix + path.
 func MethodHTTPFullPath(project *Project, contract *Contract, method *Method) (fullPath string) {
 
-	prefix := GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, "")
+	prefix := GetAnnotationValue(project, contract, nil, nil, TagHTTPPrefix, "")
 	methodPath := MethodHTTPPathValue(project, contract, method)
 
 	return JoinHTTPPath(prefix, methodPath)
@@ -60,11 +60,13 @@ func lowerCamel(name string) (result string) {
 	})
 	if len(parts) > 1 {
 		result = parts[0]
+		var resultSb63 strings.Builder
 		for i := 1; i < len(parts); i++ {
 			if parts[i] != "" {
-				result += strings.ToUpper(string(parts[i][0])) + parts[i][1:]
+				resultSb63.WriteString(strings.ToUpper(string(parts[i][0])) + parts[i][1:])
 			}
 		}
+		result += resultSb63.String()
 	}
 
 	return result
@@ -76,7 +78,7 @@ func isAllUpperASCII(s string) (allUpper bool) {
 		return false
 	}
 
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		c := s[i]
 		if c >= 'a' && c <= 'z' {
 			return false

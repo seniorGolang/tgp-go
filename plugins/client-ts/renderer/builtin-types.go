@@ -10,14 +10,14 @@ import (
 
 // builtinExact задаёт точный маппинг (последний сегмент пакета:имя_типа) -> встроенный TS-тип.
 var builtinExact = map[string]string{
-	"time:Time":     "Date",
-	"time:Duration": "number",
+	"time:Time":     nameDate,
+	"time:Duration": typeNumber,
 }
 
 // builtinPkg задаёт маппинг по пакету: любой тип из пакета с таким последним сегментом пути -> TS-тип.
 var builtinPkg = map[string]string{
-	"uuid": "string",
-	"uid":  "string",
+	"uuid": typeString,
+	"uid":  typeString,
 }
 
 func lastSegment(pkgPath string) string {

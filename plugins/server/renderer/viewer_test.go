@@ -30,14 +30,14 @@ func TestRenderViewer_RespectsLogValuer(t *testing.T) {
 					{
 						Name: "Ping",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+							{Name: "ctx", TypeID: "context:Context"},
 						},
 						Results: []*model.Variable{
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
 							model.TagHTTPMethod: "GET",
-							model.TagHttpPath:   "/ping",
+							model.TagHTTPPath:   "/ping",
 						},
 					},
 				},
@@ -74,6 +74,7 @@ func TestRenderViewer_RespectsLogValuer(t *testing.T) {
 		"\t\"encoding/json\"\n" +
 		"\t\"io\"\n" +
 		"\t\"log/slog\"\n" +
+		"\t\"strings\"\n" +
 		"\t\"testing\"\n\n" +
 		"\t\"example.com/app/transport/viewer\"\n" +
 		")\n\n" +
@@ -110,6 +111,29 @@ func TestRenderViewer_RespectsLogValuer(t *testing.T) {
 		"\tblob, ok := tree[\"Blob\"].(string)\n" +
 		"\tif !ok || blob != hex.EncodeToString([]byte{0x01, 0x02}) {\n" +
 		"\t\tt.Fatalf(\"Blob = %#v, want hex of binary\", tree[\"Blob\"])\n" +
+		"\t}\n" +
+		"}\n\n" +
+		"type hideDTO struct {\n" +
+		"\tVisible string\n" +
+		"\tSecret  string `dumper:\"hide\"`\n" +
+		"\tMask    string `dumper:\"hide,fh\"`\n" +
+		"}\n\n" +
+		"func TestDumperHideOmitsAndMasks(t *testing.T) {\n" +
+		"\tattr := viewer.Any(\"request\", hideDTO{Visible: \"ok\", Secret: \"top-secret\", Mask: \"abcdef\"})\n" +
+		"\tval := attr.Value.Resolve()\n" +
+		"\ttree, ok := val.Any().(map[string]any)\n" +
+		"\tif !ok {\n" +
+		"\t\tt.Fatalf(\"tree type = %T, want map\", val.Any())\n" +
+		"\t}\n" +
+		"\tif _, found := tree[\"Secret\"]; found {\n" +
+		"\t\tt.Fatalf(\"Secret must be omitted, got %#v\", tree)\n" +
+		"\t}\n" +
+		"\tif tree[\"Visible\"] != \"ok\" {\n" +
+		"\t\tt.Fatalf(\"Visible = %#v\", tree[\"Visible\"])\n" +
+		"\t}\n" +
+		"\tmask, _ := tree[\"Mask\"].(string)\n" +
+		"\tif mask == \"abcdef\" || !strings.Contains(mask, \"*\") {\n" +
+		"\t\tt.Fatalf(\"Mask = %q, want formula masking\", mask)\n" +
 		"\t}\n" +
 		"}\n"
 	if err = os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/app\n\ngo 1.26\n"), 0o644); err != nil {

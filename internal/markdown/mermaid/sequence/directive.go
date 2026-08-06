@@ -4,7 +4,6 @@
 package sequence
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -14,7 +13,7 @@ func (d *Diagram) AutoNumber() (out *Diagram) {
 }
 
 func (d *Diagram) BoxStart(participant []string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    box %s", strings.Join(participant, " & ")))
+	d.body = append(d.body, "    box "+strings.Join(participant, " & "))
 	return d
 }
 
@@ -24,31 +23,31 @@ func (d *Diagram) BoxEnd() (out *Diagram) {
 }
 
 func (d *Diagram) Participant(participant string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    participant %s", participant))
+	d.body = append(d.body, "    participant "+participant)
 	return d
 }
 
 func (d *Diagram) Actor(actor string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    actor %s", actor))
+	d.body = append(d.body, "    actor "+actor)
 	return d
 }
 
 func (d *Diagram) CreateParticipant(participant string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    create participant %s", participant))
+	d.body = append(d.body, "    create participant "+participant)
 	return d
 }
 
 func (d *Diagram) DestroyParticipant(participant string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    destroy %s", participant))
+	d.body = append(d.body, "    destroy "+participant)
 	return d
 }
 
 func (d *Diagram) CreateActor(actor string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    create actor %s", actor))
+	d.body = append(d.body, "    create actor "+actor)
 	return d
 }
 
 func (d *Diagram) DestroyActor(actor string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    destroy %s", actor))
+	d.body = append(d.body, "    destroy "+actor)
 	return d
 }

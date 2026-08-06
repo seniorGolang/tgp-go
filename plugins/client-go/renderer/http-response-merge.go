@@ -5,7 +5,7 @@ package renderer
 import (
 	"context"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/common"
 	"tgp/internal/converter"
@@ -13,7 +13,7 @@ import (
 	"tgp/plugins/server/renderer/types"
 )
 
-func (r *ClientRenderer) httpResponseMergeHeadersAndCookies(bg *Group, ctx context.Context, contract *model.Contract, method *model.Method, assignToReturnVars bool) {
+func (r *ClientRenderer) httpResponseMergeHeadersAndCookies(ctx context.Context, bg *Group, contract *model.Contract, method *model.Method, assignToReturnVars bool) {
 
 	headerMap := model.HTTPResultHeaderMapForResponse(r.project, contract, method)
 	cookieMap := model.HTTPResultCookieMapForResponse(r.project, contract, method)
@@ -46,7 +46,7 @@ func (r *ClientRenderer) httpResponseMergeHeadersAndCookies(bg *Group, ctx conte
 			Project:        r.project,
 			From:           Id("httpResp").Dot("Header").Dot("Get").Call(Lit(headerName)),
 			Arg:            ret,
-			Id:             target(fieldName),
+			ID:             target(fieldName),
 			OptionalAssign: true,
 			FieldType:      typeGen.FieldType,
 			AddImport:      srcFile.ImportName,
@@ -78,7 +78,7 @@ func (r *ClientRenderer) httpResponseMergeHeadersAndCookies(bg *Group, ctx conte
 			Project:        r.project,
 			From:           Id(cookieVar),
 			Arg:            ret,
-			Id:             target(fieldName),
+			ID:             target(fieldName),
 			OptionalAssign: true,
 			FieldType:      typeGen.FieldType,
 			AddImport:      srcFile.ImportName,

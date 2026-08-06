@@ -3,31 +3,25 @@
 package renderer
 
 import (
-	"fmt"
 	"path"
 	"path/filepath"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
-
-	"tgp/internal/generated"
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 )
 
 func (r *transportRenderer) RenderTransportHeader() (err error) {
 
 	headerPath := path.Join(r.outDir, "header.go")
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(PackageErrors, "errors")
 	srcFile.ImportName(PackageSlog, "slog")
 	srcFile.ImportName(srvctxPkgPath, "srvctx")
 	jsonPkg := r.getPackageJSON()
-	srcFile.ImportName(jsonPkg, "json")
+	srcFile.ImportName(jsonPkg, keyJSON)
 	srcFile.ImportName(PackageFmt, "fmt")
-	srcFile.ImportName(PackageStrings, "strings")
 
 	r.renderHeaderTypes(&srcFile)
 	r.renderHeaderHandler(&srcFile)
@@ -68,13 +62,12 @@ func (r *transportRenderer) renderHeaderHandler(srcFile *GoFile) {
 			bg.Id("req").Op(":=").Id(VarNameFtx).Dot("Request").Call()
 			bg.Id("resp").Op(":=").Id(VarNameFtx).Dot("Response").Call()
 			bg.Id("ctx").Op(":=").Id(VarNameFtx).Dot("UserContext").Call()
-			bg.Id("logger").Op(":=").Qual(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id("ctx"))
+			bg.Id("logger").Op(":=").Qual(r.pkgPath(r.outDir)+"/srvctx", "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id("ctx"))
 			bg.Line()
 			bg.Var().Id("logAttrs").Index().Qual(PackageSlog, "Attr")
 			bg.Id("updatedCtx").Op(":=").Id("ctx")
 			bg.For(List(Id("headerName"), Id("handler")).Op(":=").Range().Id("srv").Dot("headerHandlers")).Block(
-				Id("value").Op(":=").Id("req").Dot("Header").Dot("Peek").Call(Id("headerName")),
-				Id("header").Op(":=").Id("handler").Call(Qual(PackageStrings, "Clone").Call(String().Call(Id("value")))),
+				Id("header").Op(":=").Id("handler").Call(Id(VarNameFtx).Dot("Get").Call(Id("headerName"))),
 				If(Id("header").Dot("RequestValue").Op("!=").Nil()).Block(
 					Id("req").Dot("Header").Dot("Set").Call(Id("header").Dot("RequestKey"), Id("headerValue").Call(Id("header").Dot("RequestValue"))),
 				),
@@ -94,7 +87,7 @@ func (r *transportRenderer) renderHeaderHandler(srcFile *GoFile) {
 						Id("args").Op("=").Append(Id("args"), Id("attr")),
 					),
 					Id("requestLogger").Op(":=").Id("logger").Dot("With").Call(Id("args").Op("...")),
-					Id("updatedCtx").Op("=").Qual(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "WithCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id("updatedCtx"), Id("requestLogger")),
+					Id("updatedCtx").Op("=").Qual(r.pkgPath(r.outDir)+"/srvctx", "WithCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id("updatedCtx"), Id("requestLogger")),
 				),
 			)
 			bg.If(Id("updatedCtx").Op("!=").Id("ctx")).Block(

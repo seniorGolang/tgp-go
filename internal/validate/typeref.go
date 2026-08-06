@@ -20,13 +20,13 @@ func validateTypeRefForGenerics(typeRef *model.TypeRef, project *model.Project, 
 	}
 
 	if typeRef.MapValue != nil {
-		if err = validateTypeRefForGenerics(typeRef.MapValue, project, contractName, methodName, fmt.Sprintf("%s.mapValue", varType)); err != nil {
+		if err = validateTypeRefForGenerics(typeRef.MapValue, project, contractName, methodName, varType+".mapValue"); err != nil {
 			return
 		}
 	}
 
 	if typeRef.MapKey != nil {
-		if err = validateTypeRefForGenerics(typeRef.MapKey, project, contractName, methodName, fmt.Sprintf("%s.mapKey", varType)); err != nil {
+		if err = validateTypeRefForGenerics(typeRef.MapKey, project, contractName, methodName, varType+".mapKey"); err != nil {
 			return
 		}
 	}
@@ -49,7 +49,7 @@ func validateTypeRefForChan(typeRef *model.TypeRef, project *model.Project, cont
 	}
 
 	if typeRef.ChanOf != nil {
-		if err = validateTypeRefForChan(typeRef.ChanOf, project, contractName, methodName, fmt.Sprintf("%s.chanOf", varType)); err != nil {
+		if err = validateTypeRefForChan(typeRef.ChanOf, project, contractName, methodName, varType+".chanOf"); err != nil {
 			return
 		}
 		if typeRef.IsSlice || typeRef.ArrayLen > 0 {
@@ -68,13 +68,13 @@ func validateTypeRefForChan(typeRef *model.TypeRef, project *model.Project, cont
 	}
 
 	if typeRef.MapValue != nil {
-		if err = validateTypeRefForChan(typeRef.MapValue, project, contractName, methodName, fmt.Sprintf("%s.mapValue", varType)); err != nil {
+		if err = validateTypeRefForChan(typeRef.MapValue, project, contractName, methodName, varType+".mapValue"); err != nil {
 			return
 		}
 	}
 
 	if typeRef.MapKey != nil {
-		if err = validateTypeRefForChan(typeRef.MapKey, project, contractName, methodName, fmt.Sprintf("%s.mapKey", varType)); err != nil {
+		if err = validateTypeRefForChan(typeRef.MapKey, project, contractName, methodName, varType+".mapKey"); err != nil {
 			return
 		}
 	}
@@ -94,13 +94,13 @@ func validateTypeRefForFunction(typeRef *model.TypeRef, project *model.Project, 
 	}
 
 	if typeRef.MapValue != nil {
-		if err = validateTypeRefForFunction(typeRef.MapValue, project, contractName, methodName, fmt.Sprintf("%s.mapValue", varType)); err != nil {
+		if err = validateTypeRefForFunction(typeRef.MapValue, project, contractName, methodName, varType+".mapValue"); err != nil {
 			return
 		}
 	}
 
 	if typeRef.MapKey != nil {
-		if err = validateTypeRefForFunction(typeRef.MapKey, project, contractName, methodName, fmt.Sprintf("%s.mapKey", varType)); err != nil {
+		if err = validateTypeRefForFunction(typeRef.MapKey, project, contractName, methodName, varType+".mapKey"); err != nil {
 			return
 		}
 	}
@@ -126,13 +126,13 @@ func validateTypeRefForUnsafe(typeRef *model.TypeRef, project *model.Project, co
 	}
 
 	if typeRef.MapValue != nil {
-		if err = validateTypeRefForUnsafe(typeRef.MapValue, project, contractName, methodName, fmt.Sprintf("%s.mapValue", varType)); err != nil {
+		if err = validateTypeRefForUnsafe(typeRef.MapValue, project, contractName, methodName, varType+".mapValue"); err != nil {
 			return
 		}
 	}
 
 	if typeRef.MapKey != nil {
-		if err = validateTypeRefForUnsafe(typeRef.MapKey, project, contractName, methodName, fmt.Sprintf("%s.mapKey", varType)); err != nil {
+		if err = validateTypeRefForUnsafe(typeRef.MapKey, project, contractName, methodName, varType+".mapKey"); err != nil {
 			return
 		}
 	}
@@ -158,7 +158,7 @@ func validateTypeRefForInterface(typeRef *model.TypeRef, project *model.Project,
 		return
 	}
 	if ok && typ.Kind == model.TypeKindInterface {
-		if typeRef.TypeID == "context:Context" {
+		if typeRef.TypeID == typeIDContext {
 			return
 		}
 		if typeRef.TypeID == typeIDIOReader || typeRef.TypeID == typeIDIOReadCloser {
@@ -171,13 +171,13 @@ func validateTypeRefForInterface(typeRef *model.TypeRef, project *model.Project,
 	}
 
 	if typeRef.MapValue != nil {
-		if err = validateTypeRefForInterface(typeRef.MapValue, project, contractName, methodName, fmt.Sprintf("%s.mapValue", varType)); err != nil {
+		if err = validateTypeRefForInterface(typeRef.MapValue, project, contractName, methodName, varType+".mapValue"); err != nil {
 			return
 		}
 	}
 
 	if typeRef.MapKey != nil {
-		if err = validateTypeRefForInterface(typeRef.MapKey, project, contractName, methodName, fmt.Sprintf("%s.mapKey", varType)); err != nil {
+		if err = validateTypeRefForInterface(typeRef.MapKey, project, contractName, methodName, varType+".mapKey"); err != nil {
 			return
 		}
 	}

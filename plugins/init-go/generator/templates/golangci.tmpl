@@ -1,0 +1,154 @@
+version: "2"
+
+run:
+  modules-download-mode: readonly
+  relative-path-mode: gomod
+  timeout: 5m
+  allow-parallel-runners: true
+
+linters:
+  default: none
+  enable:
+    - asasalint
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - errcheck
+    - errchkjson
+    - errorlint
+    - fatcontext
+    - forcetypeassert
+    - gocheckcompilerdirectives
+    - govet
+    - ineffassign
+    - makezero
+    - nilerr
+    - nilnesserr
+    - noctx
+    - nosprintfhostport
+    - reassign
+    - staticcheck
+    - unused
+    - wastedassign
+    - gosec
+    - canonicalheader
+    - exptostd
+    - goconst
+    - gocritic
+    - inamedparam
+    - intrange
+    - mirror
+    - modernize
+    - nolintlint
+    - perfsprint
+    - predeclared
+    - promlinter
+    - recvcheck
+    - revive
+    - thelper
+    - unconvert
+    - usestdlibvars
+    - usetesting
+    - zerologlint
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+
+    errorlint:
+      errorf: true
+      errorf-multi: true
+      asserts: true
+      comparison: true
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+      ignore-tests: true
+      ignore-functions:
+        - fmt.Errorf
+        - errors.New
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - experimental
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+        - unnamedResult
+        - whyNoLint
+        - commentedOutCode
+        - stringConcatSimplify
+        - httpNoBody
+
+    govet:
+      enable:
+        - shadow
+        - nilness
+        - waitgroup
+        - unusedwrite
+
+    inamedparam:
+      skip-single-param: false
+
+    nolintlint:
+      require-specific: true
+      allow-unused: false
+
+    perfsprint:
+      err-error: false
+      errorf: true
+      sprintf1: true
+      strconcat: true
+      int-conversion: true
+
+    staticcheck:
+      checks:
+        - all
+
+    revive:
+      confidence: 0.8
+      enable-default-rules: true
+      rules:
+        - name: atomic
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: defer
+        - name: empty-block
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: unreachable-code
+        - name: unused-parameter
+          arguments:
+            - allowRegex: "^_"
+        - name: useless-break
+        - name: waitgroup-by-value
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: (_test\.go|integration/)
+        linters:
+          - gosec
+          - noctx
+          - forcetypeassert
+          - contextcheck
+      - path: integration/
+        linters:
+          - goconst
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: true

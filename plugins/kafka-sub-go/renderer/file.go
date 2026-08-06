@@ -8,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"tgp/internal/generated"
 	"tgp/plugins/kafka-sub-go/goimports"
 )
 
 func writeSource(outDir string, name string, source string) (err error) {
 
+	source = generated.ByToolGatewayComment + source
 	var formatted []byte
 	if formatted, err = format.Source([]byte(source)); err != nil {
 		return fmt.Errorf("format %s: %w", name, err)
@@ -21,7 +23,7 @@ func writeSource(outDir string, name string, source string) (err error) {
 		return
 	}
 	filePath := filepath.Join(outDir, name)
-	if err = os.WriteFile(filePath, formatted, 0o644); err != nil {
+	if err = os.WriteFile(filePath, formatted, 0o600); err != nil {
 		return
 	}
 	var runner goimports.Runner

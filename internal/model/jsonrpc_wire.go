@@ -2,8 +2,8 @@
 // conditions defined in file 'LICENSE', which is part of this project source code.
 package model
 
-// JsonRPCWireMethod — каноническое имя JSON-RPC method в wire: lowerCamel(contract).lowerCamel(method).
-func JsonRPCWireMethod(contractName, methodName string) (wireMethod string) {
+// JSONRPCWireMethod — каноническое имя JSON-RPC method в wire: lowerCamel(contract).lowerCamel(method).
+func JSONRPCWireMethod(contractName, methodName string) (wireMethod string) {
 
 	return LowerCamel(contractName) + "." + LowerCamel(methodName)
 }

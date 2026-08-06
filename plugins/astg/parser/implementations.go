@@ -50,58 +50,55 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 	packages := make(map[string][]string)
 
 	err = filepath.Walk(internal.ProjectRoot, func(filePath string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-
-		if info.IsDir() {
-			if helper.IsDirNameExcluded(info.Name()) {
-				return filepath.SkipDir
-			}
-			if shouldExcludeDir(filePath, project.ExcludeDirs) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
-		if !helper.IsRelevantGoFile(info.Name()) {
-			return nil
-		}
-
-		if isGeneratedFile(filePath) {
-			return nil
-		}
-
-		if shouldExcludeDir(filepath.Dir(filePath), project.ExcludeDirs) {
-			return nil
-		}
-
-		pkgDir := filepath.Dir(filePath)
-		pkgPath, err := utils.GetPkgPath(pkgDir, true)
-		if err != nil {
-			// В WASM используем альтернативный способ получения пути пакета
-			relPath, relErr := filepath.Rel(internal.ProjectRoot, pkgDir)
-			if relErr == nil {
-				relPath = filepath.ToSlash(relPath)
-				relPath = strings.TrimPrefix(relPath, "./")
-				if relPath != "" && relPath != "." {
-					pkgPath = project.ModulePath + "/" + relPath
-				} else {
-					pkgPath = project.ModulePath
+		if walkErr == nil && info != nil {
+			if info.IsDir() {
+				if helper.IsDirNameExcluded(info.Name()) {
+					return filepath.SkipDir
 				}
-			} else {
-				slog.Debug(i18n.Msg("Failed to get package path"), slog.String("file", filePath), slog.String("error", err.Error()))
+				if shouldExcludeDir(filePath, project.ExcludeDirs) {
+					return filepath.SkipDir
+				}
 				return nil
 			}
+
+			if !helper.IsRelevantGoFile(info.Name()) {
+				return nil
+			}
+
+			if isGeneratedFile(filePath) {
+				return nil
+			}
+
+			if shouldExcludeDir(filepath.Dir(filePath), project.ExcludeDirs) {
+				return nil
+			}
+
+			pkgDir := filepath.Dir(filePath)
+			pkgPath, pkgErr := utils.GetPkgPath(pkgDir, true)
+			if pkgErr != nil {
+				// В WASM используем альтернативный способ получения пути пакета
+				relPath, relErr := filepath.Rel(internal.ProjectRoot, pkgDir)
+				if relErr == nil {
+					relPath = filepath.ToSlash(relPath)
+					relPath = strings.TrimPrefix(relPath, "./")
+					if relPath != "" && relPath != "." {
+						pkgPath = project.ModulePath + "/" + relPath
+					} else {
+						pkgPath = project.ModulePath
+					}
+				} else {
+					slog.Debug(i18n.Msg("Failed to get package path"), slog.String("file", filePath), slog.String("error", pkgErr.Error()))
+					return nil
+				}
+			}
+
+			pkgPath = filepath.ToSlash(pkgPath)
+
+			if _, exists := packages[pkgPath]; !exists {
+				packages[pkgPath] = make([]string, 0)
+			}
+			packages[pkgPath] = append(packages[pkgPath], filePath)
 		}
-
-		pkgPath = filepath.ToSlash(pkgPath)
-
-		if _, exists := packages[pkgPath]; !exists {
-			packages[pkgPath] = make([]string, 0)
-		}
-		packages[pkgPath] = append(packages[pkgPath], filePath)
-
 		return nil
 	})
 
@@ -118,8 +115,8 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 		fset := token.NewFileSet()
 		parsedFiles := make([]*ast.File, 0)
 		for _, filePath := range goFiles {
-			parsedFile, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
-			if err != nil {
+			parsedFile, parseErr := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+			if parseErr != nil {
 				continue
 			}
 			parsedFiles = append(parsedFiles, parsedFile)
@@ -200,9 +197,9 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 						continue
 					}
 
-					structType_ := structTypeName.Type()
-					pointerType := types.NewPointer(structType_)
-					mset := types.NewMethodSet(structType_)
+					namedType := structTypeName.Type()
+					pointerType := types.NewPointer(namedType)
+					mset := types.NewMethodSet(namedType)
 					pointerMset := types.NewMethodSet(pointerType)
 
 					for _, method := range contract.Methods {
@@ -223,7 +220,7 @@ func findImplementations(project *model.Project, loader *AutonomousPackageLoader
 							FilePath: makeRelativePath(goFiles[0]),
 						}
 
-						if methodAST != nil && methodAST.Body != nil && implPkgInfo != nil {
+						if methodAST != nil && methodAST.Body != nil {
 							var signature *types.Signature
 							if sig, ok := methodObj.Type().(*types.Signature); ok {
 								signature = sig
@@ -303,7 +300,10 @@ func mergeAstFiles(files []*ast.File) (merged *ast.File) {
 			genDecl, ok := d.(*ast.GenDecl)
 			if ok && genDecl.Tok == token.IMPORT {
 				for _, spec := range genDecl.Specs {
-					importSpec := spec.(*ast.ImportSpec)
+					importSpec, ok := spec.(*ast.ImportSpec)
+					if !ok {
+						continue
+					}
 					path := importSpec.Path.Value
 					if seenImport[path] {
 						continue
@@ -356,7 +356,7 @@ func findStructsInFile(file *ast.File) (structs []structInfo) {
 	return
 }
 
-func implementsContract(structType structInfo, contract *model.Contract, file *ast.File, filePath string, pkgPath string, project *model.Project, loader *AutonomousPackageLoader, implPkgInfo *PackageInfo, methodSetCache map[string]*types.MethodSet, pointerMethodSetCache map[string]*types.MethodSet, methodSetCacheMu *sync.RWMutex) (implements bool) {
+func implementsContract(structType structInfo, contract *model.Contract, _file *ast.File, _filePath string, pkgPath string, _project *model.Project, loader *AutonomousPackageLoader, implPkgInfo *PackageInfo, methodSetCache map[string]*types.MethodSet, pointerMethodSetCache map[string]*types.MethodSet, methodSetCacheMu *sync.RWMutex) (implements bool) {
 
 	var ok bool
 	var contractPkgInfo *PackageInfo
@@ -399,7 +399,7 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 		return
 	}
 
-	structType_ := structTypeName.Type()
+	namedType := structTypeName.Type()
 	methodSetKey := fmt.Sprintf("%s:%s", pkgPath, structType.Name)
 
 	methodSetCacheMu.RLock()
@@ -408,8 +408,8 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 	methodSetCacheMu.RUnlock()
 
 	if !hasMset || !hasPointerMset {
-		mset = types.NewMethodSet(structType_)
-		pointerType := types.NewPointer(structType_)
+		mset = types.NewMethodSet(namedType)
+		pointerType := types.NewPointer(namedType)
 		pointerMset = types.NewMethodSet(pointerType)
 
 		methodSetCacheMu.Lock()
@@ -423,7 +423,7 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 		implements = true
 		return
 	}
-	for i := 0; i < contractMethodCount; i++ {
+	for i := range contractMethodCount {
 		method := contractIface.Method(i)
 		methodName := method.Name()
 		var found *types.Selection
@@ -444,9 +444,18 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 			return
 		}
 
-		foundMethod := found.Obj().(*types.Func)
-		foundSig := foundMethod.Type().(*types.Signature)
-		contractSig := method.Type().(*types.Signature)
+		foundMethod, ok := found.Obj().(*types.Func)
+		if !ok {
+			return
+		}
+		foundSig, ok := foundMethod.Type().(*types.Signature)
+		if !ok {
+			return
+		}
+		contractSig, ok := method.Type().(*types.Signature)
+		if !ok {
+			return
+		}
 
 		if !types.Identical(foundSig.Params(), contractSig.Params()) {
 			foundParams := foundSig.Params()
@@ -454,7 +463,7 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 			if foundParams.Len() != contractParams.Len() {
 				return
 			}
-			for i := 0; i < foundParams.Len(); i++ {
+			for i := range foundParams.Len() {
 				if foundParams.At(i).Type().String() != contractParams.At(i).Type().String() {
 					return
 				}
@@ -467,7 +476,7 @@ func implementsContract(structType structInfo, contract *model.Contract, file *a
 			if foundResults.Len() != contractResults.Len() {
 				return
 			}
-			for i := 0; i < foundResults.Len(); i++ {
+			for i := range foundResults.Len() {
 				if foundResults.At(i).Type().String() != contractResults.At(i).Type().String() {
 					return
 				}

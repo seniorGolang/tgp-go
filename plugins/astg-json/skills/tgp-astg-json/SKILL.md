@@ -25,6 +25,7 @@ Prefer this model over guessing from `contracts/`: types and references are reso
 | Need | Command |
 |------|---------|
 | Current local | `tg astg json` *(default)* |
+| Custom contracts dir | `tg astg json --contracts-dir path/to/contracts` |
 | DB version | `tg astg json --from-db name@version` |
 | Latest DB | `tg astg json --from-db name` |
 | Interactive | `tg astg json --from-db` |
@@ -130,4 +131,4 @@ jq --arg id "…typeID…" '.types[$id]' .tg/project.json
 
 ## Dig deeper
 
-`tg plugin doc astg-json` · `tg plugin doc astg-db` · skill `tgp-contracts`
+`tg plugin doc astg-json` · `tg plugin doc astg-db` · skills `tgp-contracts`, `tgp-astg-db`, `tgp-pipeline`

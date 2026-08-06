@@ -11,27 +11,32 @@ import (
 
 type Handler struct {
 	logger zerolog.Logger
-	level  slog.Level
+	level  *slog.LevelVar
 }
 
 func New(w io.Writer) (h *Handler) {
 
 	logger := zerolog.New(w).With().Timestamp().Logger()
+	level := new(slog.LevelVar)
+	level.Set(slog.LevelInfo)
 	return &Handler{
 		logger: logger,
-		level:  slog.LevelInfo,
+		level:  level,
 	}
 }
 
 func NewWithLogger(logger zerolog.Logger) (h *Handler) {
+
+	level := new(slog.LevelVar)
+	level.Set(slogLevel(logger.GetLevel()))
 	return &Handler{
 		logger: logger,
-		level:  slogLevel(logger.GetLevel()),
+		level:  level,
 	}
 }
 
 func (h *Handler) Enabled(ctx context.Context, level slog.Level) (ok bool) {
-	return level >= h.level
+	return level >= h.level.Level()
 }
 
 func (h *Handler) Handle(ctx context.Context, record slog.Record) (err error) {
@@ -199,7 +204,7 @@ func SetLevel(logger *slog.Logger, level slog.Level) {
 }
 
 func (h *Handler) SetLevel(level slog.Level) {
-	h.level = level
+	h.level.Set(level)
 }
 
 func (h *Handler) Logger() (l zerolog.Logger) {

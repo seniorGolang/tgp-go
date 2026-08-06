@@ -37,7 +37,7 @@ func validateServerMethod(project *model.Project, contract *model.Contract, meth
 		}
 	}
 
-	if responseValue := model.GetAnnotationValue(project, contract, method, nil, model.TagHttpResponse, ""); responseValue != "" {
+	if responseValue := model.GetAnnotationValue(project, contract, method, nil, model.TagHTTPResponse, ""); responseValue != "" {
 		if _, _, err = model.ParseHandlerRef(responseValue); err != nil {
 			return fmt.Errorf("contract %q: method %q: http-response: %w", contract.Name, method.Name, err)
 		}

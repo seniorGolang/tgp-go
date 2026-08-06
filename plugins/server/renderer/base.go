@@ -32,6 +32,9 @@ var streamSSEGo string
 //go:embed stream/context.go
 var streamContextGo string
 
+//go:embed stream/batch.go
+var streamBatchGo string
+
 type baseRenderer struct {
 	outDir   string
 	project  *model.Project
@@ -101,7 +104,7 @@ func (r *baseRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateData
 	if tmpl, err = template.ParseFS(pkgTmplFS, pattern); err != nil {
 		return
 	}
-	if err = os.MkdirAll(path.Join(dst, pkg), 0700); err != nil {
+	if err = os.MkdirAll(path.Join(dst, pkg), 0o700); err != nil {
 		return
 	}
 	for _, name := range names {
@@ -110,7 +113,7 @@ func (r *baseRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateData
 			return
 		}
 		outName := strings.TrimSuffix(filepath.Base(name), ".tmpl")
-		if err = os.WriteFile(path.Join(dst, pkg, outName), buf.Bytes(), 0600); err != nil {
+		if err = os.WriteFile(path.Join(dst, pkg, outName), buf.Bytes(), 0o600); err != nil {
 			return
 		}
 	}
@@ -119,22 +122,33 @@ func (r *baseRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateData
 
 func (r *baseRenderer) renderStreamPackage() (err error) {
 
-	dir := path.Join(r.outDir, "stream")
-	if err = os.MkdirAll(dir, 0700); err != nil {
+	files := map[string]string{}
+	if r.hasHTTPServerContracts() {
+		files["parts.go"] = streamPartsGo
+	}
+	if r.hasWS() || r.hasSSE() {
+		files["rpc.go"] = streamRPCGo
+		files["context.go"] = streamContextGo
+	}
+	if r.hasSSE() {
+		files["sse.go"] = streamSSEGo
+	}
+	if r.hasJSONRPC() {
+		files["batch.go"] = streamBatchGo
+	}
+	if len(files) == 0 {
 		return
 	}
-	files := map[string]string{
-		"parts.go":   streamPartsGo,
-		"rpc.go":     streamRPCGo,
-		"sse.go":     streamSSEGo,
-		"context.go": streamContextGo,
+	dir := path.Join(r.outDir, "stream")
+	if err = os.MkdirAll(dir, 0o700); err != nil {
+		return
 	}
 	for name, body := range files {
 		if idx := strings.Index(body, "\npackage "); idx >= 0 {
 			body = body[idx+1:]
 		}
 		content := generated.ByToolGatewayComment + "\n\n" + body
-		if err = os.WriteFile(path.Join(dir, name), []byte(content), 0600); err != nil {
+		if err = os.WriteFile(path.Join(dir, name), []byte(content), 0o600); err != nil {
 			return
 		}
 	}
@@ -143,16 +157,33 @@ func (r *baseRenderer) renderStreamPackage() (err error) {
 
 type pkgTemplateData struct {
 	DoNotEditComment string
+	HasBearer        bool
+	JWKSPath         string
+	JWKSParams       []string
+	JWKSSegments     []jwksSegment
 }
 
 func newPkgTemplateData() (data *pkgTemplateData) {
 	return &pkgTemplateData{DoNotEditComment: generated.ByToolGatewayComment}
 }
 
-func (r *baseRenderer) hasJsonRPC() (ok bool) {
+func (r *baseRenderer) hasBearerSecurity() (ok bool) {
+
+	raw := model.GetAnnotationValue(r.project, nil, nil, nil, tagSecurity, "")
+	return strings.Contains(raw, "http:bearer")
+}
+
+func (r *baseRenderer) srvctxTemplateData() (data *pkgTemplateData) {
+
+	data = newPkgTemplateData()
+	data.HasBearer = r.hasBearerSecurity()
+	return
+}
+
+func (r *baseRenderer) hasJSONRPC() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 			return true
 		}
 	}
@@ -163,6 +194,16 @@ func (r *baseRenderer) hasSSE() (ok bool) {
 
 	for _, contract := range r.contractsSorted() {
 		if model.ContractHasSSE(r.project, contract) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *baseRenderer) hasWS() (ok bool) {
+
+	for _, contract := range r.contractsSorted() {
+		if model.ContractHasWS(r.project, contract) {
 			return true
 		}
 	}

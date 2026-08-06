@@ -1,0 +1,36 @@
+{{.DoNotEditComment}}
+package bearer
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/go-jose/go-jose/v4"
+)
+
+func (verifier *Verifier) fetchKeys(ctx context.Context, jwksURI string) (keys map[string]any, err error) {
+
+	var body []byte
+	if body, err = verifier.get(ctx, jwksURI); err != nil {
+		return
+	}
+
+	var set jose.JSONWebKeySet
+	if err = json.Unmarshal(body, &set); err != nil {
+		err = fmt.Errorf("bearer: decode jwks: %w", err)
+		return
+	}
+
+	keys = make(map[string]any, len(set.Keys))
+	for _, key := range set.Keys {
+		if key.KeyID == "" || key.Key == nil {
+			continue
+		}
+		keys[key.KeyID] = key.Key
+	}
+	if len(keys) == 0 {
+		err = fmt.Errorf("bearer: jwks has no keys")
+	}
+	return
+}

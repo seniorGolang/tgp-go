@@ -24,36 +24,36 @@ func TestRenderExchange_SkipsEmptyHTTPResponse(t *testing.T) {
 				ID:      "Http",
 				Annotations: tags.DocTags{
 					model.TagServerHTTP: "",
-					model.TagHttpPrefix: "api/v1",
+					model.TagHTTPPrefix: "api/v1",
 				},
 				Methods: []*model.Method{
 					{
 						Name: "Delete",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "id", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "id", TypeID: "string"},
 						},
 						Results: []*model.Variable{
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
 							model.TagHTTPMethod: "DELETE",
-							model.TagHttpPath:   "/item/{id}",
+							model.TagHTTPPath:   "/item/{id}",
 						},
 					},
 					{
 						Name: "Get",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "id", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "id", TypeID: "string"},
 						},
 						Results: []*model.Variable{
-							{Name: "value", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "value", TypeID: "string"},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
 							model.TagHTTPMethod: "GET",
-							model.TagHttpPath:   "/item/{id}/value",
+							model.TagHTTPPath:   "/item/{id}/value",
 						},
 					},
 				},
@@ -93,22 +93,22 @@ func TestRenderExchange_XMLTagsOnlyForXMLContentType(t *testing.T) {
 				ID:      "Http",
 				Annotations: tags.DocTags{
 					model.TagServerHTTP: "",
-					model.TagHttpPrefix: "api/v1",
+					model.TagHTTPPrefix: "api/v1",
 				},
 				Methods: []*model.Method{
 					{
 						Name: "XmlEcho",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "payload", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "payload", TypeID: "string"},
 						},
 						Results: []*model.Variable{
-							{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "out", TypeID: "string"},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
 							model.TagHTTPMethod:          "POST",
-							model.TagHttpPath:            "/xml/echo",
+							model.TagHTTPPath:            "/xml/echo",
 							model.TagRequestContentType:  "application/xml",
 							model.TagResponseContentType: "application/xml",
 						},
@@ -143,27 +143,27 @@ func TestRenderExchange_KeepsEmptyJSONRPCResponse(t *testing.T) {
 				PkgPath: "example/contracts",
 				ID:      "Rpc",
 				Annotations: tags.DocTags{
-					model.TagServerJsonRPC: "",
+					model.TagServerJSONRPC: "",
 				},
 				Methods: []*model.Method{
 					{
 						Name: "Do",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+							{Name: "ctx", TypeID: "context:Context"},
 						},
 						Results: []*model.Variable{
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "err", TypeID: "error"},
 						},
 					},
 					{
 						Name: "Echo",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "msg", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "msg", TypeID: "string"},
 						},
 						Results: []*model.Variable{
-							{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "out", TypeID: "string"},
+							{Name: "err", TypeID: "error"},
 						},
 					},
 				},
@@ -209,13 +209,13 @@ func TestRenderExchange_StreamResponseOnlyForClientMode(t *testing.T) {
 							model.TagStream: model.StreamModeServer,
 						},
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "symbol", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "symbol", TypeID: "string"},
 						},
 						Results: []*model.Variable{
-							{Name: "ticks", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
-							{Name: "count", TypeRef: model.TypeRef{TypeID: "int"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "ticks", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2},
+							{Name: "count", TypeID: "int"},
+							{Name: "err", TypeID: "error"},
 						},
 					},
 					{
@@ -224,14 +224,14 @@ func TestRenderExchange_StreamResponseOnlyForClientMode(t *testing.T) {
 							model.TagStream: model.StreamModeClient,
 						},
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "batchID", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "samples", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "batchID", TypeID: "string"},
+							{Name: "samples", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2},
 						},
 						Results: []*model.Variable{
-							{Name: "accepted", TypeRef: model.TypeRef{TypeID: "int"}},
-							{Name: "rejected", TypeRef: model.TypeRef{TypeID: "int"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "accepted", TypeID: "int"},
+							{Name: "rejected", TypeID: "int"},
+							{Name: "err", TypeID: "error"},
 						},
 					},
 					{
@@ -240,13 +240,13 @@ func TestRenderExchange_StreamResponseOnlyForClientMode(t *testing.T) {
 							model.TagStream: model.StreamModeBidi,
 						},
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "room", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "in", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "room", TypeID: "string"},
+							{Name: "in", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 2},
 						},
 						Results: []*model.Variable{
-							{Name: "out", TypeRef: model.TypeRef{ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 1}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "out", ChanOf: &model.TypeRef{TypeID: "string"}, ChanDirection: 1},
+							{Name: "err", TypeID: "error"},
 						},
 					},
 				},
@@ -295,5 +295,57 @@ func TestRenderHTTP_ErrorPathClosesBodyWithBlankAssign(t *testing.T) {
 	}
 	if !strings.Contains(source, "_ = httpResp.Body.Close()") {
 		t.Fatalf("expected blank-assigned Body.Close:\n%s", source)
+	}
+}
+
+func TestRenderHTTP_MultipartResponseBuffersIndependentParts(t *testing.T) {
+
+	project := &model.Project{
+		ModulePath: "example",
+		Types:      map[string]*model.Type{},
+		Contracts: []*model.Contract{{
+			Name:    "Files",
+			PkgPath: "example/contracts",
+			Annotations: tags.DocTags{
+				model.TagServerHTTP: "",
+			},
+			Methods: []*model.Method{{
+				Name: "Download",
+				Args: []*model.Variable{
+					{Name: "ctx", TypeID: "context:Context"},
+				},
+				Results: []*model.Variable{
+					{Name: "first", TypeID: TypeIDIOReadCloser},
+					{Name: "second", TypeID: TypeIDIOReadCloser},
+					{Name: "err", TypeID: "error"},
+				},
+				Annotations: tags.DocTags{
+					model.TagHTTPMethod: "GET",
+					model.TagHTTPPath:   "/files",
+				},
+			}},
+		}},
+	}
+	dir := filepath.Join(t.TempDir(), "client")
+	renderer := NewClientRenderer(project, dir, "example", "client")
+	if err := renderer.RenderServiceClient(project.Contracts[0]); err != nil {
+		t.Fatalf("RenderServiceClient: %v", err)
+	}
+	source := mustRead(t, filepath.Join(dir, "files-client.go"))
+	for _, fragment := range []string{
+		"type bufferedPartReader struct",
+		"parts := map[string]*bytes.Buffer",
+		"for {",
+		"mr.NextPart()",
+		"bytes.NewReader(parts[\"first\"].Bytes())",
+		"r.once.Do",
+		"s.once.Do",
+	} {
+		if !strings.Contains(source, fragment) {
+			t.Fatalf("multipart response missing %q:\n%s", fragment, source)
+		}
+	}
+	if strings.Contains(source, "type streamingPartReader struct") {
+		t.Fatalf("multipart response must not expose competing lazy readers:\n%s", source)
 	}
 }

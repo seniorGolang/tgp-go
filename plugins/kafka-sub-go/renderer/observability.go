@@ -9,6 +9,8 @@ func (r *Renderer) metricsSource() (source string) {
 	return `package ` + filepath.Base(r.outDir) + `
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,10 +41,49 @@ func newMetrics(registerer prometheus.Registerer) (result *metrics, err error) {
 		lag: prometheus.NewGaugeVec(prometheus.GaugeOpts{Namespace: "tgp_kafka", Name: "consume_lag_records", Help: "Лаг чтения по partition."}, []string{"topic", "partition"}),
 		lagScrapeErrors: prometheus.NewCounterVec(prometheus.CounterOpts{Namespace: "tgp_kafka", Name: "consume_lag_scrape_errors_total", Help: "Ошибки обновления лага."}, []string{"cause"}),
 	}
-	for _, collector := range []prometheus.Collector{result.polls, result.pollDuration, result.pollActive, result.records, result.bytes, result.decodeDuration, result.handlerDuration, result.lag, result.lagScrapeErrors} {
-		if err = registerer.Register(collector); err != nil {
-			return nil, err
-		}
+	if result.polls, err = registerOrGet(registerer, result.polls); err != nil {
+		return nil, err
+	}
+	if result.pollDuration, err = registerOrGet(registerer, result.pollDuration); err != nil {
+		return nil, err
+	}
+	if result.pollActive, err = registerOrGet(registerer, result.pollActive); err != nil {
+		return nil, err
+	}
+	if result.records, err = registerOrGet(registerer, result.records); err != nil {
+		return nil, err
+	}
+	if result.bytes, err = registerOrGet(registerer, result.bytes); err != nil {
+		return nil, err
+	}
+	if result.decodeDuration, err = registerOrGet(registerer, result.decodeDuration); err != nil {
+		return nil, err
+	}
+	if result.handlerDuration, err = registerOrGet(registerer, result.handlerDuration); err != nil {
+		return nil, err
+	}
+	if result.lag, err = registerOrGet(registerer, result.lag); err != nil {
+		return nil, err
+	}
+	if result.lagScrapeErrors, err = registerOrGet(registerer, result.lagScrapeErrors); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func registerOrGet[T prometheus.Collector](reg prometheus.Registerer, collector T) (result T, err error) {
+
+	if err = reg.Register(collector); err == nil {
+		return collector, nil
+	}
+	var registered prometheus.AlreadyRegisteredError
+	if !errors.As(err, &registered) {
+		return result, err
+	}
+	var ok bool
+	result, ok = registered.ExistingCollector.(T)
+	if !ok {
+		return result, fmt.Errorf("registered collector has type %T, want %T", registered.ExistingCollector, collector)
 	}
 	return result, nil
 }

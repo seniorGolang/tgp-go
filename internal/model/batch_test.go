@@ -80,42 +80,42 @@ func TestJSONRPCBatchMounts(t *testing.T) {
 			{
 				Name: "Users",
 				Annotations: tags.DocTags{
-					TagServerJsonRPC: "",
-					TagHttpPrefix:    "api/v1",
+					TagServerJSONRPC: "",
+					TagHTTPPrefix:    "api/v1",
 				},
 			},
 			{
 				Name: "Orders",
 				Annotations: tags.DocTags{
-					TagServerJsonRPC: "",
-					TagHttpPrefix:    "api/v1",
+					TagServerJSONRPC: "",
+					TagHTTPPrefix:    "api/v1",
 				},
 			},
 			{
 				Name: "Catalog",
 				Annotations: tags.DocTags{
-					TagServerJsonRPC: "",
-					TagHttpPrefix:    "api/v2",
+					TagServerJSONRPC: "",
+					TagHTTPPrefix:    "api/v2",
 				},
 			},
 			{
 				Name: "Admin",
 				Annotations: tags.DocTags{
-					TagServerJsonRPC: "",
-					TagHttpPrefix:    "api/v2/admin",
+					TagServerJSONRPC: "",
+					TagHTTPPrefix:    "api/v2/admin",
 				},
 			},
 			{
 				Name: "HTTPOnly",
 				Annotations: tags.DocTags{
 					TagServerHTTP: "",
-					TagHttpPrefix: "api/v9",
+					TagHTTPPrefix: "api/v9",
 				},
 			},
 			{
 				Name: "RootRPC",
 				Annotations: tags.DocTags{
-					TagServerJsonRPC: "",
+					TagServerJSONRPC: "",
 				},
 			},
 		},
@@ -137,7 +137,7 @@ func TestJSONRPCBatchMounts_NilProject(t *testing.T) {
 func TestJSONRPCContractPrefix(t *testing.T) {
 
 	contract := &Contract{
-		Annotations: tags.DocTags{TagHttpPrefix: "api/v1/"},
+		Annotations: tags.DocTags{TagHTTPPrefix: "api/v1/"},
 	}
 	if got := JSONRPCContractPrefix(nil, contract); got != "/api/v1" {
 		t.Fatalf("JSONRPCContractPrefix = %q, want /api/v1", got)
@@ -160,7 +160,7 @@ func TestJSONRPCServiceBatchPath(t *testing.T) {
 			c: &Contract{
 				Name: "Rpc",
 				Annotations: tags.DocTags{
-					TagHttpPrefix: "api/v1",
+					TagHTTPPrefix: "api/v1",
 				},
 			},
 			want: "/api/v1/rpc",
@@ -170,8 +170,8 @@ func TestJSONRPCServiceBatchPath(t *testing.T) {
 			c: &Contract{
 				Name: "ABACV2",
 				Annotations: tags.DocTags{
-					TagHttpPrefix: "api/v2",
-					TagHttpPath:   "abac",
+					TagHTTPPrefix: "api/v2",
+					TagHTTPPath:   "abac",
 				},
 			},
 			want: "/api/v2/abac",

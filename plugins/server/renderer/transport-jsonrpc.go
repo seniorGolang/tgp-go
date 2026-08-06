@@ -3,31 +3,26 @@
 package renderer
 
 import (
-	"fmt"
 	"path"
 	"path/filepath"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
-
-	"tgp/internal/generated"
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 )
 
-func (r *transportRenderer) RenderTransportJsonRPC() (err error) {
+func (r *transportRenderer) RenderTransportJSONRPC() (err error) {
 
 	jsonrpcPath := path.Join(r.outDir, "jsonrpc.go")
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
-	r.renderJsonRPCImports(&srcFile)
-	r.renderJsonRPCTypes(&srcFile)
-	r.renderJsonRPCConstants(&srcFile)
-	r.renderJsonRPCFunctions(&srcFile)
+	r.renderJSONRPCImports(&srcFile)
+	r.renderJSONRPCTypes(&srcFile)
+	r.renderJSONRPCConstants(&srcFile)
+	r.renderJSONRPCFunctions(&srcFile)
 
 	return srcFile.Save(jsonrpcPath)
 }
 
-func (r *transportRenderer) renderJsonRPCImports(srcFile *GoFile) {
+func (r *transportRenderer) renderJSONRPCImports(srcFile *GoFile) {
 
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName("io", "io")
@@ -39,45 +34,50 @@ func (r *transportRenderer) renderJsonRPCImports(srcFile *GoFile) {
 	srcFile.ImportName(PackageSlog, "slog")
 	srcFile.ImportName(PackageStrconv, "strconv")
 	jsonPkg := r.getPackageJSON()
-	srcFile.ImportName(jsonPkg, "json")
+	srcFile.ImportName(jsonPkg, keyJSON)
 	srcFile.ImportName(PackageContext, "context")
-	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
+	srcFile.ImportName(r.pkgPath(r.outDir)+"/srvctx", "srvctx")
+	srcFile.ImportName(r.pkgPath(r.outDir)+"/stream", "stream")
 }
 
-func (r *transportRenderer) renderJsonRPCTypes(srcFile *GoFile) {
+func (r *transportRenderer) renderJSONRPCTypes(srcFile *GoFile) {
 
 	srcFile.Line().Add(r.jsonrpcConstants())
-	srcFile.Add(r.idJsonRPC()).Line()
-	srcFile.Add(r.baseJsonRPC()).Line()
-	srcFile.Add(r.errorJsonRPC()).Line()
+	srcFile.Add(r.idJSONRPC()).Line()
+	srcFile.Add(r.baseJSONRPC()).Line()
+	srcFile.Add(r.errorJSONRPC()).Line()
+	srcFile.Add(r.batchResultType()).Line()
+	if !r.jsonRPCNeedsOverlay(nil) {
+		return
+	}
 	srcFile.Line()
 	srcFile.Add(r.requestOverlayKeyType()).Line()
 	srcFile.Add(r.requestOverlayStructType()).Line()
 	srcFile.Add(r.requestOverlayGetMethod()).Line()
-	srcFile.Add(r.requestOverlayGetterType()).Line()
 	srcFile.Add(r.requestOverlayFromFiberFunc())
-	srcFile.Add(r.requestOverlayMiddlewareFunc())
 }
 
-func (r *transportRenderer) renderJsonRPCConstants(srcFile *GoFile) {
+func (r *transportRenderer) renderJSONRPCConstants(_srcFile *GoFile) {
 
 }
 
-func (r *transportRenderer) renderJsonRPCFunctions(srcFile *GoFile) {
+func (r *transportRenderer) renderJSONRPCFunctions(srcFile *GoFile) {
 
-	srcFile.Add(r.sendResponseJsonRPCFunc())
+	srcFile.Add(r.sendResponseJSONRPCFunc())
+	srcFile.Line()
+	srcFile.Add(r.sendJSONRPCResponseFunc())
 	srcFile.Line()
 	srcFile.Line().Type().Id("methodJsonRPC").
 		Func().
-		Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("requestBase").Id("baseJsonRPC")).
-		Params(Id("responseBase").Op("*").Id("baseJsonRPC"))
+		Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("requestBase").Id("baseJSONRPC")).
+		Params(Id("responseBase").Op("*").Id("baseJSONRPC"))
 	srcFile.Line()
 	srcFile.Line().Type().Id("methodJsonRPCWithFiber").
 		Func().
-		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requestBase").Id("baseJsonRPC")).
-		Params(Id("responseBase").Op("*").Id("baseJsonRPC"))
+		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requestBase").Id("baseJSONRPC")).
+		Params(Id("responseBase").Op("*").Id("baseJSONRPC"))
 	srcFile.Line()
-	srcFile.Line().Add(r.initJsonRPCMethodMaps())
+	srcFile.Line().Add(r.initJSONRPCMethodMaps())
 	srcFile.Line()
 	srcFile.Add(r.batchHandlerFunc())
 	srcFile.Add(r.serveBatchFunc())
@@ -86,10 +86,9 @@ func (r *transportRenderer) renderJsonRPCFunctions(srcFile *GoFile) {
 	srcFile.Line()
 	srcFile.Line()
 	srcFile.Add(r.toLowercaseMethodFunc())
-	srcFile.Add(r.validateJsonRPCRequestFunc())
+	srcFile.Add(r.validateJSONRPCRequestFunc())
 	srcFile.Line()
-	srcFile.Line().Add(r.makeErrorResponseJsonRPCFunc())
-	srcFile.Line().Add(r.readUntilFirstNonWhitespaceFunc())
+	srcFile.Line().Add(r.makeErrorResponseJSONRPCFunc())
 }
 
 func (r *transportRenderer) jsonrpcConstants() (c Code) {
@@ -97,7 +96,6 @@ func (r *transportRenderer) jsonrpcConstants() (c Code) {
 	return Const().Op("(").
 		Line().Id("defaultMaxBatchSize").Op("=").Lit(100).
 		Line().Id("defaultMaxParallelBatch").Op("=").Lit(10).
-		Line().Id("maxPeekBytes").Op("=").Lit(16).
 		Line().Id("Version").Op("=").Lit("2.0").
 		Line().Id("syncHeader").Op("=").Lit("X-Sync-On").
 		Line().Id("parseError").Op("=").Lit(-32700).
@@ -108,38 +106,46 @@ func (r *transportRenderer) jsonrpcConstants() (c Code) {
 		Op(")")
 }
 
-func (r *transportRenderer) idJsonRPC() (c Code) {
+func (r *transportRenderer) idJSONRPC() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
-	return Type().Id("idJsonRPC").Op("=").Qual(jsonPkg, "RawMessage")
+	return Type().Id("idJSONRPC").Op("=").Qual(jsonPkg, "RawMessage")
 }
 
-func (r *transportRenderer) baseJsonRPC() (c Code) {
+func (r *transportRenderer) baseJSONRPC() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
-	return Type().Id("baseJsonRPC").StructFunc(func(tg *Group) {
-		tg.Id("ID").Id("idJsonRPC").Tag(map[string]string{"json": "id"})
-		tg.Id("Version").Id("string").Tag(map[string]string{"json": "jsonrpc"})
-		tg.Id("Method").Id("string").Tag(map[string]string{"json": "method,omitempty"})
-		tg.Id("Error").Op("*").Id("errorJsonRPC").Tag(map[string]string{"json": "error,omitempty"})
-		tg.Id("Params").Qual(jsonPkg, "RawMessage").Tag(map[string]string{"json": "params,omitempty"})
-		tg.Id("Result").Qual(jsonPkg, "RawMessage").Tag(map[string]string{"json": "result,omitempty"})
+	return Type().Id("baseJSONRPC").StructFunc(func(tg *Group) {
+		tg.Id("ID").Id("idJSONRPC").Tag(map[string]string{keyJSON: "id"})
+		tg.Id("Version").Id(typeString).Tag(map[string]string{keyJSON: "jsonrpc"})
+		tg.Id("Method").Id(typeString).Tag(map[string]string{keyJSON: "method,omitempty"})
+		tg.Id("Error").Op("*").Id("errorJSONRPC").Tag(map[string]string{keyJSON: "error,omitempty"})
+		tg.Id("Params").Qual(jsonPkg, "RawMessage").Tag(map[string]string{keyJSON: "params,omitempty"})
+		tg.Id("Result").Qual(jsonPkg, "RawMessage").Tag(map[string]string{keyJSON: "result,omitempty"})
 	})
 }
 
-func (r *transportRenderer) errorJsonRPC() (c Code) {
+func (r *transportRenderer) errorJSONRPC() (c Code) {
 
-	return Type().Id("errorJsonRPC").Struct(
-		Id("Code").Id("int").Tag(map[string]string{"json": "code"}),
-		Id("Message").Id("string").Tag(map[string]string{"json": "message"}),
-		Id("Data").Id("any").Tag(map[string]string{"json": "data,omitempty"}),
-	).Line().Func().Params(Err().Id("errorJsonRPC")).
+	return Type().Id("errorJSONRPC").Struct(
+		Id("Code").Id("int").Tag(map[string]string{keyJSON: "code"}),
+		Id("Message").Id(typeString).Tag(map[string]string{keyJSON: "message"}),
+		Id("Data").Id("any").Tag(map[string]string{keyJSON: "data,omitempty"}),
+	).Line().Func().Params(Err().Id("errorJSONRPC")).
 		Id("Error").
 		Params().
 		Params(String()).
 		Block(
 			Return(Err().Dot("Message")),
 		)
+}
+
+func (r *transportRenderer) batchResultType() (c Code) {
+
+	return Type().Id("batchResult").Struct(
+		Id("idx").Int(),
+		Id("response").Op("*").Id("baseJSONRPC"),
+	)
 }
 
 func (r *transportRenderer) requestOverlayKeyType() (c Code) {
@@ -178,42 +184,30 @@ func (r *transportRenderer) requestOverlayGetMethod() (c Code) {
 	)
 }
 
-func (r *transportRenderer) requestOverlayGetterType() (c Code) {
-
-	return Type().Id("requestOverlayGetter").Func().Params().Params(Id("requestOverlay"))
-}
-
 func (r *transportRenderer) requestOverlayFromFiberFunc() (c Code) {
 
 	headerNames, cookieNames := r.jsonRPCUsedOverlayKeys()
 	return Line().Func().Id("requestOverlayFromFiber").
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
-		Params(Id("requestOverlay")).
+		Params(Id("overlay").Id("requestOverlay")).
 		BlockFunc(func(block *Group) {
-			block.Id("o").Op(":=").Id("requestOverlay").Values()
 			for _, name := range headerNames {
-				block.Id("o").Dot(overlayKeyToFieldName(name)).Op("=").Qual(PackageStrings, "Clone").Call(Id("string").Call(Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("Peek").Call(Lit(name))))
+				block.Id("overlay").Dot(overlayKeyToFieldName(name)).Op("=").Id(VarNameFtx).Dot("Get").Call(Lit(name))
 			}
 			for _, name := range cookieNames {
-				block.Id("o").Dot(overlayKeyToFieldName(name)).Op("=").Qual(PackageStrings, "Clone").Call(Id(VarNameFtx).Dot("Cookies").Call(Lit(name)))
+				block.Id("overlay").Dot(overlayKeyToFieldName(name)).Op("=").Id(VarNameFtx).Dot("Cookies").Call(Lit(name))
 			}
-			block.Return(Id("o"))
+			block.Return()
 		})
 }
 
-func (r *transportRenderer) requestOverlayMiddlewareFunc() (c Code) {
+func setRequestOverlayContext() (c Code) {
 
-	return Line().Func().Id("requestOverlayMiddleware").
-		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
-		Params(Error()).
-		BlockFunc(func(bg *Group) {
-			bg.Id(VarNameFtx).Dot("SetUserContext").Call(
-				Qual(PackageContext, "WithValue").Call(
-					Id(VarNameFtx).Dot("UserContext").Call(),
-					Id("keyRequestOverlay"),
-					Id("requestOverlayGetter").Call(Func().Params().Params(Id("requestOverlay")).Block(Return(Id("requestOverlayFromFiber").Call(Id(VarNameFtx))))),
-				),
-			)
-			bg.Return(Id(VarNameFtx).Dot("Next").Call())
-		})
+	return Id(VarNameFtx).Dot("SetUserContext").Call(
+		Qual(PackageContext, "WithValue").Call(
+			Id(VarNameFtx).Dot("UserContext").Call(),
+			Id("keyRequestOverlay"),
+			Id("requestOverlayFromFiber").Call(Id(VarNameFtx)),
+		),
+	)
 }

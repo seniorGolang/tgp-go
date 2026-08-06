@@ -4,7 +4,6 @@ package utils
 
 import (
 	"bytes"
-	"fmt"
 	"go/build"
 	"log/slog"
 	"os"
@@ -164,7 +163,7 @@ func GetPkgPathFromGOPATH(fName string, isDir bool) (pkgPath string, err error) 
 
 	for _, p := range filepath.SplitList(gopathCache) {
 		prefix := filepath.Join(p, "src") + string(filepath.Separator)
-		if rel := strings.TrimPrefix(fName, prefix); rel != fName {
+		if rel, ok := strings.CutPrefix(fName, prefix); ok {
 			if !isDir {
 				pkgPath = path.Dir(filePathToPackagePath(rel))
 				return
@@ -196,5 +195,5 @@ func GetDefaultGoPath() (gopath string, err error) {
 		return
 	}
 
-	return "", fmt.Errorf("GOPATH not found")
+	return "", errors.New("GOPATH not found")
 }

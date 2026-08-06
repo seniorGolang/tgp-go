@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +17,7 @@ func TestOpenSSE_WritesConnectedComment(t *testing.T) {
 
 	var buf bytes.Buffer
 	writer := bufio.NewWriter(&buf)
-	if err := OpenSSE(writer); err != nil {
+	if err := OpenSSE(writer, nil); err != nil {
 		t.Fatalf("OpenSSE: %v", err)
 	}
 	if got := buf.String(); got != ": connected\n\n" {
@@ -28,7 +29,7 @@ func TestWriteSSEComment_FlushesComment(t *testing.T) {
 
 	var buf bytes.Buffer
 	writer := bufio.NewWriter(&buf)
-	if err := WriteSSEComment(writer, "heartbeat"); err != nil {
+	if err := WriteSSEComment(writer, "heartbeat", nil); err != nil {
 		t.Fatalf("WriteSSEComment: %v", err)
 	}
 	if got := buf.String(); got != ": heartbeat\n\n" {
@@ -41,10 +42,23 @@ func TestWriteSSEError_WritesJSONRPCError(t *testing.T) {
 	var buf bytes.Buffer
 	writer := bufio.NewWriter(&buf)
 	id := json.RawMessage(`"req-1"`)
-	if err := WriteSSEError(writer, id, &Error{Code: 400, Message: "bad input"}); err != nil {
+	if err := WriteSSEError(writer, id, &Error{Code: 400, Message: "bad input"}, nil); err != nil {
 		t.Fatalf("WriteSSEError: %v", err)
 	}
 	if !strings.Contains(buf.String(), `"code":400`) || !strings.Contains(buf.String(), `"message":"bad input"`) {
+		t.Fatalf("WriteSSEError output = %q", buf.String())
+	}
+}
+
+func TestWriteSSEError_SanitizesInternal(t *testing.T) {
+
+	var buf bytes.Buffer
+	writer := bufio.NewWriter(&buf)
+	id := json.RawMessage(`"req-1"`)
+	if err := WriteSSEError(writer, id, errors.New("sql: secret"), nil); err != nil {
+		t.Fatalf("WriteSSEError: %v", err)
+	}
+	if strings.Contains(buf.String(), "sql") || !strings.Contains(buf.String(), `"message":"internal error"`) {
 		t.Fatalf("WriteSSEError output = %q", buf.String())
 	}
 }
@@ -60,7 +74,7 @@ func TestPumpSSEServerStreamTyped_SendsChunksAndFinal(t *testing.T) {
 	writer := bufio.NewWriter(&buf)
 	ctx := context.Background()
 	id := json.RawMessage(`"stream-1"`)
-	if err := PumpSSEServerStreamTyped(ctx, writer, id, out, json.RawMessage(`{"count":2}`), 0); err != nil {
+	if err := PumpSSEServerStreamTyped(ctx, writer, id, out, json.RawMessage(`{"count":2}`), 0, nil); err != nil {
 		t.Fatalf("PumpSSEServerStreamTyped: %v", err)
 	}
 	output := buf.String()
@@ -82,7 +96,7 @@ func TestPumpSSEServerStreamTyped_HeartbeatWhileIdle(t *testing.T) {
 	writer := bufio.NewWriter(&buf)
 	done := make(chan struct{})
 	go func() {
-		_ = PumpSSEServerStreamTyped(ctx, writer, json.RawMessage(`"id"`), out, nil, 20*time.Millisecond)
+		_ = PumpSSEServerStreamTyped(ctx, writer, json.RawMessage(`"id"`), out, nil, 20*time.Millisecond, nil)
 		close(done)
 	}()
 
@@ -104,11 +118,11 @@ func TestPumpSSEServerStreamTyped_ContextCancel(t *testing.T) {
 	writer := bufio.NewWriter(&buf)
 	done := make(chan error, 1)
 	go func() {
-		done <- PumpSSEServerStreamTyped(ctx, writer, json.RawMessage(`"id"`), out, nil, 0)
+		done <- PumpSSEServerStreamTyped(ctx, writer, json.RawMessage(`"id"`), out, nil, 0, nil)
 	}()
 
 	cancel()
-	if err := <-done; err != context.Canceled {
+	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }

@@ -1,507 +1,227 @@
-# Плагин swagger — документация API в формате OpenAPI
+# Плагин swagger — OpenAPI 3.0 из контрактов
 
 ## Назначение
 
-Плагин строит описание вашего API в формате **OpenAPI 3.0** по контрактам с аннотациями `@tg`. Получившийся файл можно открывать в Swagger UI, Postman, Insomnia и других инструментах, поддерживающих OpenAPI 3.0.
+Плагин строит спецификацию **OpenAPI 3.0** (JSON/YAML) по HTTP-семейству контрактов и при необходимости поднимает Swagger UI. Источник правды — контракты `@tg`, не ручная правка файла.
 
-Общая информация об аннотациях и контрактах: `tg plugin doc astg`.
+Полный синтаксис аннотаций: `tg plugin doc astg`. Тексты API (`summary`/`desc`/`file:`) — skill `tgp-contracts`.
 
-## Что вы получите
+## Когда использовать
 
-- Описание **HTTP**, **JSON-RPC**, WebSocket (`x-websocket: true`) и SSE (`text/event-stream`) методов в единой спецификации OpenAPI 3.0.
-- Схемы данных для запросов и ответов, параметры пути, query, заголовки, cookies.
-- Примеры и описания из аннотаций (`@tg desc`, `@tg example` и др.).
-- Поддержку схемы авторизации Bearer и списка серверов.
-- Группировку операций по тегам в Swagger UI.
+- Нужен OpenAPI для Swagger UI, Postman, Redoc, контрактного review.
+- Контракты с `http-server`, `jsonRPC-server`, `ws-server`, `sse-server`.
+- **Kafka в OpenAPI не попадает** — не ждите топиков здесь.
 
-Формат вывода: **JSON** или **YAML** (по расширению файла). Дополнительно можно запустить встроенный просмотр в браузере (режим `serve`).
-
-## Запуск
-
-### Сохранение в файл
+## Команда и параметры
 
 ```bash
 tg swagger --out api-docs/openapi.yaml
-```
-
-Формат определяется расширением: `.json` — JSON, `.yaml` или `.yml` — YAML. Каталог для файла создаётся при необходимости.
-
-### Только просмотр в браузере (без файла)
-
-```bash
 tg swagger --serve :8080
+tg swagger --out api-docs/openapi.json --serve :8080
+tg swagger   # без флагов → UI на :8080
 ```
 
-Запускается локальный HTTP-сервер с Swagger UI на указанном адресе (например, `:8080` или `localhost:3000`). Браузер открывается автоматически. Спецификация отдаётся в JSON.
+| Параметр | Короткая форма | Обязательный | Описание |
+|----------|----------------|--------------|----------|
+| `out` | **нет** (только `--out`) | нет* | Файл `.json` / `.yaml` / `.yml`; каталог создаётся |
+| `serve` | — | нет* | Адрес UI (например `:8080`, `localhost:3000`) |
+| `contracts` | — | нет | Имена через запятую; поддержка **исключений `!Name`** |
+| `contracts-dir` | — | нет | Каталог контрактов (default `contracts`) |
 
-Если не указать ни `--out`, ни `--serve`, по умолчанию запускается сервер на порту **8080** — можно сразу посмотреть документацию в браузере:
+\* Нужен хотя бы один режим: файл, serve, или оба. Если нет ни `out`, ни `serve` — по умолчанию serve на **`:8080`**.
+
+Примеры фильтра:
 
 ```bash
-tg swagger
+tg swagger --out docs/openapi.yaml --contracts UserService,OrderService
+tg swagger --out docs/openapi.yaml --contracts '!OrderService'
 ```
 
-### Файл и просмотр одновременно
+У server/client фильтр обычно **без** `!Name`; у swagger исключения поддерживаются.
+
+## Что генерируется
+
+### Матрица: транспорт → OpenAPI
+
+| На контракте | В спецификации |
+|--------------|----------------|
+| `http-server` | REST `paths` + method |
+| `jsonRPC-server` | `POST` на путь контракта; body JSON-RPC 2.0 (`params`/`result`) |
+| оба | оба набора операций |
+| `ws-server` + stream | операция с маркером `x-websocket: true` |
+| `sse-server` + stream | `text/event-stream` |
+| `kafka` | **опущено** |
+| пакетные `title`/`version`/`desc`/`servers`/`security` | `info`, `servers`, `components.securitySchemes` |
+| `swaggerTags` / `tagDesc.*` | `tags` и `operation.tags` |
+
+### Артефакт
+
+Один документ OpenAPI 3.0:
+
+- `info`, `servers`, `security` / `components.securitySchemes`
+- `paths` — операции
+- `components.schemas` — типы
+- `tags` — группировка в UI
+
+Формат выбирается расширением файла. Режим `--serve` отдаёт JSON в UI.
+
+## Аннотации и их влияние
+
+Ниже — **эффект на OpenAPI**, не каталог всего astg.
+
+### Метаданные пакета → `info` / `servers` / security
+
+| Аннотация | Уровень | Эффект |
+|-----------|---------|--------|
+| `title` | пакет | `info.title` |
+| `version` | пакет | `info.version` (иначе часто `1.0.0`) |
+| `desc` | пакет | `info.description` (md) |
+| `servers` | пакет | `servers[]` (`url;desc` через `\|`) |
+| `security` | пакет | схемы и глобальный `security` (см. ниже) |
+
+**`@tg security` (app2app):**
+
+| Форма | В OpenAPI |
+|-------|-----------|
+| `http:bearer[:JWT][|jwks=…]` | `http` bearer + опц. `x-jwks-uri`; в глобальном `security` |
+| `apiKey:<in>:<name>` | `apiKey`; в `security` |
+| `oauth2:tokenExchange` / `oauth2:clientCredentials[:jwt-bearer]` | только `components.securitySchemes` (`x-grant-type`, `tokenUrl={authorizationServer}`) |
+| `openId` / URL в аннотации | **отклоняется** |
+
+Адреса AS/API — runtime опции server/client, не строка `security`.
+
+### Группировка и тексты операций
+
+| Аннотация | Уровень | Эффект |
+|-----------|---------|--------|
+| `swaggerTags` | iface / method | `operation.tags` (method побеждает iface) |
+| `tagDesc.<tag>` | iface | `tags[].description` |
+| `desc` | iface | fallback описания тега |
+| `summary` | method | `operation.summary` |
+| `desc` / `file:…` | method | `operation.description` |
+| `deprecated` | method | `operation.deprecated=true` |
+| `requestBodyDesc` | method | `requestBody.description` |
+
+Пустые summary/description правятся в контрактах, не в YAML.
+
+### Маршруты и параметры
+
+| Аннотация | Эффект в OpenAPI |
+|-----------|------------------|
+| `http-prefix` + `http-path` | ключ `paths` (сегменты `:name` → `{name}`) |
+| `http-method` | verb; default POST при `http-server` без явного method |
+| `http-args` / `http-headers` / `http-cookies` | `parameters` при mode `explicit`/`implicit` |
+| mode `body` | остаётся в schema тела, **не** отдельный parameter |
+| `http-success` | код успешного response (default 200) |
+| `requestContentType` / `responseContentType` | media types |
+| `http-multipart` / part-* | multipart / octet-stream схемы |
+| `enableInlineSingle` | schema успеха без лишней обёртки |
+| `http-response` | абстрактное описание кастомного ответа |
+| `*.tags` (`json:inline`, `form:…`) | inline / имена form-полей |
+
+### Поля и `required`
+
+| Аннотация | Эффект |
+|-----------|--------|
+| `required` / `<var>.required` | явная обязательность |
+| `desc` / `format` / `example` / `type` | schema/parameter metadata |
+| `enums` на голом скаляре | `schema.enum` |
+| именованный тип + typed const (≥2) | `$ref` + `enum` (без обязательного `@tg enums`) |
+
+**Вывод `required`, если явно не задан:**
+
+| Контекст | Обязательно, если… |
+|----------|-------------------|
+| Поле тела **запроса** | не указатель и нет `omitempty` |
+| Поле тела **ответа** | нет `omitempty` (указатель без omitempty всё ещё required) |
+| **Query** | не указатель; явный `required` делает обязательным и указатель |
+| **Header** / **cookie** | только явный `required` |
+
+Ошибки в `responses` — только те коды/типы, что есть в модели метода. Стандартные 400/401/404/500 **не** синтезируются.
+
+## Использование
+
+1. Опишите контракты и документационные аннотации.
+2. Сгенерируйте канонический файл в репозиторий.
+3. Diff `paths` / schemas / security перед merge.
+4. При необходимости `--serve` для визуальной проверки (не замена semantic review).
 
 ```bash
-tg swagger --out api-docs/openapi.yaml --serve :8080
+tg swagger --out docs/openapi.yaml
+tg swagger --out docs/openapi.json --serve :8080
+jq -e '.openapi == "3.0.0" and (.paths | length > 0)' docs/openapi.json
+jq '.paths, .components.schemas, .components.securitySchemes' docs/openapi.json
 ```
 
-Документация сохраняется в файл и одновременно доступна через Swagger UI по указанному адресу.
+Импорт: Postman/Insomnia ← JSON/YAML; Redoc ← тот же файл.
 
-### Выбор контрактов
+### Что проверить в diff перед merge
 
-По умолчанию в документацию попадают все контракты проекта. Чтобы ограничить список:
+| Зона | Считать breaking, если… |
+|------|-------------------------|
+| `paths` / methods | удалили path или verb |
+| parameters | убрали параметр или сделали required строже |
+| request/response schemas | несовместимая смена типа / enum |
+| security | убрали схему, на которую опираются клиенты |
+| `operationId` / tags | переименование ломает сгенерированные клиенты внешних tooling |
 
-```bash
-# Только указанные контракты
-tg swagger --out api-docs/openapi.yaml --contracts UserService,OrderService
+Совместимые: новые optional поля, новые paths, уточнение `description`/`example`.
 
-# Все, кроме помеченных «!»
-tg swagger --out api-docs/openapi.yaml --contracts '!OrderService'
-```
+### Mapping modes → parameters (кратко)
 
-## Параметры команды
+| Mode | В `parameters`? | В body schema? |
+|------|-----------------|----------------|
+| `explicit` | да (`header`/`cookie`/`query`) | нет дубля |
+| `implicit` | да (документируется) | нет дубля |
+| `body` | нет | да |
 
-| Параметр          | Описание                                                                                                                                                                         |
-|-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **out**           | Путь к выходному файлу (расширение `.json`, `.yaml` или `.yml`). Необязателен, если нужен только режим просмотра.                                                                |
-| **serve**         | Адрес для запуска HTTP-сервера с Swagger UI (например, `:8080`, `localhost:3000`). После старта в браузере открывается страница с документацией.                                 |
-| **contracts**     | Список имён контрактов через запятую. Поддержка исключений: перед именем контракта можно поставить `!` (например, `UserService,!OrderService`). Пустое значение — все контракты. |
-| **contracts-dir** | Каталог с контрактами относительно корня проекта. По умолчанию: `contracts`.                                                                                                     |
+Path placeholders (`:id`) всегда требуют соответствующего аргумента метода.
 
-## Содержимое документации
+### Enums в схемах
 
-Генерируемый файл — валидная спецификация OpenAPI 3.0 со следующими блоками.
+| Источник | OpenAPI |
+|----------|---------|
+| `@tg enums=a,b` на голом скаляре | inline `enum` |
+| именованный тип + typed const (≥2) | `$ref` на schema с `enum` |
+| override `@tg enums` на поле | локальный перечень |
 
-- **info** — название, версия и описание API (из аннотаций пакета `@tg title`, `@tg version`, `@tg desc`).
-- **servers** — список базовых URL (из `@tg servers`).
-- **security** — глобальная схема авторизации (поддерживается Bearer из `@tg security`).
-- **paths** — пути и операции (HTTP и JSON-RPC): параметры, тело запроса, ответы, коды ошибок.
-- **components.schemas** — схемы типов запросов/ответов и вложенных структур.
-- **tags** — теги для группировки операций в Swagger UI (из `@tg swaggerTags`, описания тегов — из `@tg tagDesc.<имя_тега>`).
-
-Ошибки в документации отображаются только для тех кодов и типов, которые заданы в контракте для метода (через аннотации и реализацию). Стандартные коды вроде 400/401/404/500 не подставляются автоматически.
-
-## Аннотации, влияющие на документацию
-
-Используются аннотации `@tg` на уровне **пакета**, **контракта (интерфейса)**, **метода** и **полей/аргументов типов**. Ниже — краткая шпаргалка и детальное описание.
-
-### Краткая шпаргалка
-
-#### Пакет
-
-| Аннотация  | Уровень | Назначение                   | Влияет на OpenAPI                        |
-|------------|---------|------------------------------|------------------------------------------|
-| `title`    | пакет   | Заголовок документации       | `info.title`                             |
-| `version`  | пакет   | Версия API                   | `info.version`                           |
-| `desc`     | пакет   | Общее описание API           | `info.description`                       |
-| `servers`  | пакет   | Список базовых URL           | `servers[]`                              |
-| `security` | пакет   | Глобальная схема авторизации | `components.securitySchemes`, `security` |
-
-#### Контракт и методы (группировка и описания)
-
-| Аннотация       | Уровень           | Назначение                      | Влияет на OpenAPI                   |
-|-----------------|-------------------|---------------------------------|-------------------------------------|
-| `swaggerTags`   | интерфейс / метод | Теги операций                   | `operation.tags`, корневые `tags[]` |
-| `tagDesc.<tag>` | интерфейс         | Описание тега                   | `tags[].description`                |
-| `desc`          | интерфейс         | Описание контракта              | описание тега, если нет `tagDesc`   |
-| `summary`       | метод             | Короткий заголовок операции     | `operation.summary`                 |
-| `desc`          | метод             | Детальное описание операции     | `operation.description`             |
-| `deprecated`    | метод             | Пометка операции как устаревшей | `operation.deprecated = true`       |
-
-#### Маршрутизация и транспорт (метод)
-
-| Аннотация              | Назначение                                                      |
-|------------------------|-----------------------------------------------------------------|
-| `http-server`          | Описывать контракт как HTTP‑сервис                              |
-| `jsonRPC-server`       | Описывать контракт как JSON‑RPC поверх HTTP                     |
-| `http-prefix`          | Общий префикс пути для методов                                  |
-| `http-method`          | HTTP‑метод операции                                             |
-| `http-path`            | Явный путь операции                                             |
-| `http-args`            | Маппинг аргументов в query‑параметры                            |
-| `http-headers`         | Привязка аргументов/результатов к заголовкам                    |
-| `http-cookies`         | Привязка аргументов к cookies                                   |
-| `http-success`         | Код успешного ответа                                            |
-| `requestContentType`   | Тип контента запроса                                            |
-| `responseContentType`  | Тип контента ответа                                             |
-| `requestBodyDesc`      | Описание тела запроса                                           |
-| `http-response`        | Кастомный обработчик ответа                                     |
-| `http-multipart`       | Явное использование multipart                                   |
-| `http-part-name`       | Имя части при multipart                                         |
-| `http-part-content`    | `Content-Type` части при multipart                              |
-| `enableInlineSingle`   | Инлайн одного возвращаемого значения в ответ                    |
-| `<arg_or_result>.tags` | Спец‑теги аргументов/результатов (`json:inline`, `form:<name>`) |
-
-#### Поля структур и аргументы
-
-| Аннотация  | Уровень                       | Назначение                       | Влияет на OpenAPI                  |
-|------------|-------------------------------|----------------------------------|------------------------------------|
-| `required` | поле / аргумент / результат / sub на методе | Обязательность (явная или выведенная, см. ниже) | `required[]`, `parameter.required` |
-| `desc`     | поле / аргумент / результат   | Описание                         | `schema.description`               |
-| `format`   | поле / аргумент (базовый тип) | Формат значения (`uuid`, и т.п.) | `schema.format`                    |
-| `example`  | поле / аргумент (базовый тип) | Пример значения                  | `schema.example`                   |
-| `enums`    | поле / аргумент (базовый тип) | Перечень допустимых значений (override; именованные enum — из `Type.Enums`) | `schema.enum` / `$ref` typed schema |
-| `type`     | поле / аргумент (базовый тип) | Явный тип в OpenAPI              | `schema.type`                      |
-
-Далее — детальное описание аннотаций с примерами.
-
-### Пакет
-
-- **title** — название API в блоке `info.title`.
-    - **Формат**: `// @tg title=\`User Service API\``
-    - **Область действия**: файл пакета с контрактами.
-    - **Влияние**: попадает в `info.title` спецификации OpenAPI.
-
-- **version** — версия API в блоке `info.version`.
-    - **Формат**: `// @tg version=1.2.3`
-    - **Область действия**: пакет.
-    - **По умолчанию**: `1.0.0`, если не указано.
-
-- **desc** — общее описание API (поддерживается md‑разметка).
-    - **Формат**: `// @tg desc=\`Детальное описание API\``
-    - **Область действия**: пакет.
-    - **Влияние**: попадает в `info.description`.
-
-- **servers** — список базовых URL сервиса.
-    - **Формат**: ``// @tg servers=`https://api.example.com;Production|https://staging.api.example.com;Staging````
-    - **Область действия**: пакет.
-    - **Влияние**: формирует массив `servers` в спецификации (URL + описание).
-
-- **security** — глобальные схемы авторизации.
-    - **Формат**: ``// @tg security=`http:bearer,apiKey:header:Authorization,openId:https://id.example.com/.well-known/openid-configuration,oauth2:clientCredentials:https://auth.example.com/oauth2/token:api.read,api.write:jwt-bearer````
-    - **Область действия**: пакет.
-    - **Влияние**: добавляет схемы авторизации в `components.securitySchemes` и глобальный блок `security`.
-    - **Поддерживаемые схемы**:
-        - `http:<scheme>` (пример: `http:bearer`);
-        - `apiKey:<in>:<name>` (пример: `apiKey:header:Authorization`, где `<in>`: `header`, `query`, `cookie`);
-        - `openId:<well-known-url>`;
-        - `oauth2:<flow>:...` (flows: `clientCredentials`, `authorizationCode`, `password`, `implicit`).
-    - **Важно**: для `oauth2` в scopes нельзя использовать двоеточие (`:`), используйте формат вида `api.read,api.write`.
-
-Пример блока пакета:
+### Пакетный блок — пример
 
 ```go
 // @tg title=`User Service API`
 // @tg version=1.2.3
-// @tg desc=`API для работы с пользователями`
-// @tg servers=`https://api.example.com;Production|https://staging.api.example.com;Staging`
-// @tg security=`http:bearer,oauth2:clientCredentials:https://auth.example.com/oauth2/token:api.read,api.write:jwt-bearer`
+// @tg desc=`API пользователей`
+// @tg servers=`https://api.example.com;Production|https://staging.example.com;Staging`
+// @tg security=`http:bearer:JWT,oauth2:tokenExchange`
 package contracts
 ```
 
-### Контракт (интерфейс)
+`http:bearer` попадёт в глобальный `security`; `oauth2:tokenExchange` — в `components.securitySchemes` (способ получения токена), без URL в аннотации.
 
-- **swaggerTags** — теги для группировки операций (через запятую), например `users,api`.
-    - **Формат**: `// @tg swaggerTags=users,management`
-    - **Область действия**: интерфейс (контракт) или метод.
-    - **Влияние**:
-        - теги попадают в `operation.tags`;
-        - на их основе формируется список `tags` в корне спецификации.
-    - **Приоритет**:
-        - если тег указан и на методе, и на интерфейсе — для операции используются теги метода;
-        - если только на интерфейсе — используются теги интерфейса.
+## На что обратить внимание
 
-- **tagDesc.тег** — описание тега.
-    - **Формат**: `// @tg tagDesc.users=Операции с пользователями`
-    - **Область действия**: интерфейс.
-    - **Влияние**: попадает в `tags[].description` для тега `<тег>`.
-
-- **desc** — описание контракта.
-    - **Формат**: `// @tg desc=\`Сервис для работы с пользователями\``
-    - **Область действия**: интерфейс.
-    - **Влияние**: используется как описание тега, если для него не задан `tagDesc.<тег>`.
-
-- **http-prefix** — общий префикс пути для методов контракта (и для HTTP, и для JSON-RPC).
-    - **Формат**: `// @tg http-prefix=/api/v1/users`
-    - **Область действия**: интерфейс.
-    - **Влияние**: префикс добавляется ко всем HTTP/JSON-RPC путям методов этого контракта.
-
-- **jsonRPC-server** — помечает контракт как JSON-RPC сервис.
-    - **Формат**: `// @tg jsonRPC-server`
-    - **Область действия**: интерфейс.
-    - **Влияние**:
-        - методы контракта описываются как JSON-RPC поверх HTTP (`POST` на один путь);
-        - тело запроса и ответа описывается в формате JSON-RPC 2.0 (`params` / `result`.
-
-- **http-server** — помечает контракт как HTTP‑сервис.
-    - **Формат**: `// @tg http-server`
-    - **Область действия**: интерфейс.
-    - **Влияние**:
-        - методы контракта описываются как обычные HTTP‑операции (`GET`, `POST` и т.д.);
-        - аннотации `http-method`, `http-path` и другие HTTP‑аннотации учитываются при построении `paths`.
-
-Пример интерфейса:
-
-```go
-// @tg http-server
-// @tg swaggerTags=users,management
-// @tg tagDesc.users=Операции с пользователями
-// @tg desc=`Сервис для работы с пользователями`
-type UserService interface {
-// ...
-}
-```
-
-### Метод
-
-#### Маршрутизация и транспорт
-
-- **http-method** — HTTP‑метод (GET, POST, PUT, PATCH, DELETE, OPTIONS).
-    - **Формат**: `// @tg http-method=GET`
-    - **Область действия**: метод интерфейса.
-    - **Влияние**: задаёт HTTP‑метод операции (`get`, `post`, `put`, `patch`, `delete`, `options`).
-    - **По умолчанию**: `POST`, если контракт помечен `http-server` и метод явно не пометили `http-method`.
-
-- **http-path** — путь метода.
-    - **Формат**: `// @tg http-path=/users/:userID`
-    - **Область действия**: метод.
-    - **Влияние**:
-        - формирует ключ в `paths` (с учётом `http-prefix`);
-        - сегменты вида `:name` становятся параметрами пути `{name}` в OpenAPI.
-    - **По умолчанию**: `/<contract>/<method>` в lowerCamelCase, например `/userService/getUser`.
-
-- **http-args** — маппинг аргументов в query‑параметры.
-    - **Формат**: `// @tg http-args=userID|user_id,filter|filter`
-    - **Область действия**: метод.
-    - **Влияние**:
-        - перечисленные аргументы попадают в `parameters` с `in: query`;
-        - остальные аргументы (которые не являются `context.Context`, не попали в path/header/cookie) формируют тело запроса.
-
-- **http-headers** — привязка аргументов или результатов метода к заголовкам запроса/ответа.
-    - **Формат**: `// @tg http-headers=token|X-Auth-Token,locale|X-Locale` или с режимом `// @tg http-headers=token|X-Auth-Token|explicit`
-    - **Область действия**: метод.
-    - **Влияние**:
-        - соответствующие аргументы становятся `parameters` с `in: header`;
-        - соответствующие результаты попадают в `responses[].headers`.
-
-- **http-cookies** — привязка аргументов к cookies.
-    - **Формат**: `// @tg http-cookies=session|session_id` или с режимом `// @tg http-cookies=session|session_id|implicit`
-    - **Область действия**: метод.
-    - **Влияние**: формирует `parameters` с `in: cookie`.
-
-Для `http-headers`, `http-cookies` и `http-args` поддерживается формат `arg|key` или `arg|key|mode`, где `mode` — один из `explicit`, `implicit`, `body` (по умолчанию `body`).  
-- **`explicit`** и **`implicit`** — соответствующие аргументы/результаты явно попадают в OpenAPI в виде `parameters` (`in: header`/`cookie`/`query`) и/или `responses[].headers`.  
-- **`body`** — значение считается полем тела запроса/ответа; такой маппинг может использоваться сервером, но не превращается в отдельный параметр `in: header`/`cookie`/`query` в спецификации.
-
-- **http-success** — код успешного ответа (по умолчанию 200).
-    - **Формат**: `// @tg http-success=201`
-    - **Область действия**: метод.
-    - **Влияние**: используется как ключ успешного ответа в `responses` (по умолчанию `200`).
-
-- **requestContentType**, **responseContentType** — типы контента запроса и ответа.
-    - **Формат**:
-        - `// @tg requestContentType=application/x-www-form-urlencoded`
-        - `// @tg responseContentType=application/octet-stream`
-    - **Область действия**: метод.
-    - **Влияние**:
-        - `requestContentType` определяет медиатип в `requestBody.content` и влияет на имена полей формы;
-        - `responseContentType` определяет медиатип в `responses[<код>].content`.
-
-- **requestBodyDesc** — описание тела запроса.
-    - **Формат**: `// @tg requestBodyDesc=\`Описание тела запроса\``
-    - **Область действия**: метод.
-    - **Влияние**: попадает в `requestBody.description`.
-
-- **http-response** — признак кастомного обработчика ответа.
-    - **Формат**: `// @tg http-response=CustomHandler`
-    - **Область действия**: метод.
-    - **Влияние**:
-        - в описании успешного ответа указывается, что ответ формируется кастомным обработчиком;
-        - вместо обычной схемы тела может использоваться более абстрактное описание.
-
-- **http-multipart** — явное указание multipart для запроса/ответа с потоком.
-    - **Формат**: `// @tg http-multipart`
-    - **Область действия**: метод.
-    - **Влияние**: для аргументов `io.Reader`/результатов `io.ReadCloser` создаётся схема `multipart/form-data` или `application/octet-stream` в зависимости от конфигурации.
-
-- **http-part-name**, **http-part-content** — имена и `Content-Type` частей при multipart.
-    - **Формат (на аргументе или результате)**:
-        - `// @tg http-part-name=file`
-        - `// @tg http-part-content=image/png`
-    - **Область действия**: метод (общие значения) и конкретные аргументы/результаты.
-    - **Влияние**: задают имя части и медиатип для полей с потоками в multipart‑запросах/ответах.
-
-- **enableInlineSingle** — развернуть схему ответа inline при одном возвращаемом значении.
-    - **Формат**: `// @tg enableInlineSingle`
-    - **Область действия**: метод.
-    - **Влияние**:
-        - если метод возвращает один значимый результат (без `error`), его схема может быть развёрнута непосредственно в теле ответа, без обёртки‑объекта;
-        - аналогично влияет на кодогенерацию клиентов/сервера.
-
-#### Описание операций и спец‑теги параметров
-
-- **summary** — краткое описание операции в Swagger UI.
-    - **Формат**:
-      ```go
-      // @tg summary=`Краткое описание метода`
-      ```
-    - **Область действия**: метод.
-    - **Влияние**: попадает в `operation.summary` и отображается как заголовок операции в Swagger UI.
-
-- **desc** — детальное описание операции.
-    - **Формат** (строка или ссылка на файл):
-      ```go
-      // @tg desc=`Детальное описание операции, поддерживает md-разметку`
-      // @tg desc=`file:docs/user-api.md#Получить_пользователя`
-      ```
-    - **Область действия**: метод.
-    - **Влияние**: попадает в `operation.description`. Если не задано, используется текст обычных комментариев метода.
-
-- **deprecated** — пометка операции как устаревшей.
-    - **Формат**: `// @tg deprecated`
-    - **Область действия**: метод.
-    - **Влияние**: `operation.deprecated = true`, операция помечается как устаревшая в Swagger UI.
-
-- **tags (TagParamTags)** — специальные sub-аннотации для аргументов/результатов метода (полный синтаксис — в `tg plugin doc astg`).
-    - **Формат** (на методе для конкретного аргумента или результата):
-        - ``// @tg result.tags=`json:inline``` — «инлайнит» результат/поле в тело JSON.
-        - ``// @tg filter.tags=`form:filter``` — задаёт имя поля формы для `application/x-www-form-urlencoded`.
-    - **Область действия**: метод (подключается через имя аргумента/результата).
-    - **Влияние**:
-        - `json:inline` — управляет тем, будет ли результат/поле развёрнут внутрь родительского объекта;
-        - `form:<name>` — переопределяет имя поля формы при форм‑кодировании.
-
-Пример метода с аннотациями:
-
-```go
-// @tg http-method=GET
-// @tg http-path=/users/:userID
-// @tg http-args=filter|filter
-// @tg http-headers=token|X-Auth-Token
-// @tg http-success=200
-// @tg summary=`Получить пользователя`
-// @tg desc=`Возвращает полную информацию о пользователе.`
-GetUser(ctx context.Context, userID string, filter string) (user *User, err error)
-```
-
-### Поля структур и аргументы
-
-Общий синтаксис sub-аннотаций на методе (`token.required`, `result.tags=json:inline` и т.д.) — в документации плагина `astg`: `tg plugin doc astg`.
-
-- **required** — поле или параметр обязателен.
-    - **Формат**: `// @tg required` на поле/параметре или `// @tg <имя>.required` на методе.
-    - **Область действия**: поле структуры или аргумент/результат метода.
-    - **Влияние**:
-        - для полей структур — добавляет имя поля в список `required` схемы;
-        - для параметров методов — помечает параметр как обязательный в OpenAPI (`parameter.required`).
-
-#### Вывод `required` в OpenAPI
-
-Если `@tg required` не задан явно, плагин выводит обязательность по контексту:
-
-| Контекст | Обязательно, если… |
-|----------|-------------------|
-| Поле тела **запроса** | тип не указатель, нет `omitempty` в `@tg json` или в `<var>.tags=json:...,omitempty` |
-| Поле тела **ответа** | нет `omitempty` (указатель без `omitempty` считается обязательным) |
-| **Query**-параметр | тип не указатель; `@tg required` или `<var>.required` делает обязательным и указатель |
-| **Header** / **cookie** | только при явном `@tg required` или `<var>.required` |
-
-Пример обязательного указателя через sub-аннотацию:
-
-```go
-// @tg Forced.required
-GetItem(ctx context.Context, forced *string) (item Item, err error)
-```
-
-- **desc** — описание поля или параметра.
-    - **Формат**: `// @tg desc=\`Описание поля\``
-    - **Область действия**: поле структуры, аргумент или результат метода.
-    - **Влияние**: попадает в `schema.description` или в описание параметра.
-
-- **format** — формат в OpenAPI (например, `uuid`).
-    - **Формат**: `// @tg format=uuid`
-    - **Область действия**: поле/аргумент с базовым типом.
-    - **Влияние**: устанавливает `schema.format` при сохранении `schema.type`.
-
-- **example** — пример значения.
-    - **Формат**: `// @tg example=john.doe@example.com`
-    - **Область действия**: поле/аргумент с базовым типом.
-    - **Влияние**: попадает в `schema.example`.
-
-- **enums** — допустимые значения через запятую (например, `admin,user,guest`).
-    - **Формат**: `// @tg enums=active,inactive,pending`
-    - **Область действия**: поле/аргумент с базовым типом.
-    - **Влияние**: формирует массив `schema.enum`.
-
-- **type** — явный тип в OpenAPI (при необходимости переопределить вывод из Go‑типа).
-    - **Формат**: `// @tg type=string`
-    - **Область действия**: поле/аргумент с базовым типом.
-    - **Влияние**:
-        - переопределяет вывод типа на уровне OpenAPI (`schema.type`);
-        - используется вместо типа, выведенного из Go‑типа.
-
-Пример структуры с аннотациями:
-
-```go
-type User struct {
-// @tg desc=`Идентификатор пользователя`
-// @tg format=uuid
-// @tg example=4a1b2c3d-0000-0000-0000-000000000000
-ID string `json:"id"`
-
-// @tg required
-// @tg desc=`Имя пользователя`
-Name string `json:"name"`
-
-// @tg enums=admin,user,guest
-// @tg desc=`Роль пользователя`
-Role string `json:"role"`
-}
-```
-
-## Примеры использования
-
-### Файл для всех контрактов
-
-```bash
-tg swagger --out docs/openapi.yaml
-```
-
-### Файл только для выбранных контрактов
-
-```bash
-tg swagger --out docs/openapi.yaml --contracts UserService,OrderService
-```
-
-### JSON вместо YAML
-
-```bash
-tg swagger --out docs/openapi.json
-```
-
-### Просмотр в браузере без сохранения
-
-```bash
-tg swagger --serve :8080
-```
-
-### Просмотр по умолчанию (порт 8080)
-
-```bash
-tg swagger
-```
-
-(Для Swagger UI в Docker обычно используется JSON; при монтировании YAML может понадобиться конвертация или другой образ.)
-
-### Импорт в Postman
-
-1. Сгенерировать документацию: `tg swagger --out docs/openapi.json`
-2. В Postman: File → Import → выбрать `openapi.json`.
-
-## Интеграция с другими инструментами
-
-- **Swagger UI** — через встроенный режим `--serve` или отдельный запуск (например, `swagger-ui-serve`, Docker).
-- **Redoc** — импорт сгенерированного YAML/JSON или сборка статической HTML-документации.
-- **Postman / Insomnia** — импорт через встроенный импорт OpenAPI (File → Import и т.п.).
+1. Только **`--out`**, не `-o`.
+2. Kafka отсутствует намеренно.
+3. Mode `body` → параметр «пропал» из `parameters`, остался в body.
+4. `openId` в `security` отвергается; oauth2 не всегда в глобальном `security`.
+5. Неправильный `required` чаще из inference, чем из бага генератора.
+6. Типы с кастомным MarshalJSON часто дают opaque object.
+7. Фильтр `!Name` — фича swagger; не копируйте слепо на server/clients.
+8. Не редактируйте OpenAPI вручную как source of truth.
 
 ## Ограничения
 
-- Поддерживается только **OpenAPI 3.0** (не Swagger 2.0).
-- В глобальной безопасности используйте формат схем OpenAPI, например `@tg security=\`http:bearer\`` для Bearer.
-- JSON-RPC методы в документации описываются как POST на один путь (по контракту); тело запроса/ответа — в формате JSON-RPC 2.0.
-- Не все Go-типы имеют однозначное представление в OpenAPI (например, интерфейсы).
-- Типы с кастомной сериализацией (json.Marshaler/Unmarshaler и т.п.) в спецификации описываются как объект с `additionalProperties` без полной структуры полей.
+1. Только OpenAPI **3.0** (не Swagger 2.0).
+2. JSON-RPC описан как HTTP POST + JSON-RPC envelope.
+3. Не все Go-типы (интерфейсы, custom marshalers) дают полную schema.
+4. Без prose в контракте UI будет «пустым» — это не баг swagger.
 
-## Совместимость
+## Связь с другими плагинами
 
-Плагин рассчитан на контракты, подготовленные плагином `astg` и используемые плагином `server`. Аннотации, общие для экосистемы tgp, учитываются при построении документации.
+| Плагин | Связь |
+|--------|-------|
+| `tgp-contracts` | тексты и аннотации документации |
+| `astg-json` | проверка resolved model до генерации |
+| `server` / clients | тот же HTTP-семейный surface |
+| `init-go` | часто кладёт стартовый `api/swagger.json` |
+| Kafka-плагины | вне OpenAPI |

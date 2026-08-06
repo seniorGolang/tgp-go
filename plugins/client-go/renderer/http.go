@@ -3,30 +3,26 @@
 package renderer
 
 import (
-	"fmt"
 	"path"
 	"path/filepath"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
-
-	"tgp/internal/generated"
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 )
 
 func (r *ClientRenderer) RenderHTTP() (err error) {
 
 	outDir := r.outDir
-	jsonrpcPkg := fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir))
+	jsonrpcPkg := r.pkgPath(outDir) + "/jsonrpc"
 
 	srcFile := NewSrcFile(filepath.Base(outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
 	srcFile.ImportName(PackageContext, "context")
 	srcFile.ImportName(PackageFmt, "fmt")
 	srcFile.ImportName(PackageIO, "io")
 	srcFile.ImportName(PackageSlog, "slog")
-	srcFile.ImportName(PackageHttp, "http")
+	srcFile.ImportName(PackageHTTP, "http")
 	srcFile.ImportName(PackageStrconv, "strconv")
-	srcFile.ImportName(PackageTime, "time")
-	srcFile.ImportName(jsonrpcPkg, "jsonrpc")
+	srcFile.ImportName(PackageTime, PackageTime)
+	srcFile.ImportName(jsonrpcPkg, pkgJSONRPC)
 
 	srcFile.Line().Add(r.httpApplyHeadersFromCtxFunc())
 	srcFile.Line().Add(r.httpDoRoundTripFunc(outDir))
@@ -43,7 +39,7 @@ func (r *ClientRenderer) httpApplyHeadersFromCtxFunc() (c Code) {
 	return Func().Params(Id("cli").Op("*").Id("Client")).
 		Id("applyHeadersFromCtx").Params(
 		Id("ctx").Qual(PackageContext, "Context"),
-		Id("req").Op("*").Qual(PackageHttp, "Request"),
+		Id("req").Op("*").Qual(PackageHTTP, "Request"),
 	).
 		Block(
 			For(List(Id("_"), Id("header")).Op(":=").Range().Id("cli").Dot("headersFromCtx")).Block(
@@ -74,14 +70,14 @@ func (r *ClientRenderer) httpApplyHeadersFromCtxFunc() (c Code) {
 
 func (r *ClientRenderer) httpDoRoundTripFunc(outDir string) (c Code) {
 
-	jsonrpcPkg := fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir))
+	jsonrpcPkg := r.pkgPath(outDir) + "/jsonrpc"
 	return Func().Params(Id("cli").Op("*").Id("Client")).
 		Id("doRoundTrip").Params(
 		Id("ctx").Qual(PackageContext, "Context"),
 		Id("methodName").String(),
-		Id("httpReq").Op("*").Qual(PackageHttp, "Request"),
+		Id("httpReq").Op("*").Qual(PackageHTTP, "Request"),
 		Id("successCode").Int(),
-	).Params(Id("httpResp").Op("*").Qual(PackageHttp, "Response"), Err().Error()).
+	).Params(Id("httpResp").Op("*").Qual(PackageHTTP, "Response"), Err().Error()).
 		BlockFunc(func(bg *Group) {
 			bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("X-Client-Id"), Id("cli").Dot("name"))
 			bg.Id("cli").Dot("applyHeadersFromCtx").Call(Id("ctx"), Id("httpReq"))
@@ -99,7 +95,7 @@ func (r *ClientRenderer) httpDoRoundTripFunc(outDir string) (c Code) {
 			)
 			bg.Defer().Func().Params().Block(
 				If(Err().Op("!=").Nil().Op("&&").Id("cli").Dot("logOnError")).Block(
-					Qual(PackageSlog, "ErrorContext").Call(Id("ctx"), Lit("HTTP request failed"), Qual(PackageSlog, "String").Call(Lit("method"), Id("httpReq").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("curlCmd")), Qual(PackageSlog, "Any").Call(Lit("error"), Err())),
+					Qual(PackageSlog, "ErrorContext").Call(Id("ctx"), Lit("HTTP request failed"), Qual(PackageSlog, "String").Call(Lit("method"), Id("httpReq").Dot("Method")), Qual(PackageSlog, "String").Call(Lit("curl"), Id("curlCmd")), Qual(PackageSlog, "Any").Call(Lit(typeError), Err())),
 				),
 			).Call()
 			bg.If(List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("httpClient").Dot("Do").Call(Id("httpReq")).Op(";").Err().Op("!=").Nil()).Block(Return(Nil(), Err()))
@@ -138,7 +134,7 @@ func (r *ClientRenderer) httpRecordHTTPMetricsFunc() (c Code) {
 		Id("recordHTTPMetrics").Params(
 		Id("serviceLabel").String(),
 		Id("method").String(),
-		Id("_begin").Qual(PackageTime, "Time"),
+		Id("_begin").Qual(PackageTime, nameTime),
 		Id("err").Error(),
 	).
 		Block(
@@ -147,7 +143,7 @@ func (r *ClientRenderer) httpRecordHTTPMetricsFunc() (c Code) {
 			),
 			Var().Defs(
 				Id("success").Op("=").True(),
-				Id("errCode").Op("=").Qual(PackageHttp, "StatusInternalServerError"),
+				Id("errCode").Op("=").Qual(PackageHTTP, "StatusInternalServerError"),
 			),
 			If(Id("err").Op("!=").Nil()).Block(
 				Id("success").Op("=").False(),

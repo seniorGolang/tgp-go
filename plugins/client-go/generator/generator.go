@@ -64,7 +64,10 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 		}
 	}
 
-	if g.renderer.HasJsonRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE() {
+	if g.renderer.HasJSONRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE() {
+		if err = g.renderer.RenderToken(); err != nil {
+			return
+		}
 		if err = g.renderer.RenderClientOptions(); err != nil {
 			return
 		}
@@ -74,13 +77,16 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 		if err = g.renderer.RenderClient(); err != nil {
 			return
 		}
+		if err = g.renderer.RenderPathHelpers(); err != nil {
+			return
+		}
 		if err = g.renderer.RenderStreamHelpers(); err != nil {
 			return
 		}
 		if err = g.renderer.RenderClientError(); err != nil {
 			return
 		}
-		if g.renderer.HasJsonRPC() {
+		if g.renderer.HasJSONRPC() {
 			if err = g.renderer.RenderClientBatch(); err != nil {
 				return
 			}
@@ -128,7 +134,7 @@ func (g *generator) generate(docOpts DocOptions) (err error) {
 		}
 	}
 
-	if docOpts.Enabled && (g.renderer.HasJsonRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE()) {
+	if docOpts.Enabled && (g.renderer.HasJSONRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE()) {
 		if err = g.renderer.RenderReadmeGo(docOpts); err != nil {
 			return
 		}

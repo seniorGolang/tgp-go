@@ -31,7 +31,7 @@ func isEmptyDir(path string) (empty bool, err error) {
 		return false, errors.New(i18n.Msg("path is not a directory"))
 	}
 	var hasGo bool
-	err = filepath.WalkDir(path, func(entryPath string, d os.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(path, func(_entryPath string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}

@@ -22,16 +22,16 @@ func testHTTPProject(version string) (project *model.Project) {
 			Name:    "Rpc",
 			PkgPath: "example/contracts",
 			Annotations: tags.DocTags{
-				model.TagServerJsonRPC: "",
-				model.TagHttpPrefix:    "api/v1",
+				model.TagServerJSONRPC: "",
+				model.TagHTTPPrefix:    "api/v1",
 			},
 			Methods: []*model.Method{{
 				Name: "Echo",
 				Args: []*model.Variable{
-					{Name: "msg", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "msg", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "out", TypeID: "string"},
 				},
 			}},
 		}},
@@ -60,7 +60,8 @@ func TestRenderIdentity_writesIdentityFile(t *testing.T) {
 		"navigator.userAgent",
 		"readNodeHostname",
 		"globalThis",
-		`import {VersionASTg} from "./version"`,
+		`getBuiltinModule?.("node:os")`,
+		`import {VersionASTg} from './version'`,
 		"_astg_ts_${VersionASTg}",
 	} {
 		if !strings.Contains(source, want) {
@@ -99,7 +100,7 @@ func TestFnv1a32_knownVectors(t *testing.T) {
 func fnv1a32(input string) (hex string) {
 
 	hash := uint32(0x811c9dc5)
-	for i := 0; i < len(input); i++ {
+	for i := range len(input) {
 		hash ^= uint32(input[i])
 		hash *= 0x01000193
 	}
@@ -188,8 +189,8 @@ func TestRenderClient_usesBuildClientHeadersAndDefaultClientName(t *testing.T) {
 	if err := renderer.RenderClientError(); err != nil {
 		t.Fatalf("RenderClientError: %v", err)
 	}
-	if err := renderer.RenderJsonRPCLibrary(); err != nil {
-		t.Fatalf("RenderJsonRPCLibrary: %v", err)
+	if err := renderer.RenderJSONRPCLibrary(); err != nil {
+		t.Fatalf("RenderJSONRPCLibrary: %v", err)
 	}
 	if err := renderer.RenderClient(); err != nil {
 		t.Fatalf("RenderClient: %v", err)
@@ -206,6 +207,9 @@ func TestRenderClient_usesBuildClientHeadersAndDefaultClientName(t *testing.T) {
 		`import {buildClientHeaders} from './headers'`,
 		"clientName:resolveDefaultClientName()",
 		"return buildClientHeaders(this.options)",
+		"resolveURL(path:string, query?:Record<string, string>):string",
+		`url.pathname = this.joinEndpointPath(url.pathname, route)`,
+		"private joinEndpointPath(basePath:string, routePath:string): string",
 	} {
 		if !strings.Contains(source, want) {
 			t.Fatalf("client.ts must contain %q, got:\n%s", want, source)
@@ -220,8 +224,8 @@ func TestRenderJsonRPCClient_usesBuildClientHeaders(t *testing.T) {
 	if err := renderer.RenderHeaders(); err != nil {
 		t.Fatalf("RenderHeaders: %v", err)
 	}
-	if err := renderer.RenderJsonRPCLibrary(); err != nil {
-		t.Fatalf("RenderJsonRPCLibrary: %v", err)
+	if err := renderer.RenderJSONRPCLibrary(); err != nil {
+		t.Fatalf("RenderJSONRPCLibrary: %v", err)
 	}
 
 	content, err := os.ReadFile(filepath.Join(dir, "jsonrpc", "client.ts"))
@@ -253,20 +257,20 @@ func TestRenderHTTPClient_includesGetHeadersFromBaseClient(t *testing.T) {
 			PkgPath: "example/contracts",
 			Annotations: tags.DocTags{
 				model.TagServerHTTP: "",
-				model.TagHttpPrefix: "api/v1",
+				model.TagHTTPPrefix: "api/v1",
 			},
 			Methods: []*model.Method{{
 				Name: "HeaderRequired",
 				Annotations: tags.DocTags{
 					model.TagHTTPMethod: "GET",
-					model.TagHttpPath:   "/annotations/header-required",
-					model.TagHttpHeader: "token|X-Auth-Token|explicit",
+					model.TagHTTPPath:   "/annotations/header-required",
+					model.TagHTTPHeader: "token|X-Auth-Token|explicit",
 				},
 				Args: []*model.Variable{
-					{Name: "token", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "token", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "ok", TypeRef: model.TypeRef{TypeID: "bool"}},
+					{Name: "ok", TypeID: "bool"},
 				},
 			}},
 		}},
@@ -361,8 +365,8 @@ func TestRenderClient_omitsIdentityWhenClientIdentityDisabled(t *testing.T) {
 	if err := renderer.RenderClientError(); err != nil {
 		t.Fatalf("RenderClientError: %v", err)
 	}
-	if err := renderer.RenderJsonRPCLibrary(); err != nil {
-		t.Fatalf("RenderJsonRPCLibrary: %v", err)
+	if err := renderer.RenderJSONRPCLibrary(); err != nil {
+		t.Fatalf("RenderJSONRPCLibrary: %v", err)
 	}
 	if err := renderer.RenderClient(); err != nil {
 		t.Fatalf("RenderClient: %v", err)

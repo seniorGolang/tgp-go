@@ -3,9 +3,6 @@
 package renderer
 
 import (
-	"fmt"
-	"strings"
-
 	"tgp/internal/model"
 )
 
@@ -27,17 +24,6 @@ func (r *ClientRenderer) collectTypeIDsFromContract(contract *model.Contract, co
 		}
 		for _, result := range r.resultsWithoutError(method) {
 			r.collectTypeIDFromVariable(result, collectedTypeIDs, processedTypes)
-		}
-		for _, errInfo := range method.Errors {
-			if errInfo.TypeID != "" {
-				r.collectTypeIDRecursive(errInfo.TypeID, collectedTypeIDs, processedTypes)
-			}
-		}
-		if defaultError := model.GetAnnotationValue(r.project, contract, method, nil, "defaultError", ""); defaultError != "" && defaultError != "skip" {
-			if tokens := strings.Split(defaultError, ":"); len(tokens) == 2 {
-				typeID := fmt.Sprintf("%s:%s", tokens[0], tokens[1])
-				r.collectTypeIDRecursive(typeID, collectedTypeIDs, processedTypes)
-			}
 		}
 	}
 }
@@ -158,24 +144,24 @@ func (r *ClientRenderer) collectTypeIDRecursive(typeID string, collectedTypeIDs 
 func (r *ClientRenderer) isBuiltinType(typeID string) (ok bool) {
 
 	builtinTypes := map[string]bool{
-		"string":  true,
-		"int":     true,
-		"int8":    true,
-		"int16":   true,
-		"int32":   true,
-		"int64":   true,
-		"uint":    true,
-		"uint8":   true,
-		"uint16":  true,
-		"uint32":  true,
-		"uint64":  true,
-		"float32": true,
-		"float64": true,
-		"bool":    true,
-		"byte":    true,
-		"rune":    true,
-		"error":   true,
-		"any":     true,
+		typeString:  true,
+		typeInt:     true,
+		typeInt8:    true,
+		typeInt16:   true,
+		typeInt32:   true,
+		typeInt64:   true,
+		typeUint:    true,
+		typeUint8:   true,
+		typeUint16:  true,
+		typeUint32:  true,
+		typeUint64:  true,
+		typeFloat32: true,
+		typeFloat64: true,
+		typeBool:    true,
+		typeByte:    true,
+		"rune":      true,
+		typeError:   true,
+		typeAny:     true,
 	}
 	return builtinTypes[typeID]
 }

@@ -42,34 +42,34 @@ func (r *Renderer) Render() (err error) {
 	if err = os.MkdirAll(r.outDir, 0o755); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
-	if err = kafkaruntime.WriteCodec(r.outDir, filepath.Base(r.outDir), r.codecOptions()); err != nil {
+	if err := kafkaruntime.WriteCodec(r.outDir, filepath.Base(r.outDir), r.codecOptions()); err != nil {
 		return err
 	}
-	if err = kafkaruntime.WriteProduce(r.outDir, filepath.Base(r.outDir)); err != nil {
+	if err := kafkaruntime.WriteProduce(r.outDir, filepath.Base(r.outDir)); err != nil {
 		return err
 	}
-	if err = kafkaruntime.WriteSecurity(r.outDir, filepath.Base(r.outDir)); err != nil {
+	if err := kafkaruntime.WriteSecurity(r.outDir, filepath.Base(r.outDir)); err != nil {
 		return err
 	}
-	if err = r.renderVersion(); err != nil {
+	if err := r.renderVersion(); err != nil {
 		return err
 	}
-	if err = r.renderClient(); err != nil {
+	if err := r.renderClient(); err != nil {
 		return err
 	}
-	if err = r.renderOptions(); err != nil {
+	if err := r.renderOptions(); err != nil {
 		return err
 	}
-	if err = r.renderAdapters(); err != nil {
+	if err := r.renderAdapters(); err != nil {
 		return err
 	}
 	if r.hasAnnotation(model.TagMetrics) {
-		if err = r.write("metrics.go", r.metricsSource()); err != nil {
+		if err := r.write("metrics.go", r.metricsSource()); err != nil {
 			return err
 		}
 	}
 	if r.hasAnnotation(model.TagTrace) {
-		if err = r.write("tracing.go", r.tracingSource()); err != nil {
+		if err := r.write("tracing.go", r.tracingSource()); err != nil {
 			return err
 		}
 	}
@@ -113,7 +113,7 @@ func (r *Renderer) write(name string, source string) (err error) {
 	if formatted, err = format.Source([]byte(source)); err != nil {
 		return fmt.Errorf("format %s: %w", name, err)
 	}
-	return os.WriteFile(filepath.Join(r.outDir, name), formatted, 0o644)
+	return os.WriteFile(filepath.Join(r.outDir, name), formatted, 0o600)
 }
 
 func (r *Renderer) acks() (acks []string) {

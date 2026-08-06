@@ -71,7 +71,7 @@ func extractErrorsFromAnnotations(methodTags tags.DocTags) (errors []*model.Erro
 
 	for key, value := range methodTags {
 		key = strings.TrimSpace(key)
-		value = strings.TrimSpace(fmt.Sprintf("%v", value))
+		value = strings.TrimSpace(value)
 
 		code, err := strconv.Atoi(key)
 		if err != nil {

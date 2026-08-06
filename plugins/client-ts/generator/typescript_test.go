@@ -22,17 +22,17 @@ func tscTestProject() (project *model.Project) {
 			Name:    "Rpc",
 			PkgPath: "example/contracts",
 			Annotations: tags.DocTags{
-				model.TagServerJsonRPC: "",
-				model.TagHttpPrefix:    "api/v1",
+				model.TagServerJSONRPC: "",
+				model.TagHTTPPrefix:    "api/v1",
 			},
 			Methods: []*model.Method{{
 				Name: "Echo",
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context.Context"}},
-					{Name: "msg", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "ctx", TypeID: "context.Context"},
+					{Name: "msg", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "out", TypeID: "string"},
 				},
 			}},
 		}, {
@@ -40,48 +40,48 @@ func tscTestProject() (project *model.Project) {
 			PkgPath: "example/contracts",
 			Annotations: tags.DocTags{
 				model.TagServerHTTP: "",
-				model.TagHttpPrefix: "api/v1",
+				model.TagHTTPPrefix: "api/v1",
 			},
 			Methods: []*model.Method{{
 				Name: "HeaderRequired",
 				Annotations: tags.DocTags{
 					model.TagHTTPMethod: "GET",
-					model.TagHttpPath:   "/annotations/header-required",
-					model.TagHttpHeader: "token|X-Auth-Token|explicit",
+					model.TagHTTPPath:   "/annotations/header-required",
+					model.TagHTTPHeader: "token|X-Auth-Token|explicit",
 				},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context.Context"}},
-					{Name: "token", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "ctx", TypeID: "context.Context"},
+					{Name: "token", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "ok", TypeRef: model.TypeRef{TypeID: "bool"}},
+					{Name: "ok", TypeID: "bool"},
 				},
 			}, {
 				Name: "QueryOptional",
 				Annotations: tags.DocTags{
 					model.TagHTTPMethod: "GET",
-					model.TagHttpPath:   "/annotations/query-optional",
-					model.TagHttpArg:    "filter|filter",
+					model.TagHTTPPath:   "/annotations/query-optional",
+					model.TagHTTPArg:    "filter|filter",
 				},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context.Context"}},
-					{Name: "filter", TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1}},
+					{Name: "ctx", TypeID: "context.Context"},
+					{Name: "filter", TypeID: "string", NumberOfPointers: 1},
 				},
 				Results: []*model.Variable{
-					{Name: "value", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "value", TypeID: "string"},
 				},
 			}, {
 				Name: "ResultHeader",
 				Annotations: tags.DocTags{
 					model.TagHTTPMethod: "GET",
-					model.TagHttpPath:   "/annotations/result-header",
-					model.TagHttpHeader: "correlationId|X-Correlation-Id",
+					model.TagHTTPPath:   "/annotations/result-header",
+					model.TagHTTPHeader: "correlationId|X-Correlation-Id",
 				},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context.Context"}},
+					{Name: "ctx", TypeID: "context.Context"},
 				},
 				Results: []*model.Variable{
-					{Name: "correlationId", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "correlationId", TypeID: "string"},
 				},
 			}},
 		}},

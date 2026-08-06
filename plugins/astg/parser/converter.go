@@ -95,20 +95,21 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 
 	// Для именованных типов создаем базовую структуру сразу
 	if typeID != "" && !isBuiltinTypeName(typeID) {
-		if named, ok := typ.(*types.Named); ok {
-			if named.Obj() != nil {
-				coreType.TypeName = named.Obj().Name()
-				if named.Obj().Pkg() != nil {
-					coreType.ImportPkgPath = named.Obj().Pkg().Path()
-					coreType.PkgName = named.Obj().Pkg().Name()
+		switch t := typ.(type) {
+		case *types.Named:
+			if t.Obj() != nil {
+				coreType.TypeName = t.Obj().Name()
+				if t.Obj().Pkg() != nil {
+					coreType.ImportPkgPath = t.Obj().Pkg().Path()
+					coreType.PkgName = t.Obj().Pkg().Name()
 				}
 			}
-		} else if alias, ok := typ.(*types.Alias); ok {
-			if alias.Obj() != nil {
-				coreType.TypeName = alias.Obj().Name()
-				if alias.Obj().Pkg() != nil {
-					coreType.ImportPkgPath = alias.Obj().Pkg().Path()
-					coreType.PkgName = alias.Obj().Pkg().Name()
+		case *types.Alias:
+			if t.Obj() != nil {
+				coreType.TypeName = t.Obj().Name()
+				if t.Obj().Pkg() != nil {
+					coreType.ImportPkgPath = t.Obj().Pkg().Path()
+					coreType.PkgName = t.Obj().Pkg().Name()
 				}
 			}
 		}
@@ -142,44 +143,44 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 		// Для именованных типов, которые являются массивами/слайсами (например, UUID = [16]byte),
 		// сохраняем информацию о типе, а не о массиве
 		// Это позволяет правильно использовать тип в генерации кода
-		if _, isArray := underlying.(*types.Array); isArray {
+		switch underlying := underlying.(type) {
+		case *types.Array:
 			// Именованный тип, который является массивом - сохраняем как именованный тип
 			// Kind будет установлен на основе underlying, но ArrayOfID не заполняем
 			coreType.Kind = model.TypeKindArray
 			// Для массива сохраняем длину и тип элемента
-			if arrayType, ok := underlying.(*types.Array); ok {
-				coreType.ArrayLen = int(arrayType.Len())
-				if arrayType.Elem() != nil {
-					elemInfo := convertTypeFromGoTypesToInfo(arrayType.Elem(), coreType.ImportPkgPath, imports, project, loader)
-					coreType.ArrayOfID = elemInfo.TypeID
-				}
+			coreType.ArrayLen = int(underlying.Len())
+			if underlying.Elem() != nil {
+				elemInfo := convertTypeFromGoTypesToInfo(underlying.Elem(), coreType.ImportPkgPath, imports, project, loader)
+				coreType.ArrayOfID = elemInfo.TypeID
 			}
-		} else if _, isSlice := underlying.(*types.Slice); isSlice {
+		case *types.Slice:
 			// Именованный тип, который является слайсом - сохраняем как именованный тип
 			coreType.Kind = model.TypeKindArray
 			coreType.IsSlice = true
-			if sliceType, ok := underlying.(*types.Slice); ok {
-				if sliceType.Elem() != nil {
-					elemInfo := convertTypeFromGoTypesToInfo(sliceType.Elem(), coreType.ImportPkgPath, imports, project, loader)
-					coreType.ArrayOfID = elemInfo.TypeID
-				}
+			if underlying.Elem() != nil {
+				elemInfo := convertTypeFromGoTypesToInfo(underlying.Elem(), coreType.ImportPkgPath, imports, project, loader)
+				coreType.ArrayOfID = elemInfo.TypeID
 			}
-		} else {
+		default:
 			coreType.Kind = resolveKindFromUnderlying(underlying)
 
-			if structType, ok := underlying.(*types.Struct); ok {
+			switch underlying := underlying.(type) {
+			case *types.Struct:
 				coreType.Kind = model.TypeKindStruct
-				fillStructFields(structType, coreType.ImportPkgPath, imports, project, coreType, loader, processingSet)
-			} else if mapType, ok := underlying.(*types.Map); ok {
-				if mapType.Key() != nil {
-					keyInfo := convertFieldType(mapType.Key(), coreType.ImportPkgPath, imports, project, loader)
-					if keyInfo.TypeID != "" && keyInfo.TypeID != "invalid type" {
+				if !typeHasJSONCodec(t) {
+					fillStructFields(underlying, coreType.ImportPkgPath, imports, project, coreType, loader, processingSet)
+				}
+			case *types.Map:
+				if underlying.Key() != nil {
+					keyInfo := convertFieldType(underlying.Key(), coreType.ImportPkgPath, imports, project, loader)
+					if keyInfo.TypeID != "" && keyInfo.TypeID != errInvalidType {
 						coreType.MapKey = fieldTypeInfoToTypeRef(keyInfo)
 					}
 				}
-				if mapType.Elem() != nil {
-					valueInfo := convertFieldType(mapType.Elem(), coreType.ImportPkgPath, imports, project, loader)
-					if valueInfo.TypeID != "" && valueInfo.TypeID != "invalid type" {
+				if underlying.Elem() != nil {
+					valueInfo := convertFieldType(underlying.Elem(), coreType.ImportPkgPath, imports, project, loader)
+					if valueInfo.TypeID != "" && valueInfo.TypeID != errInvalidType {
 						coreType.MapValue = fieldTypeInfoToTypeRef(valueInfo)
 					}
 				}
@@ -204,24 +205,22 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 		underlying := types.Unalias(t)
 		// Устанавливаем Kind на основе underlying типа, но сохраняем информацию об алиасе
 		coreType.Kind = resolveKindFromUnderlying(underlying)
-		// Если underlying - именованный тип, это алиас
-		if _, ok := underlying.(*types.Named); ok {
-			coreType.Kind = model.TypeKindAlias
-		}
 
-		if named, ok := underlying.(*types.Named); ok {
-			if named.Obj() != nil {
-				coreType.AliasOf = fmt.Sprintf("%s:%s", named.Obj().Pkg().Path(), named.Obj().Name())
+		switch underlying := underlying.(type) {
+		case *types.Named:
+			coreType.Kind = model.TypeKindAlias
+			if underlying.Obj() != nil {
+				coreType.AliasOf = fmt.Sprintf("%s:%s", underlying.Obj().Pkg().Path(), underlying.Obj().Name())
 				baseTypeID := coreType.AliasOf
 				if _, exists := project.Types[baseTypeID]; !exists {
-					basePkgPath := named.Obj().Pkg().Path()
+					basePkgPath := underlying.Obj().Pkg().Path()
 					// basePkgPath должен быть загружен через loader
 					// Пока пропускаем, так как loader не передается в эту функцию
 					basePkgInfo, ok := loader.GetPackage(basePkgPath)
 					if ok && basePkgInfo != nil {
 						// Важно: используем тот же processingSet для защиты от рекурсии
 						var baseCoreType *model.Type
-						if baseCoreType, err = convertTypeFromGoTypes(named, basePkgPath, basePkgInfo.Imports, project, loader, processingSet); err != nil {
+						if baseCoreType, err = convertTypeFromGoTypes(underlying, basePkgPath, basePkgInfo.Imports, project, loader, processingSet); err != nil {
 							return
 						}
 						if baseCoreType != nil {
@@ -238,22 +237,22 @@ func convertTypeFromGoTypes(typ types.Type, pkgPath string, imports map[string]s
 				}
 				// Это произойдет в expandTypesRecursively через collectTypeFromID
 			}
-		} else if basic, ok := underlying.(*types.Basic); ok {
-			coreType.UnderlyingKind = convertBasicKind(basic.Kind())
-			coreType.UnderlyingTypeID = basic.Name()
-		} else if structType, ok := underlying.(*types.Struct); ok {
+		case *types.Basic:
+			coreType.UnderlyingKind = convertBasicKind(underlying.Kind())
+			coreType.UnderlyingTypeID = underlying.Name()
+		case *types.Struct:
 			coreType.Kind = model.TypeKindStruct
-			fillStructFields(structType, coreType.ImportPkgPath, imports, project, coreType, loader, processingSet)
-		} else if mapType, ok := underlying.(*types.Map); ok {
-			if mapType.Key() != nil {
-				keyInfo := convertFieldType(mapType.Key(), coreType.ImportPkgPath, imports, project, loader)
-				if keyInfo.TypeID != "" && keyInfo.TypeID != "invalid type" {
+			fillStructFields(underlying, coreType.ImportPkgPath, imports, project, coreType, loader, processingSet)
+		case *types.Map:
+			if underlying.Key() != nil {
+				keyInfo := convertFieldType(underlying.Key(), coreType.ImportPkgPath, imports, project, loader)
+				if keyInfo.TypeID != "" && keyInfo.TypeID != errInvalidType {
 					coreType.MapKey = fieldTypeInfoToTypeRef(keyInfo)
 				}
 			}
-			if mapType.Elem() != nil {
-				valueInfo := convertFieldType(mapType.Elem(), coreType.ImportPkgPath, imports, project, loader)
-				if valueInfo.TypeID != "" && valueInfo.TypeID != "invalid type" {
+			if underlying.Elem() != nil {
+				valueInfo := convertFieldType(underlying.Elem(), coreType.ImportPkgPath, imports, project, loader)
+				if valueInfo.TypeID != "" && valueInfo.TypeID != errInvalidType {
 					coreType.MapValue = fieldTypeInfoToTypeRef(valueInfo)
 					coreType.ElementPointers = valueInfo.NumberOfPointers
 				}

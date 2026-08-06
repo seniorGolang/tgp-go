@@ -3,6 +3,8 @@
 
 package kafka
 
+import "slices"
+
 const (
 	AcksAllISR = "allISRAcks"
 	AcksLeader = "leaderAck"
@@ -32,10 +34,5 @@ func BuiltinCodecNames() (names []string) {
 // IsBuiltinCodec проверяет, является ли имя встроенным кодеком.
 func IsBuiltinCodec(name string) (ok bool) {
 
-	for _, builtin := range BuiltinCodecNames() {
-		if name == builtin {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(BuiltinCodecNames(), name)
 }

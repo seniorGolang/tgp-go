@@ -93,39 +93,39 @@ func overridesTestContract() (project *model.Project, contract *model.Contract) 
 		ID:      "Overrides",
 		Annotations: tags.DocTags{
 			model.TagServerHTTP: "",
-			model.TagHttpPrefix: "api/v1",
+			model.TagHTTPPrefix: "api/v1",
 		},
 		Methods: []*model.Method{
 			{
 				Name: "CustomPing",
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+					{Name: "ctx", TypeID: "context:Context"},
 				},
 				Results: []*model.Variable{
-					{Name: "message", TypeRef: model.TypeRef{TypeID: "string"}},
-					{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+					{Name: "message", TypeID: "string"},
+					{Name: "err", TypeID: "error"},
 				},
 				Annotations: tags.DocTags{
 					model.TagHTTPMethod: "GET",
-					model.TagHttpPath:   "/overrides/ping",
+					model.TagHTTPPath:   "/overrides/ping",
 					TagHandler:          "example/internal/fiberhooks:PingHandler",
 				},
 			},
 			{
 				Name: "CustomEcho",
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-					{Name: "text", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "ctx", TypeID: "context:Context"},
+					{Name: "text", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "echo", TypeRef: model.TypeRef{TypeID: "string"}},
-					{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+					{Name: "echo", TypeID: "string"},
+					{Name: "err", TypeID: "error"},
 				},
 				Annotations: tags.DocTags{
 					model.TagHTTPMethod: "GET",
-					model.TagHttpPath:   "/overrides/echo",
-					model.TagHttpArg:    "text|text",
-					TagHttpResponse:     "example/internal/fiberhooks:EchoResponseHandler",
+					model.TagHTTPPath:   "/overrides/echo",
+					model.TagHTTPArg:    "text|text",
+					TagHTTPResponse:     "example/internal/fiberhooks:EchoResponseHandler",
 				},
 			},
 		},

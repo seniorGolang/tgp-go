@@ -5,6 +5,7 @@ package kafka
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"go/format"
 	"os"
@@ -89,7 +90,7 @@ func WriteSecurity(outDir string, pkgName string) (err error) {
 func writeTemplate(outDir string, pkgName string, name string, replacements map[string]string) (err error) {
 
 	if pkgName == "" {
-		return fmt.Errorf("kafka runtime package name is required")
+		return errors.New("kafka runtime package name is required")
 	}
 	var source []byte
 	if source, err = templates.ReadFile("templates/" + name + ".tmpl"); err != nil {
@@ -107,7 +108,7 @@ func writeTemplate(outDir string, pkgName string, name string, replacements map[
 	if err = os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("create kafka runtime directory: %w", err)
 	}
-	if err = os.WriteFile(filepath.Join(outDir, name), formatted, 0o644); err != nil {
+	if err = os.WriteFile(filepath.Join(outDir, name), formatted, 0o600); err != nil {
 		return fmt.Errorf("write kafka runtime %q: %w", name, err)
 	}
 	return nil

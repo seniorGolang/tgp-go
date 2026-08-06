@@ -154,7 +154,7 @@ func (m *Markdown) Build() (err error) {
 func (m *Markdown) H1(text string) *Markdown {
 
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH1, text: text})
-	m.body = append(m.body, fmt.Sprintf("# %s", text))
+	m.body = append(m.body, "# "+text)
 	return m
 }
 
@@ -165,7 +165,7 @@ func (m *Markdown) H1f(format string, args ...any) *Markdown {
 func (m *Markdown) H2(text string) *Markdown {
 
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH2, text: text})
-	m.body = append(m.body, fmt.Sprintf("## %s", text))
+	m.body = append(m.body, "## "+text)
 	return m
 }
 
@@ -176,7 +176,7 @@ func (m *Markdown) H2f(format string, args ...any) *Markdown {
 func (m *Markdown) H3(text string) *Markdown {
 
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH3, text: text})
-	m.body = append(m.body, fmt.Sprintf("### %s", text))
+	m.body = append(m.body, "### "+text)
 	return m
 }
 
@@ -187,7 +187,7 @@ func (m *Markdown) H3f(format string, args ...any) *Markdown {
 func (m *Markdown) H4(text string) *Markdown {
 
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH4, text: text})
-	m.body = append(m.body, fmt.Sprintf("#### %s", text))
+	m.body = append(m.body, "#### "+text)
 	return m
 }
 
@@ -198,7 +198,7 @@ func (m *Markdown) H4f(format string, args ...any) *Markdown {
 func (m *Markdown) H5(text string) *Markdown {
 
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH5, text: text})
-	m.body = append(m.body, fmt.Sprintf("##### %s", text))
+	m.body = append(m.body, "##### "+text)
 	return m
 }
 
@@ -209,7 +209,7 @@ func (m *Markdown) H5f(format string, args ...any) *Markdown {
 func (m *Markdown) H6(text string) *Markdown {
 
 	m.headers = append(m.headers, headerInfo{level: TableOfContentsDepthH6, text: text})
-	m.body = append(m.body, fmt.Sprintf("###### %s", text))
+	m.body = append(m.body, "###### "+text)
 	return m
 }
 
@@ -264,9 +264,7 @@ func (m *Markdown) TableOfContentsWithRange(minDepth, maxDepth TableOfContentsDe
 	}
 	m.tocInserted = true
 
-	m.body = append(m.body, TableOfContentsMarkerBegin)
-	m.body = append(m.body, TableOfContentsMarkerEnd)
-	m.body = append(m.body, "")
+	m.body = append(m.body, TableOfContentsMarkerBegin, TableOfContentsMarkerEnd, "")
 
 	return m
 }
@@ -317,7 +315,7 @@ func (m *Markdown) Detailsf(summary, format string, args ...any) *Markdown {
 func (m *Markdown) BulletList(text ...string) *Markdown {
 
 	for _, v := range text {
-		m.body = append(m.body, fmt.Sprintf("- %s", v))
+		m.body = append(m.body, "- "+v)
 	}
 	return m
 }
@@ -339,9 +337,9 @@ func (m *Markdown) CheckBox(set []CheckBoxSet) *Markdown {
 
 	for _, v := range set {
 		if v.Checked {
-			m.body = append(m.body, fmt.Sprintf("- [x] %s", v.Text))
+			m.body = append(m.body, "- [x] "+v.Text)
 		} else {
-			m.body = append(m.body, fmt.Sprintf("- [ ] %s", v.Text))
+			m.body = append(m.body, "- [ ] "+v.Text)
 		}
 	}
 	return m
@@ -349,9 +347,9 @@ func (m *Markdown) CheckBox(set []CheckBoxSet) *Markdown {
 
 func (m *Markdown) Blockquote(text string) *Markdown {
 
-	lines := strings.Split(text, internal.LineFeed())
-	for _, line := range lines {
-		m.body = append(m.body, fmt.Sprintf("> %s", line))
+	lines := strings.SplitSeq(text, internal.LineFeed())
+	for line := range lines {
+		m.body = append(m.body, "> "+line)
 	}
 	return m
 }
@@ -421,7 +419,7 @@ func (m *Markdown) Table(t TableSet) *Markdown {
 	buf.WriteString(internal.LineFeed())
 
 	buf.WriteString("|")
-	for i := 0; i < len(t.Header); i++ {
+	for i := range len(t.Header) {
 		align := AlignDefault
 		if i < len(t.Alignment) {
 			align = t.Alignment[i]

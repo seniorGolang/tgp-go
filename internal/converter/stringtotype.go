@@ -6,12 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
 
 const (
+	pkgFmt     = "fmt"
 	pkgStrconv = "strconv"
 	pkgStrings = "strings"
 	pkgTime    = "time"
@@ -24,7 +25,7 @@ type StringToTypeConfig struct {
 	Project        *model.Project
 	From           *Statement
 	Arg            *model.Variable
-	Id             *Statement
+	ID             *Statement
 	ErrBody        []Code
 	OptionalAssign bool
 	FieldType      FieldTypeFunc
@@ -50,7 +51,7 @@ func BuildStringToType(cfg StringToTypeConfig) (st *Statement) {
 	}
 	typ, ok := cfg.Project.Types[cfg.Arg.TypeID]
 	if !ok {
-		return cfg.Id.Op("=").Add(cfg.From)
+		return cfg.ID.Op("=").Add(cfg.From)
 	}
 	if strings.Contains(typ.ImportPkgPath, "time") {
 		if typ.TypeName == "Time" {
@@ -124,18 +125,19 @@ func buildStringToTypeSlice(cfg StringToTypeConfig) (st *Statement) {
 
 	elementTypeID := cfg.Arg.TypeID
 	elementVar := &model.Variable{
-		TypeRef: model.TypeRef{
-			TypeID:           elementTypeID,
-			NumberOfPointers: cfg.Arg.ElementPointers,
-			IsSlice:          false,
-		},
-		Name: "elem",
+		TypeID:           elementTypeID,
+		NumberOfPointers: cfg.Arg.ElementPointers,
+		IsSlice:          false,
+		Name:             "elem",
 	}
 	cfg.AddImport(pkgStrings, "strings")
 	elementTypeCode := cfg.FieldType(elementTypeID, cfg.Arg.ElementPointers, false)
 	elementCfg := cfg
 	elementCfg.Arg = elementVar
-	elementCfg.Id = Id("elem")
+	elementCfg.ID = Id("elem")
+	elementCfg.From = Id("elemStr")
+	elementCfg.AddTo = nil
+	elementCfg.ValVarName = ""
 	return BlockFunc(func(bg *Group) {
 		bg.Id("parts").Op(":=").Qual(pkgStrings, "Split").Call(cfg.From, Lit(","))
 		bg.Id("result").Op(":=").Make(Index().Add(elementTypeCode), Lit(0), Len(Id("parts")))
@@ -146,8 +148,25 @@ func buildStringToTypeSlice(cfg StringToTypeConfig) (st *Statement) {
 			ig.Add(BuildStringToType(elementCfg))
 			ig.Id("result").Op("=").Append(Id("result"), Id("elem"))
 		})
-		bg.Add(cfg.Id).Op("=").Id("result")
+		bg.Add(cfg.ID).Op("=").Id("result")
 	})
+}
+
+// BuildSliceCSVExpr генерирует выражение CSV-строки из значения слайса (join через ",").
+func BuildSliceCSVExpr(sliceExpr *Statement, stringElements bool, addImport func(pkgPath string, name string)) (st *Statement) {
+
+	addImport(pkgStrings, "strings")
+	if stringElements {
+		return Qual(pkgStrings, "Join").Call(sliceExpr.Clone(), Lit(","))
+	}
+	addImport(pkgFmt, "fmt")
+	return Func().Params().Params(String()).Block(
+		Id("_parts").Op(":=").Make(Index().String(), Len(sliceExpr.Clone())),
+		For(List(Id("_i"), Id("_v")).Op(":=").Range().Add(sliceExpr.Clone())).Block(
+			Id("_parts").Index(Id("_i")).Op("=").Qual(pkgFmt, "Sprint").Call(Id("_v")),
+		),
+		Return(Qual(pkgStrings, "Join").Call(Id("_parts"), Lit(","))),
+	).Call()
 }
 
 func buildStringToTypeBuiltin(cfg StringToTypeConfig) (st *Statement) {
@@ -156,25 +175,25 @@ func buildStringToTypeBuiltin(cfg StringToTypeConfig) (st *Statement) {
 	cfg.AddImport(pkgStrconv, "strconv")
 
 	switch cfg.Arg.TypeID {
-	case "string":
-		return cfg.Id.Op(op).Add(cfg.From)
-	case "bool":
+	case string(model.TypeKindString):
+		return cfg.ID.Op(op).Add(cfg.From)
+	case string(model.TypeKindBool):
 		return assignBuiltin(cfg, Qual(pkgStrconv, "ParseBool").Call(cfg.From))
-	case "int":
+	case string(model.TypeKindInt):
 		return assignBuiltin(cfg, Qual(pkgStrconv, "Atoi").Call(cfg.From))
-	case "int64":
+	case string(model.TypeKindInt64):
 		return assignBuiltin(cfg, Qual(pkgStrconv, "ParseInt").Call(cfg.From, Lit(10), Lit(64)))
-	case "int32":
+	case string(model.TypeKindInt32):
 		return assignBuiltin(cfg, Qual(pkgStrconv, "ParseInt").Call(cfg.From, Lit(10), Lit(32)))
-	case "uint":
+	case string(model.TypeKindUint):
 		return assignBuiltin(cfg, Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(64)))
-	case "uint64":
+	case string(model.TypeKindUint64):
 		return assignBuiltin(cfg, Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(64)))
-	case "uint32":
+	case string(model.TypeKindUint32):
 		return assignBuiltin(cfg, Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(32)))
-	case "float64":
+	case string(model.TypeKindFloat64):
 		return assignBuiltin(cfg, Qual(pkgStrconv, "ParseFloat").Call(cfg.From, Lit(64)))
-	case "float32":
+	case string(model.TypeKindFloat32):
 		parseCallF32 := Qual(pkgStrconv, "ParseFloat").Call(cfg.From, Lit(32))
 		if cfg.OptionalAssign && cfg.AddTo != nil && cfg.ErrVar != nil && cfg.ValVarName != "" {
 			cfg.AddTo.Var().Id(cfg.ValVarName).Float64()
@@ -182,11 +201,11 @@ func buildStringToTypeBuiltin(cfg StringToTypeConfig) (st *Statement) {
 				cfg.AddTo.Var().Id(cfg.ValVarName + "V").Float32()
 				cfg.AddTo.If(List(Id(cfg.ValVarName), cfg.ErrVar).Op("=").Add(parseCallF32).Op(";").Add(cfg.ErrVar).Op("==").Nil()).Block(
 					Id(cfg.ValVarName+"V").Op("=").Float32().Call(Id(cfg.ValVarName)),
-					addAssign(cfg.Id, Id(cfg.ValVarName+"V"), 1),
+					addAssign(cfg.ID, Id(cfg.ValVarName+"V"), 1),
 				)
 			} else {
 				cfg.AddTo.If(List(Id(cfg.ValVarName), cfg.ErrVar).Op("=").Add(parseCallF32).Op(";").Add(cfg.ErrVar).Op("==").Nil()).Block(
-					addAssign(cfg.Id, Float32().Call(Id(cfg.ValVarName)), 0),
+					addAssign(cfg.ID, Float32().Call(Id(cfg.ValVarName)), 0),
 				)
 			}
 			return nil
@@ -196,17 +215,17 @@ func buildStringToTypeBuiltin(cfg StringToTypeConfig) (st *Statement) {
 				bg.Var().Id("temp64").Float64()
 				bg.Var().Id("_e").Error()
 				bg.If(List(Id("temp64"), Id("_e")).Op("=").Add(parseCallF32).Op(";").Id("_e").Op("==").Nil()).Block(
-					addAssign(cfg.Id, Float32().Call(Id("temp64")), cfg.Arg.NumberOfPointers),
+					addAssign(cfg.ID, Float32().Call(Id("temp64")), cfg.Arg.NumberOfPointers),
 				)
 			})
 		}
 		return BlockFunc(func(bg *Group) {
 			bg.Var().Id("temp64").Float64()
 			bg.Add(serverIfErr(Id("temp64"), parseCallF32, cfg.ErrBody))
-			bg.Add(cfg.Id.Op(op).Float32().Call(Id("temp64")))
+			bg.Add(cfg.ID.Op(op).Float32().Call(Id("temp64")))
 		})
 	default:
-		return cfg.Id.Op(op).Add(cfg.From)
+		return cfg.ID.Op(op).Add(cfg.From)
 	}
 }
 
@@ -220,11 +239,11 @@ func assignBuiltin(cfg StringToTypeConfig, parseCall *Statement) (st *Statement)
 			bg.Var().Id("_v").Add(cfg.FieldType(cfg.Arg.TypeID, 0, false))
 			bg.Var().Id("_e").Error()
 			bg.If(List(Id("_v"), Id("_e")).Op("=").Add(parseCall).Op(";").Id("_e").Op("==").Nil()).Block(
-				addAssign(cfg.Id, Id("_v"), cfg.Arg.NumberOfPointers),
+				addAssign(cfg.ID, Id("_v"), cfg.Arg.NumberOfPointers),
 			)
 		})
 	}
-	return serverIfErr(cfg.Id, parseCall, cfg.ErrBody)
+	return serverIfErr(cfg.ID, parseCall, cfg.ErrBody)
 }
 
 func addAssign(id *Statement, value Code, numberOfPointers int) (c Code) {
@@ -255,10 +274,10 @@ func optionalWriteToGroup(cfg StringToTypeConfig, parseCall *Statement) (ok bool
 	if ptr {
 		cfg.AddTo.Var().Id(cfg.ValVarName).Add(cfg.FieldType(cfg.Arg.TypeID, 0, false))
 		cfg.AddTo.If(List(Id(cfg.ValVarName), cfg.ErrVar).Op("=").Add(parseCall).Op(";").Add(cfg.ErrVar).Op("==").Nil()).Block(
-			addAssign(cfg.Id, Id(cfg.ValVarName), 1),
+			addAssign(cfg.ID, Id(cfg.ValVarName), 1),
 		)
 	} else {
-		cfg.AddTo.If(List(cfg.Id, cfg.ErrVar).Op("=").Add(parseCall).Op(";").Add(cfg.ErrVar).Op("==").Nil()).Block()
+		cfg.AddTo.If(List(cfg.ID, cfg.ErrVar).Op("=").Add(parseCall).Op(";").Add(cfg.ErrVar).Op("==").Nil()).Block()
 	}
 	return true
 }
@@ -275,11 +294,11 @@ func buildStringToTypeTime(cfg StringToTypeConfig) (st *Statement) {
 			bg.Var().Id("_v").Qual(pkgTime, "Time")
 			bg.Var().Id("_e").Error()
 			bg.If(List(Id("_v"), Id("_e")).Op("=").Add(parseCall).Op(";").Id("_e").Op("==").Nil()).Block(
-				addAssign(cfg.Id, Id("_v"), cfg.Arg.NumberOfPointers),
+				addAssign(cfg.ID, Id("_v"), cfg.Arg.NumberOfPointers),
 			)
 		})
 	}
-	return serverIfErr(cfg.Id, parseCall, cfg.ErrBody)
+	return serverIfErr(cfg.ID, parseCall, cfg.ErrBody)
 }
 
 func buildStringToTypeParseFromString(cfg StringToTypeConfig, typ *model.Type) (st *Statement) {
@@ -297,9 +316,9 @@ func buildStringToTypeParseFromString(cfg StringToTypeConfig, typ *model.Type) (
 
 	if !fieldPtr && !returnsPtr {
 		if returnsErr {
-			return serverIfErr(cfg.Id, call, cfg.ErrBody)
+			return serverIfErr(cfg.ID, call, cfg.ErrBody)
 		}
-		return List(cfg.Id, Id("_")).Op(op).Add(call)
+		return List(cfg.ID, Id("_")).Op(op).Add(call)
 	}
 	if !fieldPtr && returnsPtr {
 		return BlockFunc(func(bg *Group) {
@@ -309,14 +328,14 @@ func buildStringToTypeParseFromString(cfg StringToTypeConfig, typ *model.Type) (
 			} else {
 				bg.List(Id("_parseTmp"), Id("_")).Op(op).Add(call)
 			}
-			bg.Add(cfg.Id.Op(op).Op("*").Id("_parseTmp"))
+			bg.Add(cfg.ID.Op(op).Op("*").Id("_parseTmp"))
 		})
 	}
 	if fieldPtr && returnsPtr {
 		if returnsErr {
-			return serverIfErr(cfg.Id, call, cfg.ErrBody)
+			return serverIfErr(cfg.ID, call, cfg.ErrBody)
 		}
-		return List(cfg.Id, Id("_")).Op(op).Add(call)
+		return List(cfg.ID, Id("_")).Op(op).Add(call)
 	}
 	return BlockFunc(func(bg *Group) {
 		bg.Var().Id("_parseTmp").Add(cfg.FieldType(cfg.Arg.TypeID, 0, false))
@@ -325,7 +344,7 @@ func buildStringToTypeParseFromString(cfg StringToTypeConfig, typ *model.Type) (
 		} else {
 			bg.List(Id("_parseTmp"), Id("_")).Op(op).Add(call)
 		}
-		bg.Add(cfg.Id.Op(op).Op("&").Id("_parseTmp"))
+		bg.Add(cfg.ID.Op(op).Op("&").Id("_parseTmp"))
 	})
 }
 
@@ -345,13 +364,13 @@ func buildParseFromStringOptional(cfg StringToTypeConfig, call *Statement, field
 				bg.Var().Id("_parseVal").Add(cfg.FieldType(cfg.Arg.TypeID, 0, false))
 				bg.Var().Id("_parseErr").Error()
 				bg.If(List(valVar, errVar).Op("=").Add(call).Op(";").Id("_parseErr").Op("==").Nil()).Block(
-					addAssign(cfg.Id, valVar, 0),
+					addAssign(cfg.ID, valVar, 0),
 				)
 			})
 		}
 		return BlockFunc(func(bg *Group) {
 			bg.List(valVar, Id("_")).Op("=").Add(call)
-			bg.Add(addAssign(cfg.Id, valVar, 0))
+			bg.Add(addAssign(cfg.ID, valVar, 0))
 		})
 	}
 	if fieldPtr && returnsPtr {
@@ -360,13 +379,13 @@ func buildParseFromStringOptional(cfg StringToTypeConfig, call *Statement, field
 				bg.Var().Id("_parseVal").Add(cfg.FieldType(cfg.Arg.TypeID, 1, false))
 				bg.Var().Id("_parseErr").Error()
 				bg.If(List(valVar, errVar).Op("=").Add(call).Op(";").Id("_parseErr").Op("==").Nil()).Block(
-					addAssign(cfg.Id, valVar, 1),
+					addAssign(cfg.ID, valVar, 1),
 				)
 			})
 		}
 		return BlockFunc(func(bg *Group) {
 			bg.List(valVar, Id("_")).Op("=").Add(call)
-			bg.Add(addAssign(cfg.Id, valVar, 1))
+			bg.Add(addAssign(cfg.ID, valVar, 1))
 		})
 	}
 	if !fieldPtr && returnsPtr {
@@ -374,7 +393,7 @@ func buildParseFromStringOptional(cfg StringToTypeConfig, call *Statement, field
 			bg.Var().Id("_parseVal").Add(cfg.FieldType(cfg.Arg.TypeID, 1, false))
 			bg.Var().Id("_parseErr").Error()
 			bg.If(List(valVar, errVar).Op("=").Add(call).Op(";").Id("_parseErr").Op("==").Nil()).Block(
-				addAssign(cfg.Id, Op("*").Add(valVar), 0),
+				addAssign(cfg.ID, Op("*").Add(valVar), 0),
 			)
 		})
 	}
@@ -382,7 +401,7 @@ func buildParseFromStringOptional(cfg StringToTypeConfig, call *Statement, field
 		bg.Var().Id("_parseVal").Add(cfg.FieldType(cfg.Arg.TypeID, 0, false))
 		bg.Var().Id("_parseErr").Error()
 		bg.If(List(valVar, errVar).Op("=").Add(call).Op(";").Id("_parseErr").Op("==").Nil()).Block(
-			addAssign(cfg.Id, Op("&").Add(valVar), 1),
+			addAssign(cfg.ID, Op("&").Add(valVar), 1),
 		)
 	})
 }
@@ -395,9 +414,9 @@ func writeParseFromStringToGroup(cfg StringToTypeConfig, call *Statement, fieldP
 
 	if !fieldPtr && !returnsPtr {
 		if returnsErr {
-			g.If(List(cfg.Id, ev).Op("=").Add(call).Op(";").Add(ev).Op("==").Nil()).Block()
+			g.If(List(cfg.ID, ev).Op("=").Add(call).Op(";").Add(ev).Op("==").Nil()).Block()
 		} else {
-			g.List(cfg.Id, Id("_")).Op("=").Add(call)
+			g.List(cfg.ID, Id("_")).Op("=").Add(call)
 		}
 		return
 	}
@@ -405,31 +424,31 @@ func writeParseFromStringToGroup(cfg StringToTypeConfig, call *Statement, fieldP
 		g.Var().Id(cfg.ValVarName).Add(cfg.FieldType(cfg.Arg.TypeID, 1, false))
 		if returnsErr {
 			g.If(List(v, ev).Op("=").Add(call).Op(";").Add(ev).Op("==").Nil()).Block(
-				addAssign(cfg.Id, v, 1),
+				addAssign(cfg.ID, v, 1),
 			)
 		} else {
 			g.List(v, Id("_")).Op("=").Add(call)
-			g.Add(addAssign(cfg.Id, v, 1))
+			g.Add(addAssign(cfg.ID, v, 1))
 		}
 		return
 	}
 	if !fieldPtr && returnsPtr {
 		g.Var().Id(cfg.ValVarName).Add(cfg.FieldType(cfg.Arg.TypeID, 1, false))
 		g.If(List(v, ev).Op("=").Add(call).Op(";").Add(ev).Op("==").Nil()).Block(
-			addAssign(cfg.Id, Op("*").Add(v), 0),
+			addAssign(cfg.ID, Op("*").Add(v), 0),
 		)
 		return
 	}
 	g.Var().Id(cfg.ValVarName).Add(cfg.FieldType(cfg.Arg.TypeID, 0, false))
 	g.If(List(v, ev).Op("=").Add(call).Op(";").Add(ev).Op("==").Nil()).Block(
-		addAssign(cfg.Id, v, 1),
+		addAssign(cfg.ID, v, 1),
 	)
 }
 
 func buildStringToTypeJSON(cfg StringToTypeConfig) (st *Statement) {
 
 	cfg.AddImport(cfg.JSONPkg, "json")
-	return Op("_").Op("=").Qual(cfg.JSONPkg, "Unmarshal").Call(Op("[]").Byte().Call(Op("`\"`").Op("+").Add(cfg.From).Op("+").Op("`\"`")), Op("&").Add(cfg.Id))
+	return Op("_").Op("=").Qual(cfg.JSONPkg, "Unmarshal").Call(Op("[]").Byte().Call(Op("`\"`").Op("+").Add(cfg.From).Op("+").Op("`\"`")), Op("&").Add(cfg.ID))
 }
 
 func buildStringToTypeNamedBuiltinLenient(cfg StringToTypeConfig, builtinBaseTypeID string) (st *Statement) {
@@ -438,25 +457,25 @@ func buildStringToTypeNamedBuiltinLenient(cfg StringToTypeConfig, builtinBaseTyp
 	targetType := cfg.FieldType(cfg.Arg.TypeID, 0, false)
 	needsCast := namedBuiltinNeedsCast(cfg.Project, cfg.Arg.TypeID, builtinBaseTypeID)
 	switch builtinBaseTypeID {
-	case "string":
+	case string(model.TypeKindString):
 		return assignNamedBuiltinParsedValueInline(cfg, targetType, cfg.From, needsCast)
-	case "bool":
+	case string(model.TypeKindBool):
 		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "ParseBool").Call(cfg.From))
-	case "int":
+	case string(model.TypeKindInt):
 		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "Atoi").Call(cfg.From))
-	case "int64":
+	case string(model.TypeKindInt64):
 		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "ParseInt").Call(cfg.From, Lit(10), Lit(64)))
-	case "int32":
+	case string(model.TypeKindInt32):
 		return buildNamedBuiltinParseNarrowIf(cfg, targetType, needsCast, "_parsed64", "_parsed", Qual(pkgStrconv, "ParseInt").Call(cfg.From, Lit(10), Lit(32)), Int32())
-	case "uint":
+	case string(model.TypeKindUint):
 		return buildNamedBuiltinParseNarrowIf(cfg, targetType, needsCast, "_parsed64", "_parsed", Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(64)), Uint())
-	case "uint64":
+	case string(model.TypeKindUint64):
 		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(64)))
-	case "uint32":
+	case string(model.TypeKindUint32):
 		return buildNamedBuiltinParseNarrowIf(cfg, targetType, needsCast, "_parsed64", "_parsed", Qual(pkgStrconv, "ParseUint").Call(cfg.From, Lit(10), Lit(32)), Uint32())
-	case "float64":
+	case string(model.TypeKindFloat64):
 		return buildNamedBuiltinParseIf(cfg, targetType, needsCast, "_parsed", Qual(pkgStrconv, "ParseFloat").Call(cfg.From, Lit(64)))
-	case "float32":
+	case string(model.TypeKindFloat32):
 		return buildNamedBuiltinParseNarrowIf(cfg, targetType, needsCast, "_parsed64", "_parsed", Qual(pkgStrconv, "ParseFloat").Call(cfg.From, Lit(32)), Float32())
 	default:
 		return buildStringToTypeJSON(cfg)
@@ -507,19 +526,19 @@ func assignNamedBuiltinParsedValueInline(cfg StringToTypeConfig, targetType *Sta
 	if cfg.Arg.NumberOfPointers > 0 {
 		return Block(
 			Id("_value").Op(":=").Add(valueExpr),
-			Add(cfg.Id).Op("=").Op("&").Id("_value"),
+			Add(cfg.ID).Op("=").Op("&").Id("_value"),
 		)
 	}
-	return Add(cfg.Id).Op("=").Add(valueExpr)
+	return Add(cfg.ID).Op("=").Add(valueExpr)
 }
 
 func IsBuiltinTypeID(typeID string) (ok bool) {
 
 	switch typeID {
-	case "string", "int", "int8", "int16", "int32", "int64",
-		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
-		"float32", "float64", "complex64", "complex128",
-		"bool", "byte", "rune", "error", "any":
+	case string(model.TypeKindString), string(model.TypeKindInt), "int8", "int16", string(model.TypeKindInt32), string(model.TypeKindInt64),
+		string(model.TypeKindUint), "uint8", "uint16", string(model.TypeKindUint32), string(model.TypeKindUint64), "uintptr",
+		string(model.TypeKindFloat32), string(model.TypeKindFloat64), "complex64", "complex128",
+		string(model.TypeKindBool), "byte", "rune", "error", "any":
 		return true
 	}
 	return false

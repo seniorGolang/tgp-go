@@ -12,6 +12,7 @@ const (
 	dirErrs      = "errs"
 
 	fileGitignore = ".gitignore"
+	fileGolangci  = ".golangci.yml"
 	fileGoMod     = "go.mod"
 	fileTg        = "tg.go"
 	fileService   = "service.go"

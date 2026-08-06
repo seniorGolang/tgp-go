@@ -31,6 +31,13 @@ func (p *KafkaPubGoPlugin) Execute(request data.Storage) (response data.Storage,
 	if project, err = helper.GetProject(request); err != nil {
 		return
 	}
+	var filter []string
+	if filter, err = helper.ParseStringList(request, "contracts"); err != nil {
+		return nil, fmt.Errorf("failed to parse contracts: %w", err)
+	}
+	if project, err = helper.ProjectWithFilter(project, filter); err != nil {
+		return nil, fmt.Errorf("failed to filter contracts: %w", err)
+	}
 	if err = validate.Project(project); err != nil {
 		return nil, fmt.Errorf("invalid project: %w", err)
 	}
@@ -57,16 +64,10 @@ func (p *KafkaPubGoPlugin) Execute(request data.Storage) (response data.Storage,
 	if outputRelPath, err = filepath.Rel(moduleRoot, output); err != nil {
 		return nil, fmt.Errorf("output path outside module: %w", err)
 	}
-	var filter []string
-	if filter, err = helper.ParseStringList(request, "contracts"); err != nil {
-		return nil, fmt.Errorf("failed to parse contracts: %w", err)
-	}
-	filtered := *project
-	filtered.Contracts = helper.FilterContracts(project, filter)
 	if err = cleanup.GeneratedFiles(output); err != nil {
 		return nil, fmt.Errorf("cleanup generated files: %w", err)
 	}
-	if err = generator.Generate(&filtered, output, targetModulePath, outputRelPath); err != nil {
+	if err = generator.Generate(project, output, targetModulePath, outputRelPath); err != nil {
 		return nil, fmt.Errorf("generate kafka-pub-go: %w", err)
 	}
 	return response, nil
@@ -86,9 +87,9 @@ func (p *KafkaPubGoPlugin) Info() (info plugin.Info, err error) {
 			Path:        []string{"kafka", "pub", "go"},
 			Description: i18n.Msg("Generate Kafka Go publisher"),
 			Options: []plugin.Option{
-				{Name: "contracts-dir", Type: "string", Description: i18n.Msg("Path to contracts folder (relative to rootDir)"), Default: "contracts"},
-				{Name: "out", Type: "string", Description: i18n.Msg("Path to output directory (package name = basename, e.g. internal/kafka)"), Required: true},
-				{Name: "contracts", Type: "string", Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")")},
+				{Name: "contracts-dir", Type: typeString, Description: i18n.Msg("Path to contracts folder (relative to rootDir)"), Default: "contracts"},
+				{Name: "out", Type: typeString, Description: i18n.Msg("Path to output directory (package name = basename, e.g. internal/kafka)"), Required: true},
+				{Name: "contracts", Type: typeString, Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")")},
 			},
 		}},
 		AllowedEnvVars: []string{"GOPATH", "GOROOT", "GOMODCACHE"},

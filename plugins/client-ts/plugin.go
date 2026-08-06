@@ -23,9 +23,9 @@ import (
 //go:embed plugin.md
 var pluginDoc string
 
-type ClientTsPlugin struct{}
+type ClientTSPlugin struct{}
 
-func (p *ClientTsPlugin) Execute(request data.Storage) (response data.Storage, err error) {
+func (p *ClientTSPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
 	response = request
 	var project *model.Project
@@ -78,8 +78,9 @@ func (p *ClientTsPlugin) Execute(request data.Storage) (response data.Storage, e
 	if contracts, err = helper.ParseStringList(request, "contracts"); err != nil {
 		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
 	}
-
-	project.Contracts = helper.FilterContracts(project, contracts)
+	if project, err = helper.ProjectWithFilter(project, contracts); err != nil {
+		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts"), err)
+	}
 
 	clientStats := stats.CollectClientStats(project)
 
@@ -104,7 +105,7 @@ func (p *ClientTsPlugin) Execute(request data.Storage) (response data.Storage, e
 	return
 }
 
-func (p *ClientTsPlugin) Info() (info plugin.Info, err error) {
+func (p *ClientTSPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{
 		Name:         "client-ts",
@@ -121,32 +122,32 @@ func (p *ClientTsPlugin) Info() (info plugin.Info, err error) {
 				Options: []plugin.Option{
 					{
 						Name:        "contracts-dir",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to contracts folder (relative to rootDir)"),
 						Required:    false,
 						Default:     "contracts",
 					},
 					{
 						Name:        "out",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to output directory"),
 						Required:    true,
 					},
 					{
 						Name:        "package-json",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to generated package.json (requires @tg npmName)"),
 						Required:    false,
 					},
 					{
 						Name:        "contracts",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")"),
 						Required:    false,
 					},
 					{
 						Name:        "doc-file",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to documentation file (default: <out>/readme.md)"),
 						Required:    false,
 					},

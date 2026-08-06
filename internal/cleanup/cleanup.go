@@ -45,7 +45,7 @@ func GeneratedFiles(outDir string) (err error) {
 		if genFile, err = os.Open(filePath); err == nil {
 			reader := bufio.NewReader(genFile)
 			found := false
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				var line string
 				if line, err = reader.ReadString('\n'); err != nil {
 					break

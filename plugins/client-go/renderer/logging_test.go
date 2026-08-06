@@ -29,8 +29,8 @@ func TestRenderJsonRPC_LogOnErrorSnapshotsCurlBeforeDo(t *testing.T) {
 	project := httpClientTestProject()
 	dir := filepath.Join(t.TempDir(), "client")
 	renderer := NewClientRenderer(project, dir, "example", "client")
-	if err := renderer.RenderJsonRPCPackage(dir); err != nil {
-		t.Fatalf("RenderJsonRPCPackage: %v", err)
+	if err := renderer.RenderJSONRPCPackage(dir); err != nil {
+		t.Fatalf("RenderJSONRPCPackage: %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(dir, "jsonrpc", "internal.go"))
 	if err != nil {

@@ -1,0 +1,176 @@
+{{.DoNotEditComment}}
+package token
+
+import (
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
+)
+
+const (
+	grantJWTBearer     = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+	grantTokenExchange = "urn:ietf:params:oauth:grant-type:token-exchange"
+	tokenTypeAccess    = "urn:ietf:params:oauth:token-type:access_token"
+	defaultAssertTTL   = time.Minute
+	defaultSkewFraction = 0.1
+	defaultSkewMin      = 5 * time.Second
+	defaultSkewMax      = 2 * time.Minute
+)
+
+type Assertion struct {
+	Subject    string
+	KeyID      string
+	PrivateKey string
+}
+
+type Option func(cfg *sourceConfig)
+
+type sourceConfig struct {
+	assertTTL   time.Duration
+	fraction    float64
+	skewMin     time.Duration
+	skewMax     time.Duration
+	absolute    time.Duration
+}
+
+func AssertTTL(ttl time.Duration) (opt Option) {
+
+	return func(cfg *sourceConfig) {
+		if ttl > 0 {
+			cfg.assertTTL = ttl
+		}
+	}
+}
+
+func SkewFraction(fraction float64) (opt Option) {
+
+	return func(cfg *sourceConfig) {
+		if fraction > 0 {
+			cfg.fraction = fraction
+		}
+	}
+}
+
+func SkewMin(d time.Duration) (opt Option) {
+
+	return func(cfg *sourceConfig) {
+		if d > 0 {
+			cfg.skewMin = d
+		}
+	}
+}
+
+func SkewMax(d time.Duration) (opt Option) {
+
+	return func(cfg *sourceConfig) {
+		if d > 0 {
+			cfg.skewMax = d
+		}
+	}
+}
+
+func EarlyExpiry(d time.Duration) (opt Option) {
+
+	return func(cfg *sourceConfig) {
+		if d > 0 {
+			cfg.absolute = d
+		}
+	}
+}
+
+func applyOptions(opts []Option) (cfg sourceConfig) {
+
+	cfg = sourceConfig{
+		assertTTL: defaultAssertTTL,
+		fraction:  defaultSkewFraction,
+		skewMin:   defaultSkewMin,
+		skewMax:   defaultSkewMax,
+	}
+	for _, apply := range opts {
+		apply(&cfg)
+	}
+	if cfg.skewMin > cfg.skewMax {
+		cfg.skewMin, cfg.skewMax = cfg.skewMax, cfg.skewMin
+	}
+	return
+}
+
+type assertionClaims struct {
+	jwt.RegisteredClaims
+	KID string `json:"kid"`
+}
+
+func signAssertion(assertion Assertion, ttl time.Duration) (raw string, err error) {
+
+	var key any
+	var method jwt.SigningMethod
+	if key, method, err = parsePrivateKey(assertion.PrivateKey); err != nil {
+		return
+	}
+
+	now := time.Now()
+	claims := assertionClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   assertion.Subject,
+			ID:        uuid.NewString(),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+		},
+		KID: assertion.KeyID,
+	}
+	token := jwt.NewWithClaims(method, claims)
+	token.Header["kid"] = assertion.KeyID
+	return token.SignedString(key)
+}
+
+func parsePrivateKey(pemStr string) (key any, method jwt.SigningMethod, err error) {
+
+	block, rest := pem.Decode([]byte(pemStr))
+	if block == nil {
+		err = fmt.Errorf("token: invalid PEM")
+		return
+	}
+	if len(rest) != 0 {
+		err = fmt.Errorf("token: PEM contains extra data")
+		return
+	}
+	if block.Type != "PRIVATE KEY" {
+		err = fmt.Errorf("token: PEM is not PKCS8 private key")
+		return
+	}
+
+	var parsed any
+	if parsed, err = x509.ParsePKCS8PrivateKey(block.Bytes); err != nil {
+		err = fmt.Errorf("token: parse private key: %w", err)
+		return
+	}
+
+	switch priv := parsed.(type) {
+	case *rsa.PrivateKey:
+		method = jwt.GetSigningMethod(fmt.Sprintf("RS%d", priv.Size()))
+		if method == nil {
+			err = fmt.Errorf("token: unsupported RSA size %d", priv.Size())
+			return
+		}
+		return priv, method, nil
+	case *ecdsa.PrivateKey:
+		method = jwt.GetSigningMethod(fmt.Sprintf("ES%d", priv.Curve.Params().BitSize))
+		if method == nil {
+			err = fmt.Errorf("token: unsupported EC curve size %d", priv.Curve.Params().BitSize)
+			return
+		}
+		return priv, method, nil
+	case ed25519.PrivateKey:
+		return priv, jwt.SigningMethodEdDSA, nil
+	default:
+		err = fmt.Errorf("token: unsupported private key %T", priv)
+		return
+	}
+}

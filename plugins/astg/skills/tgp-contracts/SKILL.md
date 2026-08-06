@@ -34,7 +34,21 @@ DTO types are resolved via imports/`go/types`, so `contracts/dto` (and other imp
 4. Values with spaces/special chars → backticks: `` // @tg http-path=`/users/:id` ``
 5. Document public surface: package `title`/`version`/`desc`, method `summary`/`desc`, DTO/`arg` `desc` — see [references/documentation.md](references/documentation.md). Long OpenAPI text → `file:docs/api.md` or `file:docs/api.md#Section`.
 6. Export the model again and verify contract family, method annotations, arguments/results, referenced types, and resolved descriptions.
-7. Run every affected generator, then compile its consumers.
+7. Regenerate every affected surface (table below), then compile its consumers. For multi-generator flows see `tgp-pipeline`.
+
+## Impact → regenerate
+
+| What changed on the contract | Regenerate |
+|------------------------------|------------|
+| `http-server`, paths, mapping, multipart, content types | `tgp-server`, `tgp-client-go`, `tgp-client-ts`, `tgp-swagger` |
+| `jsonRPC-server`, RPC params/result shape | same as HTTP-family generators above |
+| `ws-server` / `sse-server` / `stream` / stream paths | `tgp-server`, clients, `tgp-swagger` |
+| `log` / `metrics` / `trace` | `tgp-server` and/or clients (observation APIs) |
+| `security` | `tgp-server`, clients, `tgp-swagger` |
+| `summary` / `desc` / `tagDesc` / `file:` / package `title`/`version`/`servers` | `tgp-swagger` (and client docs if generated) |
+| `npmName` / npm meta | `tgp-client-ts` with `--package-json` |
+| `@tg kafka`, topic, key/headers/message, codec, acks | `tgp-kafka-pub-go` and/or `tgp-kafka-sub-go` |
+| HTTP error codes `404=pkg:Type` | `tgp-swagger`, clients |
 
 ## Choose transport
 
@@ -42,7 +56,7 @@ DTO types are resolved via imports/`go/types`, so `contracts/dto` (and other imp
 |------|-----------|--------|
 | REST | `http-server` | `http-method`, `http-path` |
 | JSON-RPC / batch | `jsonRPC-server` | ordinary named signature |
-| WebSocket stream | `ws-server` | `stream=server|client|bidi` |
+| WebSocket stream | `ws-server` | `stream=server\|client\|bidi` |
 | SSE stream | `sse-server` | `stream=server` |
 | Kafka | `kafka` only | `kafka-topic` |
 
@@ -88,7 +102,7 @@ GetProfile(ctx context.Context, token string) (profile dto.Profile, err error)
 - Legacy `@tg kafka-consumer` / `@tg kafka-publisher` → validation error (migrate to `@tg kafka`)
 - Method: `kafka-topic=…` required; optional `kafka-key=`, `kafka-headers=`, `kafka-message=`, `kafka-codec=`, `kafka-acks=`
 - Methods return only `error`; first arg is `context.Context`
-- Generate: `tg kafka pub go -o …` and/or `tg kafka sub go -o …`
+- Generate: `tg kafka pub go --out …` and/or `tg kafka sub go --out …`
 
 ## Sub-annotations on methods
 
@@ -124,6 +138,7 @@ For `application/x-www-form-urlencoded`, body arguments need explicit `form:<nam
 - [ ] Public HTTP/JSON-RPC methods have `summary`; public fields/params have `desc` where OpenAPI is published
 - [ ] `tg astg json -o .tg/project.json` shows the intended model (including resolved `file:` descriptions)
 - [ ] No edits planned inside generated trees
+- [ ] Every row in Impact → regenerate is scheduled
 
 Generator validation is the final authority. If validation fails, fix the source contract, re-export the model, and run the same generator again.
 
@@ -141,4 +156,5 @@ Generator validation is the final authority. If validation fails, fix the source
 - OpenAPI/API documentation text: [references/documentation.md](references/documentation.md)
 - Validation and discovery failures: [references/validation.md](references/validation.md)
 - Full catalog: `tg plugin doc astg`
+- Multi-generator routing: skill `tgp-pipeline`
 - Inspect resolved model (local or DB): skill `tgp-astg-json` / `tg astg json`

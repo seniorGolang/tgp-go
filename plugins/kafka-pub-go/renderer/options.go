@@ -24,6 +24,7 @@ func (r *Renderer) renderOptions() (err error) {
 		group.Id("batchMaxLinger").Qual("time", "Duration")
 		group.Id("batchMaxBytes").Int32()
 		group.Id("maxBufferedRecords").Int()
+		group.Id("shutdownTimeout").Qual("time", "Duration")
 		group.Id("compression").Index().Qual(kgoPath, "CompressionCodec")
 		group.Id("codecs").Map(jen.String()).Id("codec")
 		group.Id("tlsConfig").Op("*").Qual("crypto/tls", "Config")
@@ -46,6 +47,7 @@ func (r *Renderer) renderOptions() (err error) {
 			jen.Id("batchMaxLinger"):     jen.Lit(10).Op("*").Qual("time", "Millisecond"),
 			jen.Id("batchMaxBytes"):      jen.Lit(1000012),
 			jen.Id("maxBufferedRecords"): jen.Lit(10000),
+			jen.Id("shutdownTimeout"):    jen.Lit(30).Op("*").Qual("time", "Second"),
 			jen.Id("compression"):        jen.Index().Qual(kgoPath, "CompressionCodec").Values(jen.Qual(kgoPath, "NoCompression").Call()),
 			jen.Id("codecs"):             jen.Make(jen.Map(jen.String()).Id("codec")),
 		})),
@@ -55,6 +57,7 @@ func (r *Renderer) renderOptions() (err error) {
 	r.addOption(source, "BatchMaxLinger", "задаёт максимальное время накопления записей перед отправкой.", jen.Id("duration").Qual("time", "Duration"), jen.Id("setup").Dot("batchMaxLinger").Op("=").Id("duration"))
 	r.addOption(source, "BatchMaxBytes", "задаёт максимальный размер пакета на partition.", jen.Id("bytes").Int32(), jen.Id("setup").Dot("batchMaxBytes").Op("=").Id("bytes"))
 	r.addOption(source, "MaxBufferedRecords", "задаёт максимум записей в буфере клиента.", jen.Id("records").Int(), jen.Id("setup").Dot("maxBufferedRecords").Op("=").Id("records"))
+	r.addOption(source, "ShutdownTimeout", "задаёт общий лимит ожидания незавершённых публикаций и сброса буферов при Close. По умолчанию 30s.", jen.Id("duration").Qual("time", "Duration"), jen.Id("setup").Dot("shutdownTimeout").Op("=").Id("duration"))
 	source.Comment("Compression задаёт алгоритмы сжатия пакетов Kafka.")
 	source.Func().Id("Compression").Params(jen.Id("codecs").Op("...").Qual(kgoPath, "CompressionCodec")).Params(jen.Id("option").Id("Option")).Block(
 		jen.Return(jen.Func().Params(jen.Id("setup").Op("*").Id("setup")).Params(jen.Id("err").Error()).Block(

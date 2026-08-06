@@ -62,10 +62,10 @@ func JSONRPCBatchMounts(project *Project) (mounts []string) {
 	}
 
 	for _, contract := range project.Contracts {
-		if !IsAnnotationSet(project, contract, nil, nil, TagServerJsonRPC) {
+		if !IsAnnotationSet(project, contract, nil, nil, TagServerJSONRPC) {
 			continue
 		}
-		prefix := GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, "")
+		prefix := GetAnnotationValue(project, contract, nil, nil, TagHTTPPrefix, "")
 		for _, ancestor := range HTTPPrefixAncestors(prefix) {
 			seen[ancestor] = struct{}{}
 		}
@@ -87,7 +87,7 @@ func JSONRPCContractPrefix(project *Project, contract *Contract) (prefix string)
 		return "/"
 	}
 
-	return NormalizeHTTPPrefix(GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, ""))
+	return NormalizeHTTPPrefix(GetAnnotationValue(project, contract, nil, nil, TagHTTPPrefix, ""))
 }
 
 // JSONRPCServiceBatchPath — POST-путь batch эндпоинта контракта (prefix + http-path|/name).
@@ -97,8 +97,8 @@ func JSONRPCServiceBatchPath(project *Project, contract *Contract) (servicePath 
 		return "/"
 	}
 
-	prefix := GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, "")
-	pathValue := GetAnnotationValue(project, contract, nil, nil, TagHttpPath, "/"+LowerCamel(contract.Name))
+	prefix := GetAnnotationValue(project, contract, nil, nil, TagHTTPPrefix, "")
+	pathValue := GetAnnotationValue(project, contract, nil, nil, TagHTTPPath, "/"+LowerCamel(contract.Name))
 
 	return JoinHTTPPath(prefix, pathValue)
 }

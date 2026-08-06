@@ -1,0 +1,44 @@
+{{.DoNotEditComment}}
+package bearer
+
+import (
+{{- if .JWKSParams}}
+	"fmt"
+	"net/url"
+
+{{end}}
+	"github.com/golang-jwt/jwt/v5"
+)
+
+func buildJWKSPath(claims jwt.MapClaims, kid string) (path string, cacheKey string, err error) {
+{{- if not .JWKSParams}}
+	_ = claims
+	_ = kid
+	return
+{{- else}}
+	_ = kid
+{{- range $i, $name := .JWKSParams}}
+{{- if eq $name "kid"}}
+	p{{$i}} := kid
+	if p{{$i}} == "" {
+		err = fmt.Errorf("bearer: path var %q is missing", "kid")
+		return
+	}
+{{- else}}
+	var p{{$i}} string
+	var ok{{$i}} bool
+	if p{{$i}}, ok{{$i}} = claims[{{printf "%q" $name}}].(string); !ok{{$i}} {
+		p{{$i}} = ""
+	}
+	if p{{$i}} == "" {
+		err = fmt.Errorf("bearer: path var %q is missing", {{printf "%q" $name}})
+		return
+	}
+	p{{$i}} = url.PathEscape(p{{$i}})
+{{- end}}
+{{- end}}
+	path = {{range $i, $seg := .JWKSSegments}}{{if $i}} + "/" + {{else}}"/" + {{end}}{{if $seg.Param}}p{{$seg.Index}}{{else}}{{printf "%q" $seg.Literal}}{{end}}{{end}}
+	cacheKey = path
+	return
+{{- end}}
+}

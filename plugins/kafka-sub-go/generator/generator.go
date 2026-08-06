@@ -3,6 +3,7 @@
 package generator
 
 import (
+	"errors"
 	"fmt"
 
 	"tgp/internal/model"
@@ -26,7 +27,7 @@ func Generate(project *model.Project, outDir string, targetModulePath string, ou
 	}
 	render := renderer.NewRenderer(project, outDir, targetModulePath, outputRelPath)
 	if !render.HasKafka() {
-		return fmt.Errorf("kafka-sub-go requires at least one @tg kafka contract")
+		return errors.New("kafka-sub-go requires at least one @tg kafka contract")
 	}
 	if err = render.RenderAll(); err != nil {
 		return fmt.Errorf("render kafka subscriber: %w", err)

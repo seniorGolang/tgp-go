@@ -31,13 +31,16 @@ func Generate(outDir string, moduleName string, jsonRPC string, rest string) (er
 	if err = renderFile(tmpl, "gitignore.tmpl", filepath.Join(outDir, fileGitignore), p); err != nil {
 		return
 	}
+	if err = renderFile(tmpl, "golangci.tmpl", filepath.Join(outDir, fileGolangci), p); err != nil {
+		return
+	}
 	if err = renderFile(tmpl, "gomod.tmpl", filepath.Join(outDir, fileGoMod), p); err != nil {
 		return
 	}
 	if err = renderFile(tmpl, "tg.tmpl", filepath.Join(outDir, dirContracts, fileTg), p); err != nil {
 		return
 	}
-	for _, iface := range p.JsonRPCIfaces {
+	for _, iface := range p.JSONRPCIfaces {
 		data := ContractIfaceData{
 			Module:        p.Module,
 			HTTPPrefix:    p.HTTPPrefix,
@@ -76,7 +79,7 @@ func Generate(outDir string, moduleName string, jsonRPC string, rest string) (er
 	if err = renderFile(tmpl, "version.tmpl", filepath.Join(outDir, dirInternal, dirTransport, fileVersion), p); err != nil {
 		return
 	}
-	for _, iface := range p.JsonRPCIfaces {
+	for _, iface := range p.JSONRPCIfaces {
 		svcDir := filepath.Join(outDir, dirInternal, dirServices, iface.FileBase)
 		svcData := struct {
 			Module      string
@@ -117,7 +120,7 @@ func Generate(outDir string, moduleName string, jsonRPC string, rest string) (er
 	}{
 		Module:          p.Module,
 		ServiceName:     p.ServiceName,
-		ServicePackages: append(append([]InterfaceSpec{}, p.JsonRPCIfaces...), p.RestIfaces...),
+		ServicePackages: append(append([]InterfaceSpec{}, p.JSONRPCIfaces...), p.RestIfaces...),
 	}
 	if err = renderFile(tmpl, "cmd.tmpl", filepath.Join(outDir, dirCmd, p.CmdPackage, fileCmd), cmdData); err != nil {
 		return

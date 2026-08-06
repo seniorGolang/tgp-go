@@ -20,7 +20,7 @@ type errorInfo struct {
 	typeID   string
 }
 
-func (r *ClientRenderer) collectMethodErrors(method *model.Method, contract *model.Contract) map[string]errorInfo {
+func (r *ClientRenderer) collectMethodErrors(method *model.Method, _contract *model.Contract) map[string]errorInfo {
 
 	errorsMap := make(map[string]errorInfo)
 
@@ -93,62 +93,25 @@ func (r *ClientRenderer) renderErrorType(errInfo errorInfo) *tsg.Statement {
 	}
 
 	stmt.Export().Interface(typeName, func(grp *tsg.Group) {
-		grp.Add(tsg.NewStatement().Id("message").Colon().Id("string").Semicolon())
+		grp.Add(tsg.NewStatement().ID("message").Colon().ID(typeString).Semicolon())
 
 		if errInfo.code != 0 {
-			grp.Add(tsg.NewStatement().Id("code").Colon().Lit(errInfo.code).Semicolon())
+			grp.Add(tsg.NewStatement().ID("code").Colon().Lit(errInfo.code).Semicolon())
 		} else {
-			grp.Add(tsg.NewStatement().Id("code").Colon().Id("number").Semicolon())
+			grp.Add(tsg.NewStatement().ID("code").Colon().ID(typeNumber).Semicolon())
 		}
 
 		if structType != nil && structType.StructFields != nil {
+			pkgPath := errInfo.pkgPath
+			if structType.ImportPkgPath != "" {
+				pkgPath = structType.ImportPkgPath
+			}
+			opts := tsInterfaceFieldOptions{
+				skipNames:  map[string]struct{}{"message": {}, "code": {}},
+				isArgument: false,
+			}
 			for _, field := range structType.StructFields {
-				fieldName, inline := r.jsonName(field)
-				if fieldName == "-" || inline {
-					continue
-				}
-
-				if fieldName == "message" || fieldName == "code" {
-					continue
-				}
-
-				fieldVar := &model.Variable{
-					TypeRef: field.TypeRef,
-					Name:    field.Name,
-				}
-				pkgPath := errInfo.pkgPath
-				if structType != nil && structType.ImportPkgPath != "" {
-					pkgPath = structType.ImportPkgPath
-				}
-				// Для полей ошибок используем isArgument=false, так как это возвращаемые значения
-				fieldTags := parseTagsFromDocs(field.Docs)
-				typeStr := r.walkVariable(field.Name, pkgPath, fieldVar, fieldTags, false).typeLink()
-
-				fieldStmt := tsg.NewStatement()
-				fieldStmt.Id(fieldName)
-
-				isOptional := false
-				if field.NumberOfPointers > 0 {
-					isOptional = true
-				} else {
-					if tagValues, ok := field.Tags["json"]; ok {
-						for _, val := range tagValues {
-							if val == "omitempty" {
-								isOptional = true
-								break
-							}
-						}
-					}
-				}
-
-				if isOptional {
-					fieldStmt.Optional()
-				}
-
-				fieldStmt.Colon()
-				fieldStmt.Add(tsg.TypeFromString(typeStr))
-				fieldStmt.Semicolon()
-				grp.Add(fieldStmt)
+				r.appendStructFieldTSInterface(grp, field, pkgPath, opts)
 			}
 		}
 	})
@@ -170,7 +133,7 @@ func (r *ClientRenderer) renderErrorUnionType(methodName string, errorsMap map[s
 
 	// Если есть ошибки, создаём union тип
 	if len(errorTypes) > 0 {
-		for i := 0; i < len(errorTypes)-1; i++ {
+		for i := range len(errorTypes) - 1 {
 			for j := i + 1; j < len(errorTypes); j++ {
 				if errorTypes[i] > errorTypes[j] {
 					errorTypes[i], errorTypes[j] = errorTypes[j], errorTypes[i]
@@ -178,13 +141,13 @@ func (r *ClientRenderer) renderErrorUnionType(methodName string, errorsMap map[s
 			}
 		}
 
-		unionTypeName := fmt.Sprintf("%sError", methodName)
+		unionTypeName := methodName + "Error"
 		stmt.Comment(fmt.Sprintf("Union type for possible errors of %s method", methodName))
 		stmt.Export().TypeAlias(unionTypeName)
 
 		unionTypes := make([]*tsg.Statement, len(errorTypes))
 		for i, errorType := range errorTypes {
-			unionTypes[i] = tsg.NewStatement().Id(errorType)
+			unionTypes[i] = tsg.NewStatement().ID(errorType)
 		}
 		stmt.Union(unionTypes...)
 

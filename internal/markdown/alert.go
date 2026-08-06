@@ -6,7 +6,7 @@ package markdown
 import "fmt"
 
 func (m *Markdown) Note(text string) *Markdown {
-	m.body = append(m.body, fmt.Sprintf("> [!NOTE]  \n> %s", text))
+	m.body = append(m.body, "> [!NOTE]  \n> "+text)
 	return m
 }
 
@@ -15,7 +15,7 @@ func (m *Markdown) Notef(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) Tip(text string) *Markdown {
-	m.body = append(m.body, fmt.Sprintf("> [!TIP]  \n> %s", text))
+	m.body = append(m.body, "> [!TIP]  \n> "+text)
 	return m
 }
 
@@ -24,7 +24,7 @@ func (m *Markdown) Tipf(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) Important(text string) *Markdown {
-	m.body = append(m.body, fmt.Sprintf("> [!IMPORTANT]  \n> %s", text))
+	m.body = append(m.body, "> [!IMPORTANT]  \n> "+text)
 	return m
 }
 
@@ -33,7 +33,7 @@ func (m *Markdown) Importantf(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) Warning(text string) *Markdown {
-	m.body = append(m.body, fmt.Sprintf("> [!WARNING]  \n> %s", text))
+	m.body = append(m.body, "> [!WARNING]  \n> "+text)
 	return m
 }
 
@@ -42,7 +42,7 @@ func (m *Markdown) Warningf(format string, args ...any) *Markdown {
 }
 
 func (m *Markdown) Caution(text string) *Markdown {
-	m.body = append(m.body, fmt.Sprintf("> [!CAUTION]  \n> %s", text))
+	m.body = append(m.body, "> [!CAUTION]  \n> "+text)
 	return m
 }
 

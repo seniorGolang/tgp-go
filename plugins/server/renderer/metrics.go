@@ -3,14 +3,12 @@
 package renderer
 
 import (
-	"fmt"
 	"path"
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
-	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
@@ -18,8 +16,6 @@ import (
 func (r *contractRenderer) RenderMetrics() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	srcFile.ImportName("context", "context")
 	srcFile.ImportName(PackageStrconv, "strconv")
 	srcFile.ImportName(PackageTime, "time")
@@ -27,7 +23,7 @@ func (r *contractRenderer) RenderMetrics() (err error) {
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(PackagePrometheus, "metrics")
 	srcFile.ImportName("fmt", "fmt")
-	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
+	srcFile.ImportName(r.pkgPath(r.outDir)+"/srvctx", "srvctx")
 
 	typeGen := types.NewGenerator(r.project, &srcFile)
 
@@ -100,7 +96,7 @@ func (r *contractRenderer) metricFuncBody(method *model.Method) func(bg *Group) 
 					Id("errCode").Op("=").Id("ec").Dot("Code").Call(),
 				),
 			),
-			Id("clientID").Op(":=").Qual(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "GetClientID").Call(Id(VarNameCtx)),
+			Id("clientID").Op(":=").Qual(r.pkgPath(r.outDir)+"/srvctx", "GetClientID").Call(Id(VarNameCtx)),
 			If(Id("success")).Block(
 				Id("m").Dot("metrics").Dot("RequestCount").Dot("WithLabelValues").Call(
 					Id("metricService"+r.contract.Name),

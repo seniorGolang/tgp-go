@@ -57,9 +57,11 @@ func (d *Diagram) String() (s string) {
 		return entities[i].Name < entities[j].Name
 	})
 
+	var sSb60 strings.Builder
 	for _, e := range entities {
-		s += e.string() + internal.LineFeed()
+		sSb60.WriteString(e.string() + internal.LineFeed())
 	}
+	s += sSb60.String()
 	return s
 }
 

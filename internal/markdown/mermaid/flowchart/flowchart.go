@@ -29,11 +29,9 @@ func NewFlowchart(w io.Writer, opts ...Option) (f *Flowchart) {
 
 	lines := []string{}
 	if strings.TrimSpace(c.title) != noTitle {
-		lines = append(lines, "---")
-		lines = append(lines, fmt.Sprintf("title: %s", c.title))
-		lines = append(lines, "---")
+		lines = append(lines, "---", "title: "+c.title, "---")
 	}
-	lines = append(lines, fmt.Sprintf("flowchart %s", c.oriental.string()))
+	lines = append(lines, "flowchart "+c.oriental.string())
 
 	return &Flowchart{
 		body:   lines,

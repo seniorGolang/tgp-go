@@ -8,6 +8,7 @@ import (
 
 	"github.com/dave/jennifer/jen"
 
+	"tgp/internal/generated"
 	"tgp/plugins/client-go/goimports"
 )
 
@@ -16,10 +17,11 @@ type GoFile struct {
 	filepath string
 }
 
-func NewSrcFile(pkgName string) (f GoFile) {
-	return GoFile{
-		File: jen.NewFile(pkgName),
-	}
+func NewSrcFile(pkgName string) (file GoFile) {
+
+	jenFile := jen.NewFile(pkgName)
+	jenFile.PackageComment(generated.ByToolGateway)
+	return GoFile{File: jenFile}
 }
 
 func (src *GoFile) Save(filePath string) (err error) {
@@ -27,7 +29,7 @@ func (src *GoFile) Save(filePath string) (err error) {
 	src.filepath = filePath
 
 	dir := filepath.Dir(filePath)
-	if err = os.MkdirAll(dir, 0700); err != nil {
+	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
 

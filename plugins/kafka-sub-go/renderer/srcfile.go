@@ -8,6 +8,7 @@ import (
 
 	"github.com/dave/jennifer/jen"
 
+	"tgp/internal/generated"
 	"tgp/plugins/kafka-sub-go/goimports"
 )
 
@@ -18,7 +19,9 @@ type GoFile struct {
 
 func NewSrcFile(pkgName string) (file GoFile) {
 
-	return GoFile{File: jen.NewFile(pkgName)}
+	jenFile := jen.NewFile(pkgName)
+	jenFile.PackageComment(generated.ByToolGateway)
+	return GoFile{File: jenFile}
 }
 
 func (file *GoFile) Save(filePath string) (err error) {

@@ -1,8 +1,7 @@
 // Copyright (c) 2026 Khramtsov Aleksei (seniorGolang@gmail.com).
 // conditions defined in file 'LICENSE', which is part of this project source code.
-package server
+package sequence
 
-type server struct {
-	serverID  uint64
-	specBytes []byte
-}
+const (
+	fontTrebuchet = "trebuchet ms, verdana, arial"
+)

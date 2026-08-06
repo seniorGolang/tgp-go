@@ -4,6 +4,7 @@ package tsg
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -60,7 +61,7 @@ func (s *Statement) Line() (out *Statement) {
 	return s
 }
 
-func (s *Statement) Id(name string) (out *Statement) {
+func (s *Statement) ID(name string) (out *Statement) {
 
 	s.writeIndent()
 	s.code.WriteString(name)
@@ -73,13 +74,13 @@ func (s *Statement) Lit(value any) (out *Statement) {
 	var str string
 	switch v := value.(type) {
 	case string:
-		str = fmt.Sprintf(`"%s"`, strings.ReplaceAll(strings.ReplaceAll(v, `"`, `\"`), "\n", "\\n"))
+		str = fmt.Sprintf("%q", v)
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		str = fmt.Sprintf("%d", v)
 	case float32, float64:
 		str = fmt.Sprintf("%g", v)
 	case bool:
-		str = fmt.Sprintf("%t", v)
+		str = strconv.FormatBool(v)
 	case nil:
 		str = "null"
 	default:
@@ -91,8 +92,8 @@ func (s *Statement) Lit(value any) (out *Statement) {
 
 func (s *Statement) Comment(text string) (out *Statement) {
 
-	lines := strings.Split(text, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(text, "\n")
+	for line := range lines {
 		s.writeIndent()
 		if line != "" {
 			s.code.WriteString("// " + line)
@@ -400,7 +401,7 @@ func (s *Statement) writeIndent() {
 
 	if s.code.Len() > 0 {
 		str := s.code.String()
-		if len(str) > 0 {
+		if str != "" {
 			lastChar := str[len(str)-1:]
 			if lastChar != "\n" && lastChar != " " && lastChar != "{" && lastChar != "(" {
 				return
@@ -577,6 +578,22 @@ func (s *Statement) Array(elem *Statement) (out *Statement) {
 		s.code.WriteString(elem.String())
 	}
 	s.code.WriteString("[]")
+	return s
+}
+
+// ArrayLit пишет [elem, elem, ...].
+func (s *Statement) ArrayLit(elems ...*Statement) (out *Statement) {
+
+	s.code.WriteString("[")
+	for i, elem := range elems {
+		if i > 0 {
+			s.code.WriteString(", ")
+		}
+		if elem != nil {
+			s.code.WriteString(elem.String())
+		}
+	}
+	s.code.WriteString("]")
 	return s
 }
 
@@ -927,7 +944,7 @@ func (g *Group) Add(stmt *Statement) {
 	}
 }
 
-func (g *Group) Id(name string) (out *Statement) {
+func (g *Group) ID(name string) (out *Statement) {
 
 	stmt := NewStatement()
 	stmt.indent = g.statement.indent
@@ -944,13 +961,13 @@ func (g *Group) Lit(value any) (out *Statement) {
 	var str string
 	switch v := value.(type) {
 	case string:
-		str = fmt.Sprintf(`"%s"`, strings.ReplaceAll(strings.ReplaceAll(v, `"`, `\"`), "\n", "\\n"))
+		str = fmt.Sprintf("%q", v)
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		str = fmt.Sprintf("%d", v)
 	case float32, float64:
 		str = fmt.Sprintf("%g", v)
 	case bool:
-		str = fmt.Sprintf("%t", v)
+		str = strconv.FormatBool(v)
 	case nil:
 		str = "null"
 	default:

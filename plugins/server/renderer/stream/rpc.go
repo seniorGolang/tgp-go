@@ -11,18 +11,22 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
-	Version             = "2.0"
-	MethodStream        = "$/stream"
-	MethodStreamEnd     = "$/stream.end"
-	MethodCancel        = "$/cancel"
-	parseError          = -32700
-	invalidRequestError = -32600
-	methodNotFoundError = -32601
-	invalidParamsError  = -32602
-	internalError       = -32603
+	Version                = "2.0"
+	MethodStream           = "$/stream"
+	MethodStreamEnd        = "$/stream.end"
+	MethodCancel           = "$/cancel"
+	DefaultMaxOpenStreams  = 64
+	DefaultIncomingBuffer  = 32
+	incomingBufferOverflow = "incoming buffer overflow"
+	parseError             = -32700
+	invalidRequestError    = -32600
+	methodNotFoundError    = -32601
+	invalidParamsError     = -32602
+	internalError          = -32603
 )
 
 // Message — JSON-RPC 2.0 envelope (streaming profile).
@@ -66,40 +70,73 @@ type Conn interface {
 	Close() (err error)
 }
 
+type writeDeadliner interface {
+	SetWriteDeadline(deadline time.Time) (err error)
+}
+
 // Handler обрабатывает открытие stream-RPC.
 type Handler func(ctx context.Context, req Message, sess *Session) (result json.RawMessage, err error)
 
 // Session — multiplex-сессия поверх одного соединения.
 type Session struct {
-	conn     Conn
-	handlers map[string]Handler
-	mu       sync.Mutex
-	streams  map[string]*openStream
-	writeMu  sync.Mutex
-	closed   atomic.Bool
+	conn           Conn
+	handlers       map[string]Handler
+	mu             sync.Mutex
+	streams        map[string]*openStream
+	writeMu        sync.Mutex
+	closed         atomic.Bool
+	maxOpenStreams int
+	incomingBuffer int
+	writeTimeout   time.Duration
 }
 
 type openStream struct {
-	cancel   context.CancelFunc
-	in       chan json.RawMessage
-	inClosed atomic.Bool
-	seq      atomic.Int64
+	ctx       context.Context
+	cancel    context.CancelFunc
+	in        chan json.RawMessage
+	inMu      sync.Mutex
+	inClosed  bool
+	finalized atomic.Bool
+	seq       atomic.Int64
+}
+
+func (st *openStream) claimFinal() (ok bool) {
+
+	return st.finalized.CompareAndSwap(false, true)
 }
 
 // NewSession создаёт session с картой method→handler.
-func NewSession(conn Conn, handlers map[string]Handler) (sess *Session) {
+// maxOpenStreams ≤ 0 означает DefaultMaxOpenStreams.
+// writeTimeout ≤ 0 отключает write deadline.
+func NewSession(conn Conn, handlers map[string]Handler, maxOpenStreams int, writeTimeout time.Duration) (sess *Session) {
 
-	return &Session{
-		conn:     conn,
-		handlers: handlers,
-		streams:  make(map[string]*openStream),
+	if maxOpenStreams <= 0 {
+		maxOpenStreams = DefaultMaxOpenStreams
 	}
+	sess = &Session{
+		conn:           conn,
+		handlers:       handlers,
+		streams:        make(map[string]*openStream),
+		maxOpenStreams: maxOpenStreams,
+		incomingBuffer: DefaultIncomingBuffer,
+		writeTimeout:   writeTimeout,
+	}
+	return
 }
 
 // Serve читает сообщения до закрытия соединения.
 func (s *Session) Serve(ctx context.Context) {
 
 	defer s.Close()
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.Close()
+		case <-stop:
+		}
+	}()
 	for {
 		if ctx.Err() != nil {
 			return
@@ -156,9 +193,23 @@ func (s *Session) dispatch(ctx context.Context, msg Message) {
 		return
 	}
 	streamID := string(msg.ID)
-	streamCtx, cancel := context.WithCancel(ctx)
-	st := &openStream{cancel: cancel, in: make(chan json.RawMessage, 32)}
 	s.mu.Lock()
+	if _, exists := s.streams[streamID]; exists {
+		s.mu.Unlock()
+		_ = s.Write(errorMessage(msg.ID, invalidRequestError, "duplicate stream id"))
+		return
+	}
+	if len(s.streams) >= s.maxOpenStreams {
+		s.mu.Unlock()
+		_ = s.Write(errorMessage(msg.ID, invalidRequestError, "too many open streams"))
+		return
+	}
+	streamCtx, cancel := context.WithCancel(ctx)
+	buf := s.incomingBuffer
+	if buf <= 0 {
+		buf = DefaultIncomingBuffer
+	}
+	st := &openStream{ctx: streamCtx, cancel: cancel, in: make(chan json.RawMessage, buf)}
 	s.streams[streamID] = st
 	s.mu.Unlock()
 
@@ -166,21 +217,26 @@ func (s *Session) dispatch(ctx context.Context, msg Message) {
 		defer func() {
 			cancel()
 			s.mu.Lock()
-			delete(s.streams, streamID)
+			if s.streams[streamID] == st {
+				delete(s.streams, streamID)
+			}
 			s.mu.Unlock()
 		}()
+		defer func() {
+			if rec := recover(); rec != nil {
+				if !st.claimFinal() {
+					return
+				}
+				_ = s.Write(errorMessage(msg.ID, internalError, "internal error"))
+			}
+		}()
 		result, err := handler(streamCtx, msg, s)
+		if !st.claimFinal() {
+			return
+		}
 		if err != nil {
-			code := internalError
-			var rpcErr *Error
-			if errors.As(err, &rpcErr) {
-				_ = s.Write(errorMessage(msg.ID, rpcErr.Code, rpcErr.Message))
-				return
-			}
-			if coder, ok := err.(interface{ Code() int }); ok {
-				code = coder.Code()
-			}
-			_ = s.Write(errorMessage(msg.ID, code, err.Error()))
+			code, message := publicRPCError(err)
+			_ = s.Write(errorMessage(msg.ID, code, message))
 			return
 		}
 		_ = s.Write(Message{ID: msg.ID, Version: Version, Result: result})
@@ -199,10 +255,42 @@ func (s *Session) handleChunk(msg Message) {
 	if st == nil || st.in == nil {
 		return
 	}
-	select {
-	case st.in <- params.Item:
-	default:
+	overflow, ignored := st.enqueue(params.Item)
+	if ignored {
+		return
 	}
+	if overflow {
+		s.failIncoming(st, params.ID)
+	}
+}
+
+// enqueue кладёт item во входящий канал. overflow — буфер полон; ignored — поток закрыт/отменён.
+func (st *openStream) enqueue(item json.RawMessage) (overflow bool, ignored bool) {
+
+	st.inMu.Lock()
+	defer st.inMu.Unlock()
+	if st.inClosed || st.ctx.Err() != nil {
+		ignored = true
+		return
+	}
+	select {
+	case st.in <- item:
+	case <-st.ctx.Done():
+		ignored = true
+	default:
+		overflow = true
+	}
+	return
+}
+
+func (s *Session) failIncoming(st *openStream, id json.RawMessage) {
+
+	st.cancel()
+	s.closeIncoming(st)
+	if !st.claimFinal() {
+		return
+	}
+	_ = s.Write(errorMessage(id, invalidRequestError, incomingBufferOverflow))
 }
 
 func (s *Session) handleEnd(msg Message) {
@@ -225,9 +313,13 @@ func (s *Session) closeIncoming(st *openStream) {
 	if st == nil || st.in == nil {
 		return
 	}
-	if st.inClosed.CompareAndSwap(false, true) {
-		close(st.in)
+	st.inMu.Lock()
+	defer st.inMu.Unlock()
+	if st.inClosed {
+		return
 	}
+	st.inClosed = true
+	close(st.in)
 }
 
 func (s *Session) handleCancel(msg Message) {
@@ -255,7 +347,31 @@ func (s *Session) Write(msg Message) (err error) {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if s.writeTimeout > 0 {
+		if deadliner, ok := s.conn.(writeDeadliner); ok {
+			if err = deadliner.SetWriteDeadline(time.Now().Add(s.writeTimeout)); err != nil {
+				return
+			}
+		}
+	}
 	return s.conn.WriteJSON(msg)
+}
+
+// publicRPCError возвращает код/сообщение, безопасные для клиента.
+func publicRPCError(err error) (code int, message string) {
+
+	if rpcErr, ok := errors.AsType[*Error](err); ok {
+		return rpcErr.Code, rpcErr.Message
+	}
+	code = internalError
+	if coder, ok := err.(interface{ Code() int }); ok {
+		code = coder.Code()
+	}
+	if code == internalError {
+		return internalError, "internal error"
+	}
+	message = err.Error()
+	return
 }
 
 // SendChunk отправляет $/stream notification с item.
@@ -309,7 +425,7 @@ func PumpOut(ctx context.Context, sess *Session, id json.RawMessage, out <-chan 
 			if !open {
 				return nil
 			}
-			if err = sess.SendChunk(id, json.RawMessage(item)); err != nil {
+			if err = sess.SendChunk(id, item); err != nil {
 				return
 			}
 		}

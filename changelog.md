@@ -1,5 +1,80 @@
 # Changelog
 
+## 1.1.0 — 2026-09-15
+
+### Аннотации
+
+| Аннотация | Уровень | Назначение |
+|-----------|---------|------------|
+| `security` | пакет | app2app: `http:bearer[:JWT][|jwks=/path/:sub/…]`, `oauth2:tokenExchange`, `oauth2:clientCredentials[:jwt-bearer]`; `|jwks=` — `:name` как в `http-path` (claims/`kid`); без `|jwks=` — RFC 8414; URL в аннотации запрещены |
+| `json:inline` / anonymous embed | поле | разворот вложенного struct в wire / OpenAPI / клиентах |
+
+```mermaid
+flowchart LR
+    sec["@tg security"] --> swagger[swagger]
+    sec --> server["server Auth"]
+    sec --> client["client-go Auth"]
+    server --> wellknown["RFC 9728 well-known"]
+    client --> meta["9728 WellKnownURL"]
+    client --> tokens["7523 jwt-bearer → 8693 Exchange"]
+```
+
+### Возможности
+
+| Область | Дельта |
+|---------|--------|
+| `server` | `Auth(...AuthOption)` — JWT fail-closed → `srvctx.GetSubject`; AS/Resource/Audience; `ClientHTTP`/`ConfigTLS`/`Bind`/`Allow`/`Verify`; 401 + RFC 9728 well-known |
+| `client-go` | `Auth(...AuthOption)`: `TokenURL` / `Assertion` / `ResourceTokens` / `TokenRetry`; `TokenSource` остаётся `Option`; пакет `token` (RFC 7523 → 8693; RFC 9728 `WellKnownURL`/`FetchMetadata`) |
+| `client-go` | skew `SkewFraction` (default 10% TTL) + `SkewMin`/`SkewMax`/`EarlyExpiry`; proactive RFC 9728 metadata до API + кэш `TokenSource`; на 401 — один re-obtain Resource (rewindable body); `TokenRetry` — IdP/metadata 429/5xx/network |
+| `swagger` | security-схемы из `@tg security` (`x-jwks-uri`, `x-grant-type`, `tokenUrl={authorizationServer}`) |
+| `server` | `ServeHealth(log, path, address, opts…)` — `WithResponse` / `WithCheck` (probe 5s → `503`) |
+| `server` | `Shutdown()` / `ShutdownWithTimeout(timeout)` — параллельный drain HTTP+metrics (`errors.Join`); `Shutdown` = default 30s |
+| `server` | `MaxOpenStreams` (default 64); `MaxWSConnections` / `MaxSSEConnections` (default 512; `0` = off) |
+| `server` / `client-go` | `DurationBuckets` / `LatencyBuckets` до `WithMetrics()` (плотная сетка 1–50 ms → 10 s) |
+| `init-go` | scaffold: `signal.NotifyContext`, `SHUTDOWN_TIMEOUT` / `ShutdownWithTimeout`, `ServeHealth` без `"ok"`, `PanicOnError`, `.golangci.yml` |
+| `client-ts` | stream: `onReady?: () => void` после SSE response / WS open; headers/identity/stream через tsg |
+| `client-ts` | `form.ts`: изоморфные `parseFormValue` / `parseCSVFormValue` (browser + Node) |
+| `astg` | anonymous embed + `json:inline` на struct fields |
+
+### Исправления
+
+| Область | Проблема | Исправление |
+|---------|----------|-------------|
+| `server` / clients | слайсы в query/header ломались (`fmt.Sprint([]T)`) | CSV `join(",")` + поэлементный parse (TS ещё cookie/form) |
+| `client-go` / `client-ts` | `http-prefix` удваивался **или** mount endpoint (`/cli`) терялся | join path endpoint + заявленный route со сворачиванием overlapping-сегментов |
+| `client-go` | тело handshake-ответа при ошибке WS Dial не закрывалось | drain (`LimitReader` 1 MiB) + `Close` |
+| `client-ts` | неограниченный входящий WS-буфер | `maxBufferedMessages = 32` → overflow close |
+| `server` | SSE `streamCtx` не отменялся после конца стрима | `WithCancel` внутри `BodyStreamWriter` + `defer cancel` |
+| `server` | JSON-RPC batch видел чужой/пустой Fiber Ctx для headers/cookies | snapshot overlay в context на входе `serveBatch` / method |
+| `astg` | типы с `MarshalJSON`/`UnmarshalJSON` раскрывали поля в схемах | opaque (поля не тянутся в wire-замыкание) |
+| `astg` | приватные поля и шумные imports в модели | только exported fields; imports по определению типа |
+| `astg` / hook | `--contracts` урезал модель в пайплайне и БД | фильтр у генераторов; `astg-hook` пишет полный snapshot |
+
+### Поведение
+
+| Область | Дельта |
+|---------|--------|
+| `server` | Fiber `Immutable` всегда; без лишних `Clone`/`CopyString` |
+| `server` | normalize `X-Client-Id` (`unknown` / `invalid` / charset+len); `MaxClientIDs` (default 64 → `other`; `0` = off) |
+| `server` | metric `path` = Fiber route template (`unmatched`); truncate panic URL / viewer / OTEL attrs; OTEL metrics без request `Host` |
+
+### Миграция
+
+| Область | Было | Стало |
+|---------|------|-------|
+| `server` bearer | `WithBearer(Subject\|Token, AS, Resource, Audience)` | `Auth(AS, Resource, Audience)` + опц. `Bind`/`Allow`/`Verify` |
+| `client-go` app2app | `TokenURL` / `Assertion` / `ResourceTokens` как `Option` | `Auth(TokenURL, Assertion)` / `Auth(ResourceTokens)`; `TokenSource` — `Option` |
+| `server` health | `ServeHealth(log, path, addr, response)` | `ServeHealth(…, opts…)` + `WithResponse` / `WithCheck` |
+| `server` shutdown | только `Shutdown()` | `Shutdown()` + `ShutdownWithTimeout(timeout)` (`Shutdown` → default 30s) |
+| `@tg security` | URL / `openId` / legacy oauth2 flows в аннотации | app2app-формы без URL; AS/API — runtime options |
+| Prometheus buckets | редкая сетка `0.001…10` | плотная 1–50 ms + override `DurationBuckets` / `LatencyBuckets` |
+| `--contracts` | фильтр в `astg` → урезанный snapshot в БД | полный проект в astg/hook; фильтр на копии у генератора |
+| query/header slices | `fmt.Sprint([]T)` | CSV wire — перегенерировать server/clients |
+| `MaxWSConnections` / `MaxSSEConnections` | `0` = off (без default) | default 512; `0` = explicit unlimited |
+| `MaxClientIDs` | `<= 0` игнорировалось | `0` = off; `< 0` игнорируется |
+
+---
+
 ## 1.0.9 — 2026-08-01
 
 ### Плагины

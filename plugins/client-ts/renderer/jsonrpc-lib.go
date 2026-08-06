@@ -7,44 +7,41 @@ import (
 	"os"
 	"path"
 
-	"tgp/internal/generated"
 	"tgp/plugins/client-ts/tsg"
 )
 
-func (r *ClientRenderer) RenderJsonRPCLibrary() (err error) {
+func (r *ClientRenderer) RenderJSONRPCLibrary() (err error) {
 
 	outDir := r.outDir
 
 	jsonrpcDir := path.Join(outDir, "jsonrpc")
-	if err = os.MkdirAll(jsonrpcDir, 0700); err != nil {
+	if err = os.MkdirAll(jsonrpcDir, 0o700); err != nil {
 		return fmt.Errorf("failed to create jsonrpc directory: %w", err)
 	}
 
 	utilsDir := path.Join(jsonrpcDir, "utils")
-	if err = os.MkdirAll(utilsDir, 0700); err != nil {
+	if err = os.MkdirAll(utilsDir, 0o700); err != nil {
 		return fmt.Errorf("failed to create jsonrpc/utils directory: %w", err)
 	}
 
-	if err = r.renderJsonRPCClient(jsonrpcDir); err != nil {
+	if err = r.renderJSONRPCClient(jsonrpcDir); err != nil {
 		return
 	}
 
-	if err = r.renderJsonRPCUtils(utilsDir); err != nil {
+	if err = r.renderJSONRPCUtils(utilsDir); err != nil {
 		return
 	}
 
-	if err = r.renderJsonRPCTsUtils(utilsDir); err != nil {
+	if err = r.renderJSONRPCTSUtils(utilsDir); err != nil {
 		return
 	}
 
 	return
 }
 
-func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
+func (r *ClientRenderer) renderJSONRPCClient(jsonrpcDir string) (err error) {
 
 	file := tsg.NewFile()
-	file.Comment(generated.ByToolGatewayComment)
-
 	file.ImportType("./utils/jsonrpc", "RequestRPC", "ResponseRPC", "ID")
 	file.ImportType("../options", "ClientOptions")
 	file.ImportNamed("../headers", "buildClientHeaders")
@@ -53,62 +50,62 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 		Comment("JSON-RPC 2.0 client").
 		Export().Class("JsonRpcClient", func(grp *tsg.Group) {
 		// Приватные поля
-		grp.Add(tsg.NewStatement().Private().Id("options").Colon().Id("ClientOptions").Semicolon())
+		grp.Add(tsg.NewStatement().Private().ID("options").Colon().ID("ClientOptions").Semicolon())
 		grp.Line()
 
 		// Конструктор
 		constructor := tsg.NewStatement().
-			Id("constructor").
+			ID("constructor").
 			Params(func(cg *tsg.Group) {
-				cg.Add(tsg.NewStatement().Id("options").Colon().Id("ClientOptions"))
+				cg.Add(tsg.NewStatement().ID("options").Colon().ID("ClientOptions"))
 			}).
 			Block(func(cg *tsg.Group) {
 				cg.Add(tsg.NewStatement().
 					This().
 					Dot("options").
 					Op("=").
-					Id("options").
+					ID("options").
 					Semicolon())
 			})
 		grp.Add(constructor)
 		grp.Line()
 
 		// Публичный метод для генерации ID
-		generateIdStmt := tsg.NewStatement().
-			Id("generateId").
+		generateIDStmt := tsg.NewStatement().
+			ID("generateId").
 			Call().
 			Colon().
-			Id("string").
+			ID(typeString).
 			Block(func(mg *tsg.Group) {
 				mg.Add(tsg.NewStatement().
 					Return().
-					Id("this.options.idGeneratorFn").
+					ID("this.options.idGeneratorFn").
 					Op("?").
-					Id("this.options.idGeneratorFn").
+					ID("this.options.idGeneratorFn").
 					Call().
 					Colon().
-					Id("crypto").
+					ID("crypto").
 					Dot("randomUUID").
 					Call().
 					Semicolon())
 			})
-		grp.Add(generateIdStmt)
+		grp.Add(generateIDStmt)
 		grp.Line()
 
 		// Метод call для одиночного запроса
 		callMethodParams := tsg.NewStatement().
 			Params(func(pg *tsg.Group) {
-				pg.Add(tsg.NewStatement().Id("method").Colon().Id("string"))
-				pg.Add(tsg.NewStatement().Id("params").Optional().Colon().Id("any"))
+				pg.Add(tsg.NewStatement().ID("method").Colon().ID(typeString))
+				pg.Add(tsg.NewStatement().ID("params").Optional().Colon().ID(typeAny))
 			})
 		callReturnType := tsg.NewStatement().
 			ObjectLiteral(func(og *tsg.Group) {
 				og.Add(tsg.NewStatement().ObjectField("type", tsg.NewStatement().Union(
 					tsg.NewStatement().Lit("success"),
-					tsg.NewStatement().Lit("error"),
+					tsg.NewStatement().Lit(typeError),
 				)))
-				og.Add(tsg.NewStatement().OptionalField("result", tsg.NewStatement().Any()))
-				og.Add(tsg.NewStatement().OptionalField("error", tsg.NewStatement().Any()))
+				og.Add(tsg.NewStatement().OptionalField(nameResult, tsg.NewStatement().Any()))
+				og.Add(tsg.NewStatement().OptionalField(typeError, tsg.NewStatement().Any()))
 			})
 		callMethod := tsg.NewStatement().
 			Comment("Calls a JSON-RPC method").
@@ -116,12 +113,12 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				idGen := tsg.NewStatement().
 					Const("id").
 					Op("=").
-					Id("this.options.idGeneratorFn").
+					ID("this.options.idGeneratorFn").
 					Op("?").
-					Id("this.options.idGeneratorFn").
+					ID("this.options.idGeneratorFn").
 					Call().
 					Colon().
-					Id("crypto").
+					ID("crypto").
 					Dot("randomUUID").
 					Call().
 					Semicolon()
@@ -130,13 +127,13 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				requestStmt := tsg.NewStatement().
 					Const("request").
 					Colon().
-					Id("any").
+					ID(typeAny).
 					Op("=").
 					ObjectLiteral(func(og *tsg.Group) {
 						og.Add(tsg.NewStatement().ObjectField("jsonrpc", tsg.NewStatement().Lit("2.0")))
-						og.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Id("method")))
-						og.Add(tsg.NewStatement().ObjectField("params", tsg.NewStatement().Id("params").Op("||").ObjectLiteral(nil)))
-						og.Add(tsg.NewStatement().ObjectField("id", tsg.NewStatement().Id("id")))
+						og.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().ID("method")))
+						og.Add(tsg.NewStatement().ObjectField("params", tsg.NewStatement().ID("params").Op("||").ObjectLiteral(nil)))
+						og.Add(tsg.NewStatement().ObjectField("id", tsg.NewStatement().ID("id")))
 					}).
 					Semicolon()
 				bg.Add(requestStmt)
@@ -144,10 +141,10 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				headersVar := tsg.NewStatement().
 					Const("headers").
 					Colon().
-					Id("Record").
-					Generic("string", "string").
+					ID("Record").
+					Generic(typeString, typeString).
 					Op("=").
-					Await(tsg.NewStatement().Id("buildClientHeaders").Call(tsg.NewStatement().This().Dot("options"))).
+					Await(tsg.NewStatement().ID("buildClientHeaders").Call(tsg.NewStatement().This().Dot("options"))).
 					Semicolon()
 				bg.Add(headersVar)
 
@@ -155,20 +152,20 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				fetchCall := tsg.NewStatement().
 					Const("response").
 					Colon().
-					Id("Response").
+					ID("Response").
 					Op("=").
 					Await(
 						tsg.NewStatement().
-							Id("fetch").
+							ID("fetch").
 							Call(
-								tsg.NewStatement().Id("this.options.url"),
+								tsg.NewStatement().ID("this.options.url"),
 								tsg.NewStatement().ObjectLiteral(func(og *tsg.Group) {
-									og.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit("POST")))
+									og.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit(methodPOST)))
 									og.Add(tsg.NewStatement().ObjectField("headers", tsg.NewStatement().ObjectLiteral(func(hg *tsg.Group) {
 										hg.Add(tsg.NewStatement().ObjectField("Content-Type", tsg.NewStatement().Lit("application/json")))
-										hg.Add(tsg.NewStatement().Spread(tsg.NewStatement().Id("headers")))
+										hg.Add(tsg.NewStatement().Spread(tsg.NewStatement().ID("headers")))
 									})))
-									og.Add(tsg.NewStatement().ObjectField("body", tsg.NewStatement().Id("JSON.stringify").Call(tsg.NewStatement().Id("request"))))
+									og.Add(tsg.NewStatement().ObjectField("body", tsg.NewStatement().ID("JSON.stringify").Call(tsg.NewStatement().ID("request"))))
 								}),
 							),
 					).
@@ -176,36 +173,36 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				bg.Add(fetchCall)
 
 				bg.If(
-					tsg.NewStatement().Op("!").Id("response").Dot("ok"),
+					tsg.NewStatement().Op("!").ID("response").Dot("ok"),
 					func(ig *tsg.Group) {
 						ig.Throw(tsg.NewStatement().
 							New("Error").
-							Call(tsg.NewStatement().Lit("HTTP error: ").Op("+").Id("response.status")))
+							Call(tsg.NewStatement().Lit("HTTP error: ").Op("+").ID("response.status")))
 					},
 				)
 
 				parse := tsg.NewStatement().
 					Const("data").
 					Colon().
-					Id("any").
+					ID(typeAny).
 					Op("=").
-					Await(tsg.NewStatement().Id("response").Dot("json").Call()).
+					Await(tsg.NewStatement().ID("response").Dot("json").Call()).
 					Semicolon()
 				bg.Add(parse)
 
 				bg.If(
-					tsg.NewStatement().Id("data.error"),
+					tsg.NewStatement().ID("data.error"),
 					func(ig *tsg.Group) {
 						ig.Return(tsg.NewStatement().ObjectLiteral(func(og *tsg.Group) {
-							og.Add(tsg.NewStatement().ObjectField("type", tsg.NewStatement().Lit("error")))
-							og.Add(tsg.NewStatement().ObjectField("error", tsg.NewStatement().Id("data.error")))
+							og.Add(tsg.NewStatement().ObjectField("type", tsg.NewStatement().Lit(typeError)))
+							og.Add(tsg.NewStatement().ObjectField(typeError, tsg.NewStatement().ID("data.error")))
 						}))
 					},
 				)
 
 				bg.Return(tsg.NewStatement().ObjectLiteral(func(og *tsg.Group) {
 					og.Add(tsg.NewStatement().ObjectField("type", tsg.NewStatement().Lit("success")))
-					og.Add(tsg.NewStatement().ObjectField("result", tsg.NewStatement().Id("data.result")))
+					og.Add(tsg.NewStatement().ObjectField(nameResult, tsg.NewStatement().ID("data.result")))
 				}))
 			})
 		grp.Add(callMethod)
@@ -214,10 +211,10 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 		// Метод callBatch для batch запросов
 		batchParams := tsg.NewStatement().
 			Params(func(pg *tsg.Group) {
-				pg.Add(tsg.NewStatement().Id("requests").Colon().ReadonlyArray(tsg.NewStatement().Id("RequestRPC")))
+				pg.Add(tsg.NewStatement().ID("requests").Colon().ReadonlyArray(tsg.NewStatement().ID("RequestRPC")))
 			})
 		batchReturnType := tsg.NewStatement().
-			Nullable(tsg.NewStatement().Id("Map").Generic("ID", "ResponseRPC"))
+			Nullable(tsg.NewStatement().ID("Map").Generic("ID", "ResponseRPC"))
 		batchMethod := tsg.NewStatement().
 			Comment("Calls multiple JSON-RPC methods in a single request").
 			Comment("@returns Map with response ID as key and ResponseRPC as value, or null on error").
@@ -225,10 +222,10 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				headersVar := tsg.NewStatement().
 					Const("headers").
 					Colon().
-					Id("Record").
-					Generic("string", "string").
+					ID("Record").
+					Generic(typeString, typeString).
 					Op("=").
-					Await(tsg.NewStatement().Id("buildClientHeaders").Call(tsg.NewStatement().This().Dot("options"))).
+					Await(tsg.NewStatement().ID("buildClientHeaders").Call(tsg.NewStatement().This().Dot("options"))).
 					Semicolon()
 				bg.Add(headersVar)
 
@@ -236,20 +233,20 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				fetchCall := tsg.NewStatement().
 					Const("response").
 					Colon().
-					Id("Response").
+					ID("Response").
 					Op("=").
 					Await(
 						tsg.NewStatement().
-							Id("fetch").
+							ID("fetch").
 							Call(
-								tsg.NewStatement().Id("this.options.url"),
+								tsg.NewStatement().ID("this.options.url"),
 								tsg.NewStatement().ObjectLiteral(func(og *tsg.Group) {
-									og.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit("POST")))
+									og.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit(methodPOST)))
 									og.Add(tsg.NewStatement().ObjectField("headers", tsg.NewStatement().ObjectLiteral(func(hg *tsg.Group) {
 										hg.Add(tsg.NewStatement().ObjectField("Content-Type", tsg.NewStatement().Lit("application/json")))
-										hg.Add(tsg.NewStatement().Spread(tsg.NewStatement().Id("headers")))
+										hg.Add(tsg.NewStatement().Spread(tsg.NewStatement().ID("headers")))
 									})))
-									og.Add(tsg.NewStatement().ObjectField("body", tsg.NewStatement().Id("JSON.stringify").Call(tsg.NewStatement().Id("requests"))))
+									og.Add(tsg.NewStatement().ObjectField("body", tsg.NewStatement().ID("JSON.stringify").Call(tsg.NewStatement().ID("requests"))))
 								}),
 							),
 					).
@@ -257,25 +254,25 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				bg.Add(fetchCall)
 
 				bg.If(
-					tsg.NewStatement().Op("!").Id("response").Dot("ok"),
+					tsg.NewStatement().Op("!").ID("response").Dot("ok"),
 					func(ig *tsg.Group) {
-						ig.Return(tsg.NewStatement().Id("null"))
+						ig.Return(tsg.NewStatement().ID("null"))
 					},
 				)
 
 				parse := tsg.NewStatement().
 					Const("data").
 					Colon().
-					Id("ResponseRPC[]").
+					ID("ResponseRPC[]").
 					Op("=").
-					Await(tsg.NewStatement().Id("response").Dot("json").Call()).
+					Await(tsg.NewStatement().ID("response").Dot("json").Call()).
 					Semicolon()
 				bg.Add(parse)
 
 				mapStmt := tsg.NewStatement().
 					Const("responseMap").
 					Colon().
-					Id("Map").
+					ID("Map").
 					Generic("ID", "ResponseRPC").
 					Op("=").
 					New("Map").
@@ -288,16 +285,16 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 				forLoop := tsg.NewStatement().
 					ForOf("resp", "data", func(fg *tsg.Group) {
 						fg.Add(tsg.NewStatement().
-							Id("responseMap").
+							ID("responseMap").
 							Dot("set").
 							Call(
-								tsg.NewStatement().Id("resp.id"),
-								tsg.NewStatement().Id("resp"),
+								tsg.NewStatement().ID("resp.id"),
+								tsg.NewStatement().ID("resp"),
 							))
 					})
 				bg.Add(forLoop)
 
-				bg.Return(tsg.NewStatement().Id("responseMap"))
+				bg.Return(tsg.NewStatement().ID("responseMap"))
 			})
 		grp.Add(batchMethod)
 	})
@@ -309,30 +306,28 @@ func (r *ClientRenderer) renderJsonRPCClient(jsonrpcDir string) (err error) {
 	return file.Save(path.Join(jsonrpcDir, "client.ts"))
 }
 
-func (r *ClientRenderer) renderJsonRPCUtils(utilsDir string) (err error) {
+func (r *ClientRenderer) renderJSONRPCUtils(utilsDir string) (err error) {
 
 	file := tsg.NewFile()
-	file.Comment(generated.ByToolGatewayComment)
-
 	// Тип ID
 	stmt1 := tsg.NewStatement()
-	stmt1.Export().Type("ID").Op("=").Id("string").Op("|").Id("number").Semicolon()
+	stmt1.Export().Type("ID").Op("=").ID(typeString).Op("|").ID(typeNumber).Semicolon()
 	file.Add(stmt1)
 	file.Line()
 
 	// Тип JsonRpcParams
 	stmt2 := tsg.NewStatement()
-	stmt2.Export().Type("JsonRpcParams").Op("=").Id("any").Semicolon()
+	stmt2.Export().Type("JsonRpcParams").Op("=").ID(typeAny).Semicolon()
 	file.Add(stmt2)
 	file.Line()
 
 	// Тип RequestRPC
 	stmt3 := tsg.NewStatement()
 	stmt3.Export().Interface("RequestRPC", func(grp *tsg.Group) {
-		grp.Add(tsg.NewStatement().Id("jsonrpc").Colon().Lit("2.0").Semicolon())
-		grp.Add(tsg.NewStatement().Id("method").Colon().Id("string").Semicolon())
-		grp.Add(tsg.NewStatement().Id("params").Optional().Colon().Id("JsonRpcParams").Semicolon())
-		grp.Add(tsg.NewStatement().Id("id").Colon().Id("ID").Semicolon())
+		grp.Add(tsg.NewStatement().ID("jsonrpc").Colon().Lit("2.0").Semicolon())
+		grp.Add(tsg.NewStatement().ID("method").Colon().ID(typeString).Semicolon())
+		grp.Add(tsg.NewStatement().ID("params").Optional().Colon().ID("JsonRpcParams").Semicolon())
+		grp.Add(tsg.NewStatement().ID("id").Colon().ID("ID").Semicolon())
 	})
 	file.Add(stmt3)
 	file.Line()
@@ -340,10 +335,10 @@ func (r *ClientRenderer) renderJsonRPCUtils(utilsDir string) (err error) {
 	// Тип ResponseRPC
 	stmt4 := tsg.NewStatement()
 	stmt4.Export().Interface("ResponseRPC", func(grp *tsg.Group) {
-		grp.Add(tsg.NewStatement().Id("jsonrpc").Colon().Lit("2.0").Semicolon())
-		grp.Add(tsg.NewStatement().Id("result").Optional().Colon().Id("any").Semicolon())
-		grp.Add(tsg.NewStatement().Id("error").Optional().Colon().Id("any").Semicolon())
-		grp.Add(tsg.NewStatement().Id("id").Colon().Id("ID").Semicolon())
+		grp.Add(tsg.NewStatement().ID("jsonrpc").Colon().Lit("2.0").Semicolon())
+		grp.Add(tsg.NewStatement().ID(nameResult).Optional().Colon().ID(typeAny).Semicolon())
+		grp.Add(tsg.NewStatement().ID(typeError).Optional().Colon().ID(typeAny).Semicolon())
+		grp.Add(tsg.NewStatement().ID("id").Colon().ID("ID").Semicolon())
 	})
 	file.Add(stmt4)
 	file.Line()
@@ -354,10 +349,10 @@ func (r *ClientRenderer) renderJsonRPCUtils(utilsDir string) (err error) {
 	stmt5.Generic("Params extends JsonRpcParams")
 	stmt5.Op("=")
 	stmt5.Block(func(grp *tsg.Group) {
-		grp.Add(tsg.NewStatement().Id("jsonrpc").Colon().Lit("2.0").Semicolon())
-		grp.Add(tsg.NewStatement().Id("method").Colon().Id("string").Semicolon())
-		grp.Add(tsg.NewStatement().Id("params").Optional().Colon().Id("Params").Semicolon())
-		grp.Add(tsg.NewStatement().Id("id").Colon().Id("ID").Semicolon())
+		grp.Add(tsg.NewStatement().ID("jsonrpc").Colon().Lit("2.0").Semicolon())
+		grp.Add(tsg.NewStatement().ID("method").Colon().ID(typeString).Semicolon())
+		grp.Add(tsg.NewStatement().ID("params").Optional().Colon().ID("Params").Semicolon())
+		grp.Add(tsg.NewStatement().ID("id").Colon().ID("ID").Semicolon())
 	})
 	stmt5.Semicolon()
 	file.Add(stmt5)
@@ -368,11 +363,9 @@ func (r *ClientRenderer) renderJsonRPCUtils(utilsDir string) (err error) {
 	return file.Save(path.Join(utilsDir, "jsonrpc.ts"))
 }
 
-func (r *ClientRenderer) renderJsonRPCTsUtils(utilsDir string) (err error) {
+func (r *ClientRenderer) renderJSONRPCTSUtils(utilsDir string) (err error) {
 
 	file := tsg.NewFile()
-	file.Comment(generated.ByToolGatewayComment)
-
 	// Импорты
 	file.ImportType("./jsonrpc", "JsonRpcCall", "JsonRpcParams")
 

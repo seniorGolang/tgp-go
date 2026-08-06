@@ -10,12 +10,12 @@ import (
 
 type Object struct {
 	OpenAPI    string          `json:"openapi" yaml:"openapi"`
-	Info       Info            `json:"info,omitempty" yaml:"info,omitempty"`
+	Info       Info            `json:"info,omitempty" yaml:"info,omitempty"` //nolint:modernize // omitzero would change OpenAPI wire output
 	Servers    []Server        `json:"servers,omitempty" yaml:"servers,omitempty"`
 	Tags       []Tag           `json:"tags,omitempty" yaml:"tags,omitempty"`
 	Schemes    []string        `json:"schemes,omitempty" yaml:"schemes,omitempty"`
 	Paths      map[string]Path `json:"paths" yaml:"paths"`
-	Components Components      `json:"components,omitempty" yaml:"components,omitempty"`
+	Components Components      `json:"components,omitempty" yaml:"components,omitempty"` //nolint:modernize // omitzero would change OpenAPI wire output
 	Security   []Security      `json:"security,omitempty" yaml:"security,omitempty"`
 }
 
@@ -143,7 +143,7 @@ func (s Schema) IsEmpty() (ok bool) {
 	if len(s.AllOf) > 0 || len(s.OneOf) > 0 {
 		return false
 	}
-	return s.Type == "" || (s.Type == "object" && len(s.Properties) == 0)
+	return s.Type == "" || (s.Type == typeObject && len(s.Properties) == 0)
 }
 
 type Variable struct {
@@ -158,7 +158,7 @@ type Parameter struct {
 	Name        string `json:"name,omitempty" yaml:"name,omitempty"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 	Required    bool   `json:"required,omitempty" yaml:"required,omitempty"`
-	Schema      Schema `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Schema      Schema `json:"schema,omitempty" yaml:"schema,omitempty"` //nolint:modernize // omitzero would change OpenAPI wire output
 }
 
 type Encoding struct {
@@ -166,7 +166,7 @@ type Encoding struct {
 }
 
 type Media struct {
-	Schema   Schema              `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Schema   Schema              `json:"schema,omitempty" yaml:"schema,omitempty"` //nolint:modernize // omitzero would change OpenAPI wire output
 	Encoding map[string]Encoding `json:"encoding,omitempty" yaml:"encoding,omitempty"`
 }
 
@@ -180,7 +180,7 @@ type Response struct {
 
 type Header struct {
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	Schema      Schema `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Schema      Schema `json:"schema,omitempty" yaml:"schema,omitempty"` //nolint:modernize // omitzero would change OpenAPI wire output
 }
 
 type Responses map[string]Response
@@ -197,11 +197,13 @@ type SecuritySchemes map[string]SecurityScheme
 type SecurityScheme struct {
 	Type             string      `json:"type,omitempty" yaml:"type,omitempty"`
 	Scheme           string      `json:"scheme,omitempty" yaml:"scheme,omitempty"`
+	BearerFormat     string      `json:"bearerFormat,omitempty" yaml:"bearerFormat,omitempty"`
 	Name             string      `json:"name,omitempty" yaml:"name,omitempty"`
 	In               string      `json:"in,omitempty" yaml:"in,omitempty"`
 	OpenIDConnectURL string      `json:"openIdConnectUrl,omitempty" yaml:"openIdConnectUrl,omitempty"`
 	Flows            *OAuthFlows `json:"flows,omitempty" yaml:"flows,omitempty"`
 	GrantType        string      `json:"x-grant-type,omitempty" yaml:"x-grant-type,omitempty"`
+	JWKSURI          string      `json:"x-jwks-uri,omitempty" yaml:"x-jwks-uri,omitempty"`
 }
 
 type OAuthFlows struct {

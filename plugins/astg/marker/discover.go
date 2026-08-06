@@ -17,7 +17,7 @@ const (
 	goSum = "go.sum"
 )
 
-func DiscoverPaths(rootDir string, contractsDir string, excludeDirs []string) (paths []string, err error) {
+func DiscoverPaths(rootDir string, _contractsDir string, excludeDirs []string) (paths []string, err error) {
 
 	rootDir = filepath.Clean(rootDir)
 	paths = make([]string, 0)
@@ -30,37 +30,30 @@ func DiscoverPaths(rootDir string, contractsDir string, excludeDirs []string) (p
 	}
 
 	err = filepath.Walk(rootDir, func(absPath string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-		if info.IsDir() {
-			if helper.IsDirNameExcluded(info.Name()) {
-				return filepath.SkipDir
+		if walkErr == nil && info != nil {
+			if info.IsDir() {
+				if helper.IsDirNameExcluded(info.Name()) {
+					return filepath.SkipDir
+				}
+				if discoverShouldExcludeDir(absPath, rootDir, excludeDirs) {
+					return filepath.SkipDir
+				}
+				return nil
 			}
-			if discoverShouldExcludeDir(absPath, rootDir, excludeDirs) {
-				return filepath.SkipDir
+			if !helper.IsRelevantGoFile(info.Name()) {
+				return nil
 			}
-			return nil
+			if isGeneratedByHeader(absPath) {
+				return nil
+			}
+			if rel, relErr := filepath.Rel(rootDir, absPath); relErr == nil {
+				rel = filepath.ToSlash(rel)
+				rel = strings.TrimPrefix(rel, "./")
+				if rel != "" && rel != "." && !helper.IsRelPathExcluded(rel, excludeDirs) {
+					paths = append(paths, rel)
+				}
+			}
 		}
-		if !helper.IsRelevantGoFile(info.Name()) {
-			return nil
-		}
-		if isGeneratedByHeader(absPath) {
-			return nil
-		}
-		rel, relErr := filepath.Rel(rootDir, absPath)
-		if relErr != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		rel = strings.TrimPrefix(rel, "./")
-		if rel == "" || rel == "." {
-			return nil
-		}
-		if helper.IsRelPathExcluded(rel, excludeDirs) {
-			return nil
-		}
-		paths = append(paths, rel)
 		return nil
 	})
 	return paths, err

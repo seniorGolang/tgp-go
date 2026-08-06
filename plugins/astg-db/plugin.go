@@ -21,10 +21,10 @@ const (
 	optionAllContracts = "all-contracts"
 )
 
-// AstgDbPlugin реализует pre-плагин: подставляет project из локальной базы контрактов в request.
-type AstgDbPlugin struct{}
+// AstgDBPlugin реализует pre-плагин: подставляет project из локальной базы контрактов в request.
+type AstgDBPlugin struct{}
 
-func (p *AstgDbPlugin) Execute(request data.Storage) (response data.Storage, err error) {
+func (p *AstgDBPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
 	response = request
 	if request == nil {
@@ -108,7 +108,7 @@ func loadFromDB(request data.Storage, root string) (response data.Storage, err e
 	return
 }
 
-func (p *AstgDbPlugin) Info() (info plugin.Info, err error) {
+func (p *AstgDBPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{
 		Name:         "astg-db",

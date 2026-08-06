@@ -80,8 +80,8 @@ func findGitDir(startDir string) (gitDir string, err error) {
 			var content []byte
 			if content, err = os.ReadFile(gitPath); err == nil {
 				gitDir = strings.TrimSpace(string(content))
-				if strings.HasPrefix(gitDir, "gitdir: ") {
-					gitDir = strings.TrimPrefix(gitDir, "gitdir: ")
+				if after, ok := strings.CutPrefix(gitDir, "gitdir: "); ok {
+					gitDir = after
 					// Если путь относительный, делаем его абсолютным
 					if !filepath.IsAbs(gitDir) {
 						gitDir = filepath.Join(dir, gitDir)
@@ -111,8 +111,8 @@ func getGitCommit(gitDir string) (commit string, err error) {
 	headStr := strings.TrimSpace(string(headContent))
 
 	// Если HEAD указывает на ветку (ref: refs/heads/master)
-	if strings.HasPrefix(headStr, "ref: ") {
-		refPath := strings.TrimPrefix(headStr, "ref: ")
+	if after, ok := strings.CutPrefix(headStr, "ref: "); ok {
+		refPath := after
 		refPath = strings.TrimSpace(refPath)
 		var commitBytes []byte
 		if commitBytes, err = readGitFile(gitDir, filepath.FromSlash(refPath)); err != nil {
@@ -138,11 +138,11 @@ func getGitBranch(gitDir string) (branch string, err error) {
 	headStr := strings.TrimSpace(string(headContent))
 
 	// Если HEAD указывает на ветку
-	if strings.HasPrefix(headStr, "ref: ") {
-		refPath := strings.TrimPrefix(headStr, "ref: ")
+	if after, ok := strings.CutPrefix(headStr, "ref: "); ok {
+		refPath := after
 		refPath = strings.TrimSpace(refPath)
-		if strings.HasPrefix(refPath, "refs/heads/") {
-			branch = strings.TrimPrefix(refPath, "refs/heads/")
+		if after, ok := strings.CutPrefix(refPath, "refs/heads/"); ok {
+			branch = after
 			return
 		}
 		// Если это другой тип ref (например, refs/remotes/origin/master), возвращаем пустую строку
@@ -197,10 +197,10 @@ func getGitTag(gitDir string, commitHash string) (tag string, err error) {
 		if tagObjContent, err = readGitFile(gitDir, "objects", tagHash[:2], tagHash[2:]); err == nil {
 			// Парсим объект тега (формат: object <hash>\ntype tag\n...)
 			content := string(tagObjContent)
-			lines := strings.Split(content, "\n")
-			for _, line := range lines {
-				if strings.HasPrefix(line, "object ") {
-					objHash := strings.TrimSpace(strings.TrimPrefix(line, "object "))
+			lines := strings.SplitSeq(content, "\n")
+			for line := range lines {
+				if after, ok := strings.CutPrefix(line, "object "); ok {
+					objHash := strings.TrimSpace(after)
 					if objHash == commitHash {
 						tag = entry.Name()
 						return
@@ -251,74 +251,66 @@ func isHexHash(value string) (ok bool) {
 func isGitDirty(gitDir string, repoRoot string) (isDirty bool, err error) {
 
 	indexPath := filepath.Join(gitDir, "index")
-	var statErr error
-	if _, statErr = os.Stat(indexPath); statErr != nil {
-		return
-	}
-
-	var indexEntries []indexEntry
-	if indexEntries, err = parseGitIndex(indexPath); err != nil {
-		return
-	}
-
-	for _, entry := range indexEntries {
-		filePath := filepath.Join(repoRoot, entry.path)
-		var fileInfo os.FileInfo
-		if fileInfo, err = os.Stat(filePath); err != nil {
-			// Файл удален из рабочей директории
-			isDirty = true
+	if _, indexStatErr := os.Stat(indexPath); indexStatErr == nil {
+		var indexEntries []indexEntry
+		if indexEntries, err = parseGitIndex(indexPath); err != nil {
 			return
 		}
 
-		// Файл изменен (размер или время модификации)
-		if fileInfo.Size() != entry.size || fileInfo.ModTime().Unix() != entry.mtime {
-			isDirty = true
-			return
-		}
-	}
+		for _, entry := range indexEntries {
+			filePath := filepath.Join(repoRoot, entry.path)
+			var fileInfo os.FileInfo
+			if fileInfo, err = os.Stat(filePath); err != nil {
+				// Файл удален из рабочей директории
+				isDirty = true
+				return
+			}
 
-	// Это упрощенная проверка - не учитывает .gitignore
-	// Но для большинства случаев достаточно
-	indexFiles := make(map[string]bool)
-	for _, entry := range indexEntries {
-		indexFiles[entry.path] = true
-	}
-
-	// Полная проверка всех файлов может быть медленной
-	err = filepath.Walk(repoRoot, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-
-		if info.IsDir() && info.Name() == ".git" {
-			return filepath.SkipDir
-		}
-
-		if info.IsDir() {
-			return nil
-		}
-
-		var relPath string
-		if relPath, walkErr = filepath.Rel(repoRoot, path); walkErr != nil {
-			return nil
-		}
-		relPath = filepath.ToSlash(relPath)
-
-		// Если файл не в индексе и не игнорируется, репозиторий dirty
-		if !indexFiles[relPath] {
-			if !strings.HasPrefix(relPath, ".git/") && !strings.HasPrefix(relPath, ".git") {
-				// Это новый файл - репозиторий dirty
-				return errNewFileFound
+			// Файл изменен (размер или время модификации)
+			if fileInfo.Size() != entry.size || fileInfo.ModTime().Unix() != entry.mtime {
+				isDirty = true
+				return
 			}
 		}
 
-		return nil
-	})
+		// Это упрощенная проверка - не учитывает .gitignore
+		// Но для большинства случаев достаточно
+		indexFiles := make(map[string]bool)
+		for _, entry := range indexEntries {
+			indexFiles[entry.path] = true
+		}
 
-	if errors.Is(err, errNewFileFound) {
-		isDirty = true
-		err = nil
-		return
+		// Полная проверка всех файлов может быть медленной
+		err = filepath.Walk(repoRoot, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr == nil && info != nil {
+				if info.IsDir() && info.Name() == ".git" {
+					return filepath.SkipDir
+				}
+
+				if info.IsDir() {
+					return nil
+				}
+
+				if relPath, relErr := filepath.Rel(repoRoot, path); relErr == nil {
+					relPath = filepath.ToSlash(relPath)
+
+					// Если файл не в индексе и не игнорируется, репозиторий dirty
+					if !indexFiles[relPath] {
+						if !strings.HasPrefix(relPath, ".git/") && !strings.HasPrefix(relPath, ".git") {
+							// Это новый файл - репозиторий dirty
+							return errNewFileFound
+						}
+					}
+				}
+			}
+			return nil
+		})
+
+		if errors.Is(err, errNewFileFound) {
+			isDirty = true
+			err = nil
+			return
+		}
 	}
 
 	return
@@ -420,10 +412,10 @@ func getGitUser(gitDir string) (user string, email string, err error) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "name = ") {
-			user = strings.TrimSpace(strings.TrimPrefix(line, "name = "))
-		} else if strings.HasPrefix(line, "email = ") {
-			email = strings.TrimSpace(strings.TrimPrefix(line, "email = "))
+		if after, ok := strings.CutPrefix(line, "name = "); ok {
+			user = strings.TrimSpace(after)
+		} else if after, ok := strings.CutPrefix(line, "email = "); ok {
+			email = strings.TrimSpace(after)
 		}
 	}
 
@@ -466,8 +458,8 @@ func getGitRemoteURL(gitDir string) (url string, err error) {
 		// Может быть в формате "url = ..." или "	url = ..." (с табуляцией)
 		if inOriginSection {
 			lineTrimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(lineTrimmed, "url = ") {
-				url = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "url = "))
+			if after, ok := strings.CutPrefix(lineTrimmed, "url = "); ok {
+				url = strings.TrimSpace(after)
 				return
 			}
 		}

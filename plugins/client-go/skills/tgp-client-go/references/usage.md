@@ -1,5 +1,30 @@
 # Go client usage
 
+## Contents
+
+- Runtime options
+- RPC batch
+- Mapping modes
+- Errors
+- Streams
+- Files
+- Metrics
+
+## Runtime options
+
+| Option | Role |
+|--------|------|
+| `Name` | identity / `X-Client-Id` and metric labels |
+| `Headers` | copy selected values from `context.Value` by the same string keys |
+| `ConfigTLS` / `ClientHTTP` / `Transport` | networking |
+| `BeforeRequest` / `AfterRequest` | hooks |
+| `DecodeError` / `DecodeHTTPError` | RPC vs REST errors |
+| `LogRequest` / `LogOnError` / `ToCurl` | logging (Authorization redacted) |
+| `WithMetrics` / `LatencyBuckets` | Prometheus (client-owned registry) |
+| `Auth` / `TokenSource` | see [auth.md](auth.md) |
+
+Do not enable full request logging around secrets without reviewing `log-skip`.
+
 ## RPC batch
 
 Build requests with generated `Req<Method>` functions, attach callbacks where results are needed, then call `Client.Batch`. Batch support exists only when the selected model contains JSON-RPC contracts.
@@ -39,4 +64,4 @@ Connection-scoped WS headers are established during dial. SSE metadata belongs t
 
 ## Metrics
 
-`WithMetrics` uses a client-owned Prometheus registry. Expose `GetMetricsRegistry()` explicitly or combine it with other gatherers; do not assume registration in the global registry.
+`WithMetrics` uses a client-owned Prometheus registry. Expose `GetMetricsRegistry()` explicitly or combine it with other gatherers; do not assume registration in the global registry. Pass `LatencyBuckets` only before `WithMetrics`, strictly increasing and `> 0`.

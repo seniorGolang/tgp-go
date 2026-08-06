@@ -3,11 +3,11 @@
 package renderer
 
 import (
-	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/common"
 	"tgp/internal/converter"
@@ -17,12 +17,12 @@ import (
 
 func (r *contractRenderer) headerEntries(method *model.Method) (out []model.ArgMapItem) {
 
-	return model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpHeader, ""))
+	return model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHTTPHeader, ""))
 }
 
 func (r *contractRenderer) cookieEntries(method *model.Method) (out []model.ArgMapItem) {
 
-	return model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpCookies, ""))
+	return model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHTTPCookies, ""))
 }
 
 func (r *contractRenderer) varHeaderMap(method *model.Method) (out map[string]string) {
@@ -131,7 +131,7 @@ func usedHeaderNamesForRequestOverlay(project *model.Project, contract *model.Co
 	for _, a := range argsWithoutContext(method) {
 		argSet[a.Name] = struct{}{}
 	}
-	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(project, contract, method, nil, model.TagHttpHeader, "")) {
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(project, contract, method, nil, model.TagHTTPHeader, "")) {
 		if _, isArg := argSet[it.Arg]; isArg && it.Key != "" {
 			headers[it.Key] = struct{}{}
 		}
@@ -149,7 +149,7 @@ func usedCookieNamesForRequestOverlay(project *model.Project, contract *model.Co
 	for _, a := range argsWithoutContext(method) {
 		argSet[a.Name] = struct{}{}
 	}
-	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(project, contract, method, nil, model.TagHttpCookies, "")) {
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(project, contract, method, nil, model.TagHTTPCookies, "")) {
 		if _, isArg := argSet[it.Arg]; isArg && it.Key != "" {
 			cookies[it.Key] = struct{}{}
 		}
@@ -254,7 +254,7 @@ func (r *contractRenderer) methodRequestMultipart(method *model.Method) bool {
 	if len(readerArgs) > 1 {
 		return true
 	}
-	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpMultipart) {
+	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPMultipart) {
 		return true
 	}
 	return false
@@ -266,7 +266,7 @@ func (r *contractRenderer) methodResponseMultipart(method *model.Method) bool {
 	if len(readCloserResults) > 1 {
 		return true
 	}
-	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpMultipart) {
+	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPMultipart) {
 		return true
 	}
 	return false
@@ -275,12 +275,12 @@ func (r *contractRenderer) methodResponseMultipart(method *model.Method) bool {
 func (r *contractRenderer) streamPartName(method *model.Method, v *model.Variable) string {
 
 	if v != nil && v.Annotations != nil {
-		if val, found := v.Annotations[model.TagHttpPartName]; found && val != "" {
+		if val, found := v.Annotations[model.TagHTTPPartName]; found && val != "" {
 			return val
 		}
 	}
 	if method != nil && method.Annotations != nil {
-		if val, found := method.Annotations[model.TagHttpPartName]; found && val != "" {
+		if val, found := method.Annotations[model.TagHTTPPartName]; found && val != "" {
 			if partName := r.varValueFromMethodMap(val, v.Name); partName != "" {
 				return partName
 			}
@@ -292,12 +292,12 @@ func (r *contractRenderer) streamPartName(method *model.Method, v *model.Variabl
 func (r *contractRenderer) streamPartContent(method *model.Method, v *model.Variable) string {
 
 	if v != nil && v.Annotations != nil {
-		if val, found := v.Annotations[model.TagHttpPartContent]; found && val != "" {
+		if val, found := v.Annotations[model.TagHTTPPartContent]; found && val != "" {
 			return val
 		}
 	}
 	if method != nil && method.Annotations != nil {
-		if val, found := method.Annotations[model.TagHttpPartContent]; found && val != "" {
+		if val, found := method.Annotations[model.TagHTTPPartContent]; found && val != "" {
 			return r.varValueFromMethodMap(val, v.Name)
 		}
 	}
@@ -306,7 +306,7 @@ func (r *contractRenderer) streamPartContent(method *model.Method, v *model.Vari
 
 func (r *contractRenderer) varValueFromMethodMap(annotationValue string, varName string) string {
 
-	for _, pair := range strings.Split(annotationValue, ",") {
+	for pair := range strings.SplitSeq(annotationValue, ",") {
 		if pairTokens := strings.Split(strings.TrimSpace(pair), "|"); len(pairTokens) == 2 {
 			arg := strings.TrimSpace(pairTokens[0])
 			value := strings.TrimSpace(pairTokens[1])
@@ -331,7 +331,7 @@ func (r *contractRenderer) appendPresentBinding(block *Statement, bytePresence b
 	block.If(Id(rawVarName).Op(":=").Add(src).Op(";").Id(rawVarName).Op("!=").Lit("")).BlockFunc(body).Line()
 }
 
-func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement, bytePresence bool) *Statement {
+func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generator, method *model.Method, _typeName string, varMap map[string]string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement, bytePresence bool) *Statement {
 
 	block := Line()
 	if len(varMap) != 0 {
@@ -356,12 +356,12 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 			var fieldNumberOfPointers int
 
 			if len(argTokens) > 1 {
-				argType, ok := r.project.Types[arg.TypeID]
-				if !ok {
+				argType, typeOK := r.project.Types[arg.TypeID]
+				if !typeOK {
 					continue
 				}
 				if argType.Kind == model.TypeKindAlias && argType.AliasOf != "" {
-					if baseType, ok := r.project.Types[argType.AliasOf]; ok {
+					if baseType, baseOK := r.project.Types[argType.AliasOf]; baseOK {
 						argType = baseType
 					}
 				}
@@ -379,13 +379,13 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 					}
 					// Если это не последний элемент пути, переходим к следующему типу
 					if i+1 < len(argTokens) {
-						nextType, ok := r.project.Types[field.TypeID]
-						if !ok {
+						nextType, nextOK := r.project.Types[field.TypeID]
+						if !nextOK {
 							field = nil
 							break
 						}
 						if nextType.Kind == model.TypeKindAlias && nextType.AliasOf != "" {
-							if baseType, ok := r.project.Types[nextType.AliasOf]; ok {
+							if baseType, baseOK := r.project.Types[nextType.AliasOf]; baseOK {
 								currentType = baseType
 							} else {
 								field = nil
@@ -421,9 +421,9 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 				if converter.IsBuiltinTypeID(elementTypeID) {
 					argTypeName = "[]" + elementTypeID
 				} else {
-					var ok bool
-					typ, ok = r.project.Types[elementTypeID]
-					if !ok {
+					var typeFound bool
+					typ, typeFound = r.project.Types[elementTypeID]
+					if !typeFound {
 						continue
 					}
 					argTypeName = "[]" + typ.TypeName
@@ -434,9 +434,9 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 			case converter.IsBuiltinTypeID(fieldTypeID):
 				argTypeName = fieldTypeID
 			default:
-				var ok bool
-				typ, ok = r.project.Types[fieldTypeID]
-				if !ok {
+				var typeFound bool
+				typ, typeFound = r.project.Types[fieldTypeID]
+				if !typeFound {
 					continue
 				}
 				argTypeName = typ.TypeName
@@ -447,17 +447,15 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 
 			rawVarName := "_" + argName + "_"
 			fieldVar := &model.Variable{
-				TypeRef: model.TypeRef{
-					TypeID:           fieldTypeID,
-					IsSlice:          fieldIsSlice,
-					ElementPointers:  fieldElementPointers,
-					NumberOfPointers: fieldNumberOfPointers,
-					MapKey:           fieldMapKey,
-					MapValue:         fieldMapValue,
-				},
+				TypeID:           fieldTypeID,
+				IsSlice:          fieldIsSlice,
+				ElementPointers:  fieldElementPointers,
+				NumberOfPointers: fieldNumberOfPointers,
+				MapKey:           fieldMapKey,
+				MapValue:         fieldMapValue,
 			}
 
-			if fieldTypeID == "string" && !fieldIsSlice {
+			if fieldTypeID == typeString && !fieldIsSlice {
 				r.appendPresentBinding(block, bytePresence, rawVarName, srcCode(srcName), func(bg *Group) {
 					var reqID *Statement
 					if len(argTokens) == 1 {
@@ -516,7 +514,7 @@ func (r *contractRenderer) argFromString(srcFile *GoFile, typeGen *types.Generat
 	return block
 }
 
-func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.Generator, method *model.Method, typeName string, varMap map[string]string, orderedArgs []string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement, bytePresence bool) *Statement {
+func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.Generator, method *model.Method, _typeName string, varMap map[string]string, orderedArgs []string, srcCode func(srcName string) Code, errBody func(arg, header string) []Code, getTarget func(arg *model.Variable) *Statement, bytePresence bool) *Statement {
 
 	block := Line()
 	if len(varMap) != 0 {
@@ -555,12 +553,12 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 
 			// Если это вложенное поле (например, "data.name"), используем данные из StructField напрямую
 			if len(argTokens) > 1 {
-				argType, ok := r.project.Types[arg.TypeID]
-				if !ok {
+				argType, typeOK := r.project.Types[arg.TypeID]
+				if !typeOK {
 					continue
 				}
 				if argType.Kind == model.TypeKindAlias && argType.AliasOf != "" {
-					if baseType, ok := r.project.Types[argType.AliasOf]; ok {
+					if baseType, baseOK := r.project.Types[argType.AliasOf]; baseOK {
 						argType = baseType
 					}
 				}
@@ -578,13 +576,13 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 					}
 					// Если это не последний элемент пути, переходим к следующему типу
 					if i+1 < len(argTokens) {
-						nextType, ok := r.project.Types[field.TypeID]
-						if !ok {
+						nextType, nextOK := r.project.Types[field.TypeID]
+						if !nextOK {
 							field = nil
 							break
 						}
 						if nextType.Kind == model.TypeKindAlias && nextType.AliasOf != "" {
-							if baseType, ok := r.project.Types[nextType.AliasOf]; ok {
+							if baseType, baseOK := r.project.Types[nextType.AliasOf]; baseOK {
 								currentType = baseType
 							} else {
 								field = nil
@@ -620,9 +618,9 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 				if converter.IsBuiltinTypeID(elementTypeID) {
 					argTypeName = "[]" + elementTypeID
 				} else {
-					var ok bool
-					typ, ok = r.project.Types[elementTypeID]
-					if !ok {
+					var typeFound bool
+					typ, typeFound = r.project.Types[elementTypeID]
+					if !typeFound {
 						continue
 					}
 					argTypeName = "[]" + typ.TypeName
@@ -633,9 +631,9 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 			case converter.IsBuiltinTypeID(fieldTypeID):
 				argTypeName = fieldTypeID
 			default:
-				var ok bool
-				typ, ok = r.project.Types[fieldTypeID]
-				if !ok {
+				var typeFound bool
+				typ, typeFound = r.project.Types[fieldTypeID]
+				if !typeFound {
 					continue
 				}
 				argTypeName = typ.TypeName
@@ -646,17 +644,15 @@ func (r *contractRenderer) argFromStringOrdered(srcFile *GoFile, typeGen *types.
 
 			rawVarNameOrdered := "_" + argName + "_"
 			fieldVarOrdered := &model.Variable{
-				TypeRef: model.TypeRef{
-					TypeID:           fieldTypeID,
-					IsSlice:          fieldIsSlice,
-					ElementPointers:  fieldElementPointers,
-					NumberOfPointers: fieldNumberOfPointers,
-					MapKey:           fieldMapKey,
-					MapValue:         fieldMapValue,
-				},
+				TypeID:           fieldTypeID,
+				IsSlice:          fieldIsSlice,
+				ElementPointers:  fieldElementPointers,
+				NumberOfPointers: fieldNumberOfPointers,
+				MapKey:           fieldMapKey,
+				MapValue:         fieldMapValue,
 			}
 
-			if fieldTypeID == "string" && !fieldIsSlice {
+			if fieldTypeID == typeString && !fieldIsSlice {
 				r.appendPresentBinding(block, bytePresence, rawVarNameOrdered, srcCode(srcName), func(bg *Group) {
 					var reqID *Statement
 					if len(argTokens) == 1 {
@@ -721,7 +717,7 @@ func (r *contractRenderer) argToTypeConverter(srcFile *GoFile, typeGen *types.Ge
 		Project:        r.project,
 		From:           from,
 		Arg:            arg,
-		Id:             id,
+		ID:             id,
 		ErrBody:        errBody,
 		OptionalAssign: false,
 		FieldType:      typeGen.FieldType,
@@ -732,12 +728,7 @@ func (r *contractRenderer) argToTypeConverter(srcFile *GoFile, typeGen *types.Ge
 
 func containsString(slice []string, s string) (ok bool) {
 
-	for _, item := range slice {
-		if item == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, s)
 }
 
 func toIDWithImport(qualifiedName string, srcFile *GoFile) (stmt *Statement) {
@@ -774,7 +765,7 @@ func (r *contractRenderer) urlParams(srcFile *GoFile, typeGen *types.Generator, 
 	cookieMap := r.varCookieMap(method)
 	queryParams := make(map[string]string)
 	var orderedArgs []string
-	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpArg, "")) {
+	for _, it := range model.ParseArgMapEntries(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHTTPArg, "")) {
 		if it.Arg == "path" {
 			continue
 		}
@@ -845,7 +836,7 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 	}
 	hasValidArgs := false
 	for fullArgName := range headerMap {
-		argName := strings.Split(strings.TrimPrefix(fullArgName, "!"), ".")[0]
+		argName, _, _ := strings.Cut(strings.TrimPrefix(fullArgName, "!"), ".")
 		if r.argByName(method, argName) != nil {
 			hasValidArgs = true
 			break
@@ -853,7 +844,7 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 	}
 	if !hasValidArgs {
 		for fullArgName := range cookieMap {
-			argName := strings.Split(strings.TrimPrefix(fullArgName, "!"), ".")[0]
+			argName, _, _ := strings.Cut(strings.TrimPrefix(fullArgName, "!"), ".")
 			if r.argByName(method, argName) != nil {
 				hasValidArgs = true
 				break
@@ -862,7 +853,7 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 	}
 	if !hasValidArgs {
 		for fullArgName := range queryMap {
-			argName := strings.Split(strings.TrimPrefix(fullArgName, "!"), ".")[0]
+			argName, _, _ := strings.Cut(strings.TrimPrefix(fullArgName, "!"), ".")
 			if r.argByName(method, argName) != nil {
 				hasValidArgs = true
 				break
@@ -902,14 +893,9 @@ func (r *contractRenderer) applyOverlayFromContext(srcFile *GoFile, typeGen *typ
 	}
 	var block *Statement
 	if overlayAsStruct {
-		block = Id("getterVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).
-			Line().If(Id("getterVal").Op("!=").Nil()).Block(
-			Id("getter").Op(":=").Id("getterVal").Assert(Id("requestOverlayGetter")),
-			Id("overlay").Op(":=").Id("getter").Call(),
-			inner,
-		)
+		block = If(List(Id("overlay"), Id("ok")).Op(":=").Id(VarNameCtx).Dot("Value").Call(Id("keyRequestOverlay")).Assert(Id("requestOverlay")).Op(";").Id("ok")).Block(inner)
 	} else {
-		streamPath := fmt.Sprintf("%s/stream", r.pkgPath(r.outDir))
+		streamPath := r.pkgPath(r.outDir) + "/stream"
 		assertBlock := If(List(Id("overlay"), Id("ok")).Op(":=").Id("overlayVal").Assert(Map(String()).String()).Op(";").Id("ok")).Block(inner)
 		block = Id("overlayVal").Op(":=").Id(VarNameCtx).Dot("Value").Call(Qual(streamPath, "KeyOverlay")).
 			Line().If(Id("overlayVal").Op("!=").Nil()).Block(assertBlock)
@@ -948,7 +934,19 @@ func (r *contractRenderer) httpCookiesBodyMode(srcFile *GoFile, typeGen *types.G
 func (r *contractRenderer) resultToHeaderStringExpr(ret *model.Variable, valueExpr Code) Code {
 
 	deref := func(expr Code) Code { return Op("*").Add(expr) }
-	if ret.TypeID == "string" {
+	if ret.IsSlice {
+		var sliceExpr *Statement
+		if ret.NumberOfPointers > 0 {
+			sliceExpr = (&Statement{}).Add(Op("*").Add(valueExpr))
+		} else if s, ok := valueExpr.(*Statement); ok {
+			sliceExpr = s
+		} else {
+			sliceExpr = (&Statement{}).Add(valueExpr)
+		}
+		stringElements := ret.TypeID == typeString && ret.ElementPointers == 0
+		return converter.BuildSliceCSVExpr(sliceExpr, stringElements, func(_ string, _ string) {})
+	}
+	if ret.TypeID == typeString {
 		if ret.NumberOfPointers > 0 {
 			return deref(valueExpr)
 		}

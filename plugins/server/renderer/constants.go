@@ -7,7 +7,7 @@ const (
 	TagMetrics      = "metrics"
 	TagLogger       = "log"
 	TagLogSkip      = "log-skip"
-	TagHttpResponse = "http-response"
+	TagHTTPResponse = "http-response"
 	TagHandler      = "handler"
 	TagPackageJSON  = "packageJSON"
 	TagOmitemptyAll = "tagOmitemptyAll"
@@ -31,7 +31,7 @@ const (
 	PackageOTEL                 = "go.opentelemetry.io/otel"
 	PackagePrometheus           = "github.com/prometheus/client_golang/prometheus"
 	PackagePrometheusAuto       = "github.com/prometheus/client_golang/prometheus/promauto"
-	PackagePrometheusHttp       = "github.com/prometheus/client_golang/prometheus/promhttp"
+	PackagePrometheusHTTP       = "github.com/prometheus/client_golang/prometheus/promhttp"
 	PackagePrometheusCollectors = "github.com/prometheus/client_golang/prometheus/collectors"
 	PackageAttributeOTEL        = "go.opentelemetry.io/otel/attribute"
 	PackageTraceSDK             = "go.opentelemetry.io/otel/sdk/trace"
@@ -39,6 +39,8 @@ const (
 	PackageStrings              = "strings"
 	PackageBytes                = "bytes"
 	PackageSync                 = "sync"
+	PackageSyncAtomic           = "sync/atomic"
+	PackageMapHash              = "hash/maphash"
 	PackageUUID                 = "github.com/google/uuid"
 	PackageStdJSON              = "encoding/json"
 	PackageCors                 = "github.com/lab259/cors"
@@ -48,6 +50,8 @@ const (
 	PackageMimeMultipart        = "mime/multipart"
 	PackageNetTextproto         = "net/textproto"
 	PackageURL                  = "net/url"
+	PackageHTTP                 = "net/http"
+	PackageTLS                  = "crypto/tls"
 	PackageXML                  = "encoding/xml"
 	PackageMsgpack              = "github.com/vmihailenco/msgpack/v5"
 	PackageCBOR                 = "github.com/fxamacker/cbor/v2"
@@ -58,4 +62,12 @@ const (
 	VarNameCtx  = "ctx"
 	VarNameNext = "next"
 	VarNameFtx  = "ftx"
+)
+
+const (
+	jsonTagInline = ",inline"
+	keyJSON       = "json"
+	keyDumper     = "dumper"
+	dumperHide    = "hide"
+	typeString    = "string"
 )

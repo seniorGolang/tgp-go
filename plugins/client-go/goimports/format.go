@@ -242,7 +242,10 @@ func formatImports(src []byte, filename string, modulePath string) (out []byte, 
 	for _, decl := range f.Decls {
 		if genDecl, ok := decl.(*ast.GenDecl); ok && genDecl.Tok == token.IMPORT {
 			for _, spec := range genDecl.Specs {
-				imp := spec.(*ast.ImportSpec)
+				imp, ok := spec.(*ast.ImportSpec)
+				if !ok {
+					continue
+				}
 				if imp.Path.Value == `"C"` {
 					continue
 				}
@@ -400,16 +403,16 @@ func sortImports(imports []importSpec) {
 func formatImport(imp importSpec) (out []byte) {
 
 	if imp.name != "" {
-		return []byte(fmt.Sprintf(`%s "%s"`, imp.name, imp.path))
+		return []byte(fmt.Sprintf(`%s %q`, imp.name, imp.path))
 	}
-	return []byte(fmt.Sprintf(`"%s"`, imp.path))
+	return []byte(fmt.Sprintf(`%q`, imp.path))
 }
 
 func formatImportWithoutAlias(imp importSpec) (out []byte) {
 
 	// ВАЖНО: для внешних пакетов всегда убираем псевдоним, если имя пакета установлено явно.
 	// Имя пакета определяется из самого пакета (go/types), а не из пути импорта.
-	return []byte(fmt.Sprintf(`"%s"`, imp.path))
+	return []byte(fmt.Sprintf(`%q`, imp.path))
 }
 
 func findLocalModule(filename string) (s string) {
@@ -422,8 +425,8 @@ func findLocalModule(filename string) (s string) {
 		goModPath := filepath.Join(dir, "go.mod")
 		if data, err := os.ReadFile(goModPath); err == nil {
 			// Простой парсинг module path из go.mod
-			lines := strings.Split(string(data), "\n")
-			for _, line := range lines {
+			lines := strings.SplitSeq(string(data), "\n")
+			for line := range lines {
 				line = strings.TrimSpace(line)
 				if strings.HasPrefix(line, "module ") {
 					modulePath := strings.TrimSpace(strings.TrimPrefix(line, "module"))

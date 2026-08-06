@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
@@ -25,13 +25,16 @@ func (r *Renderer) renderSubscriber() (err error) {
 		group.Id("handlers").Map(String()).Id("TopicHandler")
 		group.Id("maxPoll").Int()
 		group.Id("commitAfter").Bool()
+		group.Id("shutdownTimeout").Qual("time", "Duration")
 		group.Id("stop").Qual("context", "CancelFunc")
+		group.Id("runDone").Chan().Struct()
 		group.Id("mu").Qual("sync", "Mutex")
 		group.Id("running").Bool()
 		group.Id("closed").Bool()
 		if hasMetrics {
 			group.Id("metrics").Op("*").Id("metrics")
 			group.Id("lagStop").Qual("context", "CancelFunc")
+			group.Id("lagDone").Chan().Struct()
 			group.Id("topics").Index().String()
 		}
 		if hasTrace {
@@ -107,11 +110,12 @@ func (r *Renderer) writeNew(file GoFile, hasMetrics bool, hasTrace bool, hasLog 
 		group.Var().Id("kafkaClient").Op("*").Qual("github.com/twmb/franz-go/pkg/kgo", "Client")
 		group.If(List(Id("kafkaClient"), Err()).Op("=").Qual("github.com/twmb/franz-go/pkg/kgo", "NewClient").Call(Id("clientOptions").Op("...")), Err().Op("!=").Nil()).Block(Return(Nil(), Err()))
 		values := Dict{
-			Id("log"):         Id("log"),
-			Id("client"):      Id("kafkaClient"),
-			Id("commitAfter"): Id("setup").Dot("commitAfter"),
-			Id("maxPoll"):     Id("setup").Dot("maxPollRecords"),
-			Id("handlers"):    Make(Map(String()).Id("TopicHandler")),
+			Id("log"):             Id("log"),
+			Id("client"):          Id("kafkaClient"),
+			Id("commitAfter"):     Id("setup").Dot("commitAfter"),
+			Id("shutdownTimeout"): Id("setup").Dot("shutdownTimeout"),
+			Id("maxPoll"):         Id("setup").Dot("maxPollRecords"),
+			Id("handlers"):        Make(Map(String()).Id("TopicHandler")),
 		}
 		if hasMetrics {
 			values[Id("topics")] = Index().String().Values(r.topicLiterals()...)
@@ -147,12 +151,37 @@ func (r *Renderer) writeClose(file GoFile, hasMetrics bool) {
 		group.If(Id("client").Dot("closed")).Block(Id("client").Dot("mu").Dot("Unlock").Call(), Return())
 		group.Id("client").Dot("closed").Op("=").True()
 		group.Id("stop").Op(":=").Id("client").Dot("stop")
+		group.Id("runDone").Op(":=").Id("client").Dot("runDone")
+		group.Id("timeout").Op(":=").Id("client").Dot("shutdownTimeout")
+		group.Id("forcedClose").Op(":=").False()
+		if hasMetrics {
+			group.Id("lagStop").Op(":=").Id("client").Dot("lagStop")
+			group.Id("lagDone").Op(":=").Id("client").Dot("lagDone")
+		}
 		group.Id("client").Dot("mu").Dot("Unlock").Call()
 		group.If(Id("stop").Op("!=").Nil()).Block(Id("stop").Call())
 		if hasMetrics {
-			group.If(Id("client").Dot("lagStop").Op("!=").Nil()).Block(Id("client").Dot("lagStop").Call())
+			group.If(Id("lagStop").Op("!=").Nil()).Block(Id("lagStop").Call())
 		}
-		group.If(Id("client").Dot("client").Op("!=").Nil()).Block(Id("client").Dot("client").Dot("Close").Call())
+		group.If(Id("runDone").Op("!=").Nil()).BlockFunc(func(wait *Group) {
+			wait.If(Id("timeout").Op("<=").Lit(0)).Block(Id("timeout").Op("=").Lit(30).Op("*").Qual("time", "Second"))
+			wait.Id("timer").Op(":=").Qual("time", "NewTimer").Call(Id("timeout"))
+			wait.Select().Block(
+				Case(Op("<-").Id("runDone")).Block(Id("timer").Dot("Stop").Call()),
+				Case(Op("<-").Id("timer").Dot("C")).BlockFunc(func(timed *Group) {
+					timed.Id("client").Dot("log").Dot("Error").Call(Lit("kafka subscriber Close: Run did not finish before shutdown timeout"))
+					timed.If(Id("client").Dot("client").Op("!=").Nil()).Block(
+						Id("client").Dot("client").Dot("CloseAllowingRebalance").Call(),
+						Id("forcedClose").Op("=").True(),
+					)
+					timed.Op("<-").Id("runDone")
+				}),
+			)
+		})
+		if hasMetrics {
+			group.If(Id("lagDone").Op("!=").Nil()).Block(Op("<-").Id("lagDone"))
+		}
+		group.If(Op("!").Id("forcedClose").Op("&&").Id("client").Dot("client").Op("!=").Nil()).Block(Id("client").Dot("client").Dot("Close").Call())
 	})
 }
 
@@ -165,15 +194,19 @@ func (r *Renderer) writeRun(file GoFile, hasMetrics bool) {
 		group.If(Id("client").Dot("closed")).Block(Id("client").Dot("mu").Dot("Unlock").Call(), Return(Qual("fmt", "Errorf").Call(Lit("kafka subscriber: client is closed"))))
 		group.If(Id("client").Dot("running")).Block(Id("client").Dot("mu").Dot("Unlock").Call(), Return(Qual("fmt", "Errorf").Call(Lit("kafka subscriber: Run is already active"))))
 		group.List(Id("runContext"), Id("stop")).Op(":=").Qual("context", "WithCancel").Call(Id("ctx"))
+		group.Id("runDone").Op(":=").Make(Chan().Struct())
 		group.Id("client").Dot("running").Op("=").True()
 		group.Id("client").Dot("stop").Op("=").Id("stop")
+		group.Id("client").Dot("runDone").Op("=").Id("runDone")
 		group.Id("client").Dot("mu").Dot("Unlock").Call()
 		group.Defer().Func().Params().Block(
 			Id("stop").Call(),
 			Id("client").Dot("mu").Dot("Lock").Call(),
 			Id("client").Dot("running").Op("=").False(),
 			Id("client").Dot("stop").Op("=").Nil(),
+			Id("client").Dot("runDone").Op("=").Nil(),
 			Id("client").Dot("mu").Dot("Unlock").Call(),
+			Close(Id("runDone")),
 		).Call()
 		group.Id("maxPoll").Op(":=").Id("client").Dot("maxPoll")
 		group.If(Id("maxPoll").Op("<=").Lit(0)).Block(Id("maxPoll").Op("=").Lit(500))
@@ -184,31 +217,39 @@ func (r *Renderer) writeRun(file GoFile, hasMetrics bool) {
 				loop.If(Id("client").Dot("metrics").Op("!=").Nil()).Block(Id("client").Dot("metrics").Dot("pollActive").Dot("Set").Call(Lit(1)))
 			}
 			loop.Id("fetches").Op(":=").Id("client").Dot("client").Dot("PollRecords").Call(Id("runContext"), Id("maxPoll"))
-			loop.If(Id("fetches").Dot("IsClientClosed").Call()).Block(
+			loop.Var().Id("closed").Bool()
+			loop.If(Err().Op("=").Func().Params().Params(Id("err").Error()).BlockFunc(func(poll *Group) {
+				poll.Defer().Id("client").Dot("client").Dot("AllowRebalance").Call()
+				poll.Defer().Func().Params().Block(
+					If(Id("rec").Op(":=").Id("recover").Call(), Id("rec").Op("!=").Nil()).Block(
+						Err().Op("=").Qual("fmt", "Errorf").Call(Lit("kafka handler panic: %v"), Id("rec")),
+					),
+				).Call()
+				poll.If(Id("fetches").Dot("IsClientClosed").Call()).Block(
+					Id("closed").Op("=").True(),
+					Return(Nil()),
+				)
+				poll.If(List(Id("fetchErrs")).Op(":=").Id("fetches").Dot("Errors").Call(), Len(Id("fetchErrs")).Op(">").Lit(0)).BlockFunc(func(errors *Group) {
+					errors.For(List(Id("_"), Id("fetchErr")).Op(":=").Range().Id("fetchErrs")).Block(
+						If(Id("fetchErr").Dot("Err").Op("==").Id("runContext").Dot("Err").Call()).Block(Return(Id("runContext").Dot("Err").Call())),
+						Id("client").Dot("log").Dot("Error").Call(Lit("kafka fetch error"), Qual("log/slog", "String").Call(Lit("topic"), Id("fetchErr").Dot("Topic")), Qual("log/slog", "Int").Call(Lit("partition"), Int().Call(Id("fetchErr").Dot("Partition"))), Qual("log/slog", "Any").Call(Lit("error"), Id("fetchErr").Dot("Err"))),
+					)
+				})
+				poll.Id("byTopic").Op(":=").Id("groupRecordsByTopic").Call(Id("fetches"))
+				poll.If(Err().Op("=").Id("dispatchTopics").Call(Id("runContext"), Id("byTopic"), Id("client").Dot("handlers")), Err().Op("!=").Nil()).Block(Return(Err()))
+				poll.If(Id("client").Dot("commitAfter").Op("&&").Len(Id("byTopic")).Op(">").Lit(0)).Block(
+					If(Err().Op("=").Id("client").Dot("client").Dot("CommitUncommittedOffsets").Call(Id("runContext")), Err().Op("!=").Nil()).Block(Return(Err())),
+				)
+				poll.Return(Nil())
+			}).Call(), Err().Op("!=").Nil()).Block(
+				r.pollFinished(hasMetrics, "error"),
+				Return(Err()),
+			)
+			loop.If(Id("closed")).Block(
 				r.pollFinished(hasMetrics, "ok"),
 				Return(Nil()),
 			)
-			loop.If(List(Id("fetchErrs")).Op(":=").Id("fetches").Dot("Errors").Call(), Len(Id("fetchErrs")).Op(">").Lit(0)).BlockFunc(func(errors *Group) {
-				errors.For(List(Id("_"), Id("fetchErr")).Op(":=").Range().Id("fetchErrs")).Block(
-					If(Id("fetchErr").Dot("Err").Op("==").Id("runContext").Dot("Err").Call()).Block(Id("client").Dot("client").Dot("AllowRebalance").Call(), Return(Id("runContext").Dot("Err").Call())),
-					Id("client").Dot("log").Dot("Error").Call(Lit("kafka fetch error"), Qual("log/slog", "String").Call(Lit("topic"), Id("fetchErr").Dot("Topic")), Qual("log/slog", "Int").Call(Lit("partition"), Int().Call(Id("fetchErr").Dot("Partition"))), Qual("log/slog", "Any").Call(Lit("error"), Id("fetchErr").Dot("Err"))),
-				)
-			})
-			loop.Id("byTopic").Op(":=").Id("groupRecordsByTopic").Call(Id("fetches"))
-			loop.If(Err().Op("=").Id("dispatchTopics").Call(Id("runContext"), Id("byTopic"), Id("client").Dot("handlers")), Err().Op("!=").Nil()).Block(
-				r.pollFinished(hasMetrics, "error"),
-				Id("client").Dot("client").Dot("AllowRebalance").Call(),
-				Return(Err()),
-			)
-			loop.If(Id("client").Dot("commitAfter").Op("&&").Len(Id("byTopic")).Op(">").Lit(0)).Block(
-				If(Err().Op("=").Id("client").Dot("client").Dot("CommitUncommittedOffsets").Call(Id("runContext")), Err().Op("!=").Nil()).Block(
-					r.pollFinished(hasMetrics, "error"),
-					Id("client").Dot("client").Dot("AllowRebalance").Call(),
-					Return(Err()),
-				),
-			)
 			loop.Add(r.pollFinished(hasMetrics, "ok"))
-			loop.Id("client").Dot("client").Dot("AllowRebalance").Call()
 		})
 	})
 }
@@ -237,8 +278,13 @@ func (r *Renderer) writeLag(file GoFile) {
 
 	file.Line().Func().Params(Id("client").Op("*").Id("Client")).Id("startLagLoop").Params(Id("interval").Qual("time", "Duration")).Block(
 		List(Id("ctx"), Id("stop")).Op(":=").Qual("context", "WithCancel").Call(Qual("context", "Background").Call()),
+		Id("done").Op(":=").Make(Chan().Struct()),
 		Id("client").Dot("lagStop").Op("=").Id("stop"),
-		Go().Id("client").Dot("runLagLoop").Call(Id("ctx"), Id("interval")),
+		Id("client").Dot("lagDone").Op("=").Id("done"),
+		Go().Func().Params().Block(
+			Defer().Close(Id("done")),
+			Id("client").Dot("runLagLoop").Call(Id("ctx"), Id("interval")),
+		).Call(),
 	)
 	file.Line().Func().Params(Id("client").Op("*").Id("Client")).Id("runLagLoop").Params(Id("ctx").Qual("context", "Context"), Id("interval").Qual("time", "Duration")).Block(
 		Id("client").Dot("scrapeLag").Call(Id("ctx")),
@@ -264,6 +310,7 @@ func (r *Renderer) writeLag(file GoFile) {
 			Id("client").Dot("metrics").Dot("lagScrapeErrors").Dot("WithLabelValues").Call(Lit("list_offsets")).Dot("Inc").Call(),
 			Return(),
 		),
+		If(Err().Op("=").Id("ctx").Dot("Err").Call(), Err().Op("!=").Nil()).Block(Return()),
 		Id("positions").Op(":=").Id("client").Dot("client").Dot("UncommittedOffsets").Call(),
 		If(Len(Id("positions")).Op("==").Lit(0)).Block(
 			Id("positions").Op("=").Id("client").Dot("client").Dot("CommittedOffsets").Call(),

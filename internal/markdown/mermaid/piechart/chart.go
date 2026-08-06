@@ -43,8 +43,7 @@ func NewPieChart(w io.Writer, opts ...Option) (p *PieChart) {
 	if c.title == noTitle {
 		lines = append(lines, baseLine)
 	} else {
-		lines = append(lines, baseLine)
-		lines = append(lines, fmt.Sprintf("    title %s", c.title))
+		lines = append(lines, baseLine, "    title "+c.title)
 	}
 
 	return &PieChart{
@@ -71,12 +70,12 @@ func (p *PieChart) Build() (err error) {
 
 func (p *PieChart) LabelAndIntValue(label string, value uint64) *PieChart {
 
-	p.body = append(p.body, fmt.Sprintf("    \"%s\" : %d", label, value))
+	p.body = append(p.body, fmt.Sprintf("    %q : %d", label, value))
 	return p
 }
 
 func (p *PieChart) LabelAndFloatValue(label string, value float64) *PieChart {
 
-	p.body = append(p.body, fmt.Sprintf("    \"%s\" : %f", label, value))
+	p.body = append(p.body, fmt.Sprintf("    %q : %f", label, value))
 	return p
 }

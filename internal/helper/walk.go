@@ -5,6 +5,7 @@ package helper
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -19,12 +20,7 @@ func IsRelevantGoFile(fileName string) (ok bool) {
 
 func IsDirNameExcluded(name string) (yes bool) {
 
-	for _, n := range defaultExcludeDirNames {
-		if name == n {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(defaultExcludeDirNames, name)
 }
 
 func IsRelPathExcluded(relPath string, extraDirs []string) (yes bool) {

@@ -26,8 +26,8 @@ func extractImportsFromExportedAndAliases(files []*ast.File, resolver *PackageRe
 			genDecl, ok := n.(*ast.GenDecl)
 			if ok && genDecl.Tok == token.TYPE {
 				for _, spec := range genDecl.Specs {
-					typeSpec, ok := spec.(*ast.TypeSpec)
-					if !ok || typeSpec.Name == nil {
+					typeSpec, typeOK := spec.(*ast.TypeSpec)
+					if !typeOK || typeSpec.Name == nil {
 						continue
 					}
 					name := typeSpec.Name.Name
@@ -64,31 +64,9 @@ func extractImportsFromTypeDefinition(files []*ast.File, typeName string, resolv
 
 	requiredImports = make(map[string]bool)
 	importAliases := collectImports(files, resolver)
-
-	for _, file := range files {
-		ast.Inspect(file, func(n ast.Node) bool {
-			genDecl, ok := n.(*ast.GenDecl)
-			if !ok || genDecl.Tok != token.TYPE {
-				return true
-			}
-
-			for _, spec := range genDecl.Specs {
-				typeSpec, ok := spec.(*ast.TypeSpec)
-				if !ok {
-					continue
-				}
-
-				if typeSpec.Name == nil || typeSpec.Name.Name != typeName {
-					continue
-				}
-
-				extractImportsFromType(typeSpec.Type, importAliases, requiredImports)
-			}
-
-			return true
-		})
-	}
-
+	specs := indexPackageTypeSpecs(files)
+	visited := make(map[string]bool)
+	collectDefinitionImports(typeName, specs, importAliases, requiredImports, visited)
 	return
 }
 
@@ -96,62 +74,83 @@ func extractImportsFromErrorType(files []*ast.File, typeName string, resolver *P
 
 	requiredImports = make(map[string]bool)
 	importAliases := collectImports(files, resolver)
+	specs := indexPackageTypeSpecs(files)
+	visited := make(map[string]bool)
+	collectDefinitionImports(typeName, specs, importAliases, requiredImports, visited)
 
 	for _, file := range files {
-		ast.Inspect(file, func(n ast.Node) bool {
-			genDecl, ok := n.(*ast.GenDecl)
-			if !ok || genDecl.Tok != token.TYPE {
-				return true
+		for _, decl := range file.Decls {
+			funcDecl, ok := decl.(*ast.FuncDecl)
+			if !ok || funcDecl.Recv == nil || len(funcDecl.Recv.List) == 0 || funcDecl.Type == nil {
+				continue
 			}
 
-			for _, spec := range genDecl.Specs {
-				typeSpec, ok := spec.(*ast.TypeSpec)
-				if !ok {
-					continue
-				}
-
-				if typeSpec.Name == nil || typeSpec.Name.Name != typeName {
-					continue
-				}
-
-				extractImportsFromType(typeSpec.Type, importAliases, requiredImports)
-
-				for _, file2 := range files {
-					for _, decl := range file2.Decls {
-						funcDecl, ok := decl.(*ast.FuncDecl)
-						if !ok {
-							continue
-						}
-
-						if funcDecl.Recv == nil || len(funcDecl.Recv.List) == 0 {
-							continue
-						}
-
-						recvType := funcDecl.Recv.List[0].Type
-						if starExpr, ok := recvType.(*ast.StarExpr); ok {
-							recvType = starExpr.X
-						}
-
-						if ident, ok := recvType.(*ast.Ident); ok && ident.Name == typeName {
-							if funcDecl.Name != nil {
-								methodName := funcDecl.Name.Name
-								if methodName == "Error" || methodName == "Code" {
-									if funcDecl.Type != nil {
-										extractImportsFromFieldList(funcDecl.Type.Params, importAliases, requiredImports)
-										extractImportsFromFieldList(funcDecl.Type.Results, importAliases, requiredImports)
-									}
-								}
-							}
-						}
-					}
-				}
+			recvType := funcDecl.Recv.List[0].Type
+			if starExpr, isPtr := recvType.(*ast.StarExpr); isPtr {
+				recvType = starExpr.X
 			}
-
-			return true
-		})
+			ident, ok := recvType.(*ast.Ident)
+			if !ok || ident.Name != typeName || funcDecl.Name == nil {
+				continue
+			}
+			methodName := funcDecl.Name.Name
+			if methodName != "Error" && methodName != "Code" {
+				continue
+			}
+			extractImportsFromFieldList(funcDecl.Type.Params, importAliases, requiredImports)
+			extractImportsFromFieldList(funcDecl.Type.Results, importAliases, requiredImports)
+		}
 	}
 
 	return
+}
+
+func indexPackageTypeSpecs(files []*ast.File) (specs map[string]*ast.TypeSpec) {
+
+	specs = make(map[string]*ast.TypeSpec)
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			genDecl, ok := decl.(*ast.GenDecl)
+			if !ok || genDecl.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range genDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok || typeSpec.Name == nil {
+					continue
+				}
+				specs[typeSpec.Name.Name] = typeSpec
+			}
+		}
+	}
+	return
+}
+
+func collectDefinitionImports(typeName string, specs map[string]*ast.TypeSpec, importAliases map[string]string, requiredImports map[string]bool, visited map[string]bool) {
+
+	if visited[typeName] {
+		return
+	}
+	visited[typeName] = true
+
+	spec, ok := specs[typeName]
+	if !ok || spec == nil || spec.Type == nil {
+		return
+	}
+
+	extractImportsFromType(spec.Type, importAliases, requiredImports)
+
+	ast.Inspect(spec.Type, func(n ast.Node) bool {
+		ident, ok := n.(*ast.Ident)
+		if !ok {
+			return true
+		}
+		if _, exists := specs[ident.Name]; !exists {
+			return true
+		}
+		collectDefinitionImports(ident.Name, specs, importAliases, requiredImports, visited)
+		return true
+	})
 }
 
 func extractImportsFromFieldList(fieldList *ast.FieldList, importAliases map[string]string, requiredImports map[string]bool) {

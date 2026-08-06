@@ -14,11 +14,10 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/core/i18n"
 	"tgp/internal/common"
-	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
@@ -32,16 +31,14 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) (er
 	slog.Debug(i18n.Msg("RenderClientTypes: starting"), slog.Int("collectedTypeIDs", len(collectedTypeIDs)), slog.Int("projectTypes", len(r.project.Types)))
 
 	// Создаем директорию dto, если её нет
-	dtoDir := path.Join(r.outDir, "dto")
-	if err = os.MkdirAll(dtoDir, 0700); err != nil {
+	dtoDir := path.Join(r.outDir, pkgDTO)
+	if err = os.MkdirAll(dtoDir, 0o700); err != nil {
 		return fmt.Errorf("%s: %w", i18n.Msg("failed to create dto directory"), err)
 	}
 
-	srcFile := NewSrcFile("dto")
-	srcFile.PackageComment(generated.ByToolGateway)
-
-	ctx := context.WithValue(context.Background(), keyCode, srcFile) // nolint
-	ctx = context.WithValue(ctx, keyPackage, "dto")                  // nolint
+	srcFile := NewSrcFile(pkgDTO)
+	ctx := context.WithValue(context.Background(), keyCode, srcFile)
+	ctx = context.WithValue(ctx, keyPackage, pkgDTO)
 
 	notFoundCount := 0
 	skippedCount := 0
@@ -60,18 +57,11 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) (er
 			continue
 		}
 
-		isFromCurrentProject := r.isTypeFromCurrentProject(typ.ImportPkgPath)
-
-		// ВАЖНО: алиасы на внешние типы тоже генерируем, но как алиасы (type Alias = ExternalType)
-		// Это позволяет сохранить семантику алиаса в клиенте
-		if !isFromCurrentProject {
-			// Для внешних типов генерируем только алиасы
-			if typ.Kind == model.TypeKindAlias && typ.AliasOf != "" {
-				// Алиас на внешний тип - генерируем как алиас
-			} else {
-				// Остальные внешние типы не генерируем
-				continue
-			}
+		// dto — только типы текущего модуля (contracts wire-schema).
+		// Внешние пакеты (stdlib, uuid, …) используются через Qual, без копии в dto.
+		if !r.isTypeFromCurrentProject(typ.ImportPkgPath) {
+			skippedCount++
+			continue
 		}
 
 		// ВАЖНО: пропускаем анонимные типы (interface:anonymous, struct:anonymous и т.д.)
@@ -125,10 +115,9 @@ func (r *ClientRenderer) RenderClientTypes(collectedTypeIDs map[string]bool) (er
 
 		if typeCode != nil {
 			// Создаем отдельный файл для каждого типа
-			typeFile := NewSrcFile("dto")
-			typeFile.PackageComment(generated.ByToolGateway)
-			typeCtx := context.WithValue(context.Background(), keyCode, typeFile) // nolint
-			typeCtx = context.WithValue(typeCtx, keyPackage, "dto")               // nolint
+			typeFile := NewSrcFile(pkgDTO)
+			typeCtx := context.WithValue(context.Background(), keyCode, typeFile)
+			typeCtx = context.WithValue(typeCtx, keyPackage, pkgDTO)
 
 			// Перегенерируем typeCode с typeFile в контексте, чтобы ImportName попал в нужный файл
 			if isAliasCode {
@@ -157,19 +146,16 @@ func (r *ClientRenderer) generateClientStruct(ctx context.Context, typeName stri
 
 	sortedFields := slices.Clone(typ.StructFields)
 	slices.SortFunc(sortedFields, func(a, b *model.StructField) int {
-		nameA := a.Name
-		nameB := b.Name
-		// Встроенные поля (с пустым именем) идут первыми
-		if nameA == "" && nameB != "" {
+		if a.Anonymous && !b.Anonymous {
 			return -1
 		}
-		if nameA != "" && nameB == "" {
+		if !a.Anonymous && b.Anonymous {
 			return 1
 		}
-		if nameA < nameB {
+		if a.Name < b.Name {
 			return -1
 		}
-		if nameA > nameB {
+		if a.Name > b.Name {
 			return 1
 		}
 		return 0
@@ -186,11 +172,9 @@ func (r *ClientRenderer) generateClientStruct(ctx context.Context, typeName stri
 func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *model.StructField) *Statement {
 
 	var s *Statement
-	if field.Name == "" {
-		// Встроенное поле - генерируем только тип без имени
+	if field.Anonymous {
 		s = &Statement{}
 	} else {
-		// Обычное поле - генерируем с именем
 		fieldName := ToCamel(field.Name)
 		s = Id(fieldName)
 	}
@@ -207,7 +191,7 @@ func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *m
 			s = s.Add(r.fieldTypeForClient(ctx, field.TypeID, field.ElementPointers, false))
 		} else {
 			// Пустой TypeID элемента (например, не удалось разрешить тип) — генерируем []any
-			s = s.Id("any")
+			s = s.Id(typeAny)
 		}
 
 	case field.MapKey != nil && field.MapValue != nil:
@@ -221,9 +205,9 @@ func (r *ClientRenderer) generateClientStructField(ctx context.Context, field *m
 		switch {
 		case field.TypeID == "":
 			// Пустой typeID обычно означает any
-			s = s.Id("any")
+			s = s.Id(typeAny)
 		case strings.Contains(field.TypeID, ":interface:anonymous"):
-			s = s.Id("any")
+			s = s.Id(typeAny)
 		default:
 			s = s.Add(r.fieldTypeForClient(ctx, field.TypeID, field.NumberOfPointers, false))
 		}
@@ -336,7 +320,7 @@ func (r *ClientRenderer) generateClientAlias(ctx context.Context, typeName strin
 			code = Type().Id(typeName).Op("=").Map(keyType).Add(valueType)
 			return
 		}
-		code = Type().Id(typeName).Op("=").Map(Id("string")).Id("any")
+		code = Type().Id(typeName).Op("=").Map(Id(typeString)).Id(typeAny)
 		return
 	}
 
@@ -382,7 +366,7 @@ func (r *ClientRenderer) generateClientEnum(typeName string, typ *model.Type) (c
 func clientEnumUnderlying(typ *model.Type) (underlying string) {
 
 	if typ == nil {
-		return "string"
+		return typeString
 	}
 	if typ.UnderlyingKind != "" {
 		return string(typ.UnderlyingKind)
@@ -398,7 +382,7 @@ func clientEnumUnderlying(typ *model.Type) (underlying string) {
 		model.TypeKindByte, model.TypeKindRune:
 		return string(typ.Kind)
 	default:
-		return "string"
+		return typeString
 	}
 }
 
@@ -440,7 +424,7 @@ func (r *ClientRenderer) generateClientNamedArray(ctx context.Context, typeName 
 	case typ.ArrayOfID != "":
 		elem.Add(r.fieldTypeForClient(ctx, typ.ArrayOfID, typ.ElementPointers, false))
 	default:
-		elem.Id("any")
+		elem.Id(typeAny)
 	}
 
 	code = Type().Id(typeName).Add(elem)
@@ -451,7 +435,7 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 
 	c := &Statement{}
 
-	for i := 0; i < numberOfPointers; i++ {
+	for range numberOfPointers {
 		c.Op("*")
 	}
 
@@ -463,7 +447,7 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		}
 		// ВАЖНО: проверяем анонимные типы (interface:anonymous, struct:anonymous и т.д.)
 		if strings.Contains(typeID, ":interface:anonymous") {
-			return c.Id("any")
+			return c.Id(typeAny)
 		}
 		// Если тип не найден, но это внешний тип (содержит ":"), используем его как именованный тип
 		if strings.Contains(typeID, ":") {
@@ -537,12 +521,12 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		if typ.TypeName != "" && typ.ImportPkgPath != "" {
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта - используем имя типа
-				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
+				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == pkgDTO {
 					return c.Id(typ.TypeName)
 				}
 				if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
-					dtoPkgPath := fmt.Sprintf("%s/dto", r.pkgPath(r.outDir))
-					srcFile.ImportName(dtoPkgPath, "dto")
+					dtoPkgPath := r.pkgPath(r.outDir) + "/dto"
+					srcFile.ImportName(dtoPkgPath, pkgDTO)
 					return c.Qual(dtoPkgPath, typ.TypeName)
 				}
 				return c.Id(typ.TypeName)
@@ -554,7 +538,7 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 			valueType := r.fieldTypeFromTypeRefForClient(ctx, typ.MapValue, false)
 			return c.Map(keyType).Add(valueType)
 		}
-		return c.Map(Id("string")).Id("any")
+		return c.Map(Id(typeString)).Id(typeAny)
 
 	case model.TypeKindChan:
 		chanType := c
@@ -578,13 +562,13 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 				// Тип из текущего проекта
 				// ВАЖНО: если мы генерируем код в пакете dto, то типы из того же пакета
 				// используем без импорта (просто по имени), чтобы избежать циклических импортов
-				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
+				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == pkgDTO {
 					return c.Id(typ.TypeName)
 				}
 				// Тип из текущего проекта, но не генерируется в пакете dto - используем dto пакет
 				if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
-					dtoPkgPath := fmt.Sprintf("%s/dto", r.pkgPath(r.outDir))
-					srcFile.ImportName(dtoPkgPath, "dto")
+					dtoPkgPath := r.pkgPath(r.outDir) + "/dto"
+					srcFile.ImportName(dtoPkgPath, pkgDTO)
 					return c.Qual(dtoPkgPath, typ.TypeName)
 				}
 				return c.Id(typ.TypeName)
@@ -607,14 +591,14 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		}
 		// Если TypeName пустой, это может быть анонимный интерфейс (any)
 		if strings.Contains(typeID, ":interface:anonymous") || typ.Kind == model.TypeKindAny {
-			return c.Id("any")
+			return c.Id(typeAny)
 		}
 		// Если нет ImportPkgPath, используем TypeName напрямую
 		if typ.TypeName != "" {
 			return c.Id(typ.TypeName)
 		}
 		// Fallback на any для пустых интерфейсов
-		return c.Id("any")
+		return c.Id(typeAny)
 
 	case model.TypeKindFunction:
 		args := make([]Code, 0, len(typ.FunctionArgs))
@@ -635,13 +619,13 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		if typ.ImportPkgPath != "" && typ.TypeName != "" {
 			if r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 				// Тип из текущего проекта - используем локальный тип из dto пакета
-				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
+				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == pkgDTO {
 					return c.Id(typ.TypeName)
 				}
 				// Тип из текущего проекта, но не генерируется в пакете dto - используем dto пакет
 				if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
-					dtoPkgPath := fmt.Sprintf("%s/dto", r.pkgPath(r.outDir))
-					srcFile.ImportName(dtoPkgPath, "dto")
+					dtoPkgPath := r.pkgPath(r.outDir) + "/dto"
+					srcFile.ImportName(dtoPkgPath, pkgDTO)
 					return c.Qual(dtoPkgPath, typ.TypeName)
 				}
 				return c.Id(typ.TypeName)
@@ -666,12 +650,12 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 
 				if isAliasFromCurrentProject {
 					// Алиас из текущего проекта - используем имя алиаса
-					if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
+					if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == pkgDTO {
 						return c.Id(typ.TypeName)
 					}
 					if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
-						dtoPkgPath := fmt.Sprintf("%s/dto", r.pkgPath(r.outDir))
-						srcFile.ImportName(dtoPkgPath, "dto")
+						dtoPkgPath := r.pkgPath(r.outDir) + "/dto"
+						srcFile.ImportName(dtoPkgPath, pkgDTO)
 						return c.Qual(dtoPkgPath, typ.TypeName)
 					}
 					return c.Id(typ.TypeName)
@@ -695,7 +679,7 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 		}
 		// Если TypeName есть, но нет AliasOf, используем TypeName напрямую
 		if typ.TypeName != "" {
-			if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
+			if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == pkgDTO {
 				return c.Id(typ.TypeName)
 			}
 		}
@@ -721,13 +705,13 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 				// Тип из текущего проекта
 				// ВАЖНО: если мы генерируем код в пакете dto, то типы из того же пакета
 				// используем без импорта (просто по имени), чтобы избежать циклических импортов
-				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == "dto" {
+				if currentPkg, ok := ctx.Value(keyPackage).(string); ok && currentPkg == pkgDTO {
 					return c.Id(typ.TypeName)
 				}
 				// Тип из текущего проекта, но не генерируется в пакете dto - используем dto пакет
 				if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
-					dtoPkgPath := fmt.Sprintf("%s/dto", r.pkgPath(r.outDir))
-					srcFile.ImportName(dtoPkgPath, "dto")
+					dtoPkgPath := r.pkgPath(r.outDir) + "/dto"
+					srcFile.ImportName(dtoPkgPath, pkgDTO)
 					return c.Qual(dtoPkgPath, typ.TypeName)
 				}
 				return c.Id(typ.TypeName)
@@ -755,24 +739,24 @@ func (r *ClientRenderer) fieldTypeForClient(ctx context.Context, typeID string, 
 func (r *ClientRenderer) isBuiltinType(typeID string) bool {
 
 	builtinTypes := map[string]bool{
-		"string":  true,
-		"int":     true,
-		"int8":    true,
-		"int16":   true,
-		"int32":   true,
-		"int64":   true,
-		"uint":    true,
-		"uint8":   true,
-		"uint16":  true,
-		"uint32":  true,
-		"uint64":  true,
-		"float32": true,
-		"float64": true,
-		"bool":    true,
-		"byte":    true,
-		"rune":    true,
-		"error":   true,
-		"any":     true,
+		typeString: true,
+		"int":      true,
+		"int8":     true,
+		"int16":    true,
+		"int32":    true,
+		"int64":    true,
+		"uint":     true,
+		"uint8":    true,
+		"uint16":   true,
+		"uint32":   true,
+		"uint64":   true,
+		"float32":  true,
+		"float64":  true,
+		"bool":     true,
+		"byte":     true,
+		"rune":     true,
+		typeError:  true,
+		typeAny:    true,
 	}
 	return builtinTypes[typeID]
 }
@@ -782,7 +766,7 @@ func (r *ClientRenderer) fieldTypeFromTypeRefForClient(ctx context.Context, type
 	c := &Statement{}
 
 	if typeRef.IsEllipsis && allowEllipsis {
-		for i := 0; i < typeRef.NumberOfPointers; i++ {
+		for range typeRef.NumberOfPointers {
 			c.Op("*")
 		}
 		c.Op("...")
@@ -797,7 +781,7 @@ func (r *ClientRenderer) fieldTypeFromTypeRefForClient(ctx context.Context, type
 			typ, ok := r.project.Types[typeRef.TypeID]
 			if ok && typ.ImportPkgPath != "" && typ.TypeName != "" {
 				if !r.isTypeFromCurrentProject(typ.ImportPkgPath) {
-					for i := 0; i < typeRef.NumberOfPointers; i++ {
+					for range typeRef.NumberOfPointers {
 						c.Op("*")
 					}
 					if srcFile, ok := ctx.Value(keyCode).(GoFile); ok {
@@ -812,7 +796,7 @@ func (r *ClientRenderer) fieldTypeFromTypeRefForClient(ctx context.Context, type
 				}
 			}
 		}
-		for i := 0; i < typeRef.NumberOfPointers; i++ {
+		for range typeRef.NumberOfPointers {
 			c.Op("*")
 		}
 		if typeRef.IsSlice {
@@ -823,11 +807,11 @@ func (r *ClientRenderer) fieldTypeFromTypeRefForClient(ctx context.Context, type
 		if typeRef.TypeID != "" {
 			return c.Add(r.fieldTypeForClient(ctx, typeRef.TypeID, typeRef.ElementPointers, false))
 		}
-		return c.Add(Id("any"))
+		return c.Add(Id(typeAny))
 	}
 
 	if typeRef.MapKey != nil && typeRef.MapValue != nil {
-		for i := 0; i < typeRef.NumberOfPointers; i++ {
+		for range typeRef.NumberOfPointers {
 			c.Op("*")
 		}
 		keyType := r.fieldTypeFromTypeRefForClient(ctx, typeRef.MapKey, false)

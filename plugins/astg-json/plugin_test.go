@@ -23,7 +23,7 @@ func TestExecuteWritesFile(t *testing.T) {
 		t.Fatalf("Set out: %v", err)
 	}
 
-	plugin := &AstgJsonPlugin{}
+	plugin := &AstgJSONPlugin{}
 	if _, err := plugin.Execute(request); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestExecuteMissingProject(t *testing.T) {
 
 	t.Parallel()
 
-	plugin := &AstgJsonPlugin{}
+	plugin := &AstgJSONPlugin{}
 	if _, err := plugin.Execute(data.NewStorage()); err == nil {
 		t.Fatal("expected error when project is missing")
 	}
@@ -55,7 +55,7 @@ func TestInfo(t *testing.T) {
 
 	t.Parallel()
 
-	plugin := &AstgJsonPlugin{}
+	plugin := &AstgJSONPlugin{}
 	info, err := plugin.Info()
 	if err != nil {
 		t.Fatalf("Info: %v", err)

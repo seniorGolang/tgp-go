@@ -3,8 +3,8 @@
 package renderer
 
 import (
-	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"tgp/core/i18n"
@@ -33,27 +33,11 @@ func (r *ClientRenderer) CollectTypeIDsForExchangeFromContracts(contracts []*mod
 func (r *ClientRenderer) collectTypeIDsFromContract(contract *model.Contract, collectedTypeIDs map[string]bool, processedTypes map[string]bool) {
 
 	for _, method := range contract.Methods {
-		argsWithoutCtx := r.argsWithoutContext(method)
-		for _, arg := range argsWithoutCtx {
+		for _, arg := range r.argsWithoutContext(method) {
 			r.collectTypeIDFromVariable(arg, collectedTypeIDs, processedTypes)
 		}
-
-		resultsWithoutErr := r.resultsWithoutError(method)
-		for _, result := range resultsWithoutErr {
+		for _, result := range r.resultsWithoutError(method) {
 			r.collectTypeIDFromVariable(result, collectedTypeIDs, processedTypes)
-		}
-
-		for _, errInfo := range method.Errors {
-			if errInfo.TypeID != "" {
-				r.collectTypeIDRecursive(errInfo.TypeID, collectedTypeIDs, processedTypes)
-			}
-		}
-
-		if defaultError := model.GetAnnotationValue(r.project, contract, method, nil, "defaultError", ""); defaultError != "" && defaultError != "skip" {
-			if tokens := strings.Split(defaultError, ":"); len(tokens) == 2 {
-				typeID := fmt.Sprintf("%s:%s", tokens[0], tokens[1])
-				r.collectTypeIDRecursive(typeID, collectedTypeIDs, processedTypes)
-			}
 		}
 	}
 }
@@ -205,12 +189,12 @@ func (r *ClientRenderer) isExcludedTypeID(typeID string) bool {
 	typeName := parts[1]
 
 	// time.Time
-	if importPkgPath == "time" && typeName == "Time" {
+	if importPkgPath == PackageTime && typeName == nameTime {
 		return true
 	}
 
 	// time.Duration
-	if importPkgPath == "time" && typeName == "Duration" {
+	if importPkgPath == PackageTime && typeName == "Duration" {
 		return true
 	}
 
@@ -225,11 +209,11 @@ func (r *ClientRenderer) isExcludedTypeID(typeID string) bool {
 			"gopkg.in/guregu/null.v4",
 		}
 		for _, pkg := range uuidPackages {
-			if strings.HasPrefix(importPkgPath, pkg) && typeName != "Time" {
+			if strings.HasPrefix(importPkgPath, pkg) && typeName != nameTime {
 				return true
 			}
 		}
-		if strings.Contains(importPkgPath, "uuid") && typeName != "Time" {
+		if strings.Contains(importPkgPath, "uuid") && typeName != nameTime {
 			return true
 		}
 	}
@@ -278,10 +262,8 @@ func (r *ClientRenderer) isExcludedType(typ *model.Type) bool {
 	}
 
 	if typ.ImportPkgPath != "" && typ.TypeName != "" {
-		for _, iface := range typ.ImplementsInterfaces {
-			if iface == "encoding/json.Marshaler" {
-				return true
-			}
+		if slices.Contains(typ.ImplementsInterfaces, "encoding/json.Marshaler") {
+			return true
 		}
 	}
 
@@ -295,15 +277,15 @@ func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) bool {
 	}
 
 	// time.Time
-	if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
+	if typ.ImportPkgPath == PackageTime && typ.TypeName == nameTime {
 		return true
 	}
-	if typ.ImportPkgPath == "" && typ.TypeName == "Time" {
+	if typ.ImportPkgPath == "" && typ.TypeName == nameTime {
 		return true
 	}
 
 	// time.Duration
-	if typ.ImportPkgPath == "time" && typ.TypeName == "Duration" {
+	if typ.ImportPkgPath == PackageTime && typ.TypeName == "Duration" {
 		return true
 	}
 
@@ -318,11 +300,11 @@ func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) bool {
 			"gopkg.in/guregu/null.v4",
 		}
 		for _, pkg := range uuidPackages {
-			if strings.HasPrefix(typ.ImportPkgPath, pkg) && typ.TypeName != "Time" {
+			if strings.HasPrefix(typ.ImportPkgPath, pkg) && typ.TypeName != nameTime {
 				return true
 			}
 		}
-		if strings.Contains(typ.ImportPkgPath, "uuid") && typ.TypeName != "Time" {
+		if strings.Contains(typ.ImportPkgPath, "uuid") && typ.TypeName != nameTime {
 			return true
 		}
 	}

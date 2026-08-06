@@ -3,10 +3,19 @@ package tracer
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
 	"go.opentelemetry.io/otel/attribute"
 	semconv "go.opentelemetry.io/otel/semconv/v1.38.0"
 )
+
+const maxTraceAttrLength = 512
+
+func clipAttr(value string) (out string) {
+
+	if len(value) <= maxTraceAttrLength {
+		return value
+	}
+	return value[:maxTraceAttrLength]
+}
 
 func httpServerMetricAttributesFromRequest(c *fiber.Ctx, cfg config) (out []attribute.KeyValue) {
 
@@ -15,10 +24,9 @@ func httpServerMetricAttributesFromRequest(c *fiber.Ctx, cfg config) (out []attr
 		flavor = "1.1"
 	}
 	out = []attribute.KeyValue{
-		semconv.HTTPRequestMethodKey.String(utils.CopyString(c.Method())),
+		semconv.HTTPRequestMethodKey.String(c.Method()),
 		semconv.NetworkProtocolVersion(flavor),
-		semconv.URLScheme(utils.CopyString(c.Protocol())),
-		semconv.HostName(utils.CopyString(c.Hostname())),
+		semconv.URLScheme(c.Protocol()),
 	}
 	if cfg.Port != nil {
 		out = append(out, semconv.ServerPort(*cfg.Port))
@@ -35,17 +43,17 @@ func httpServerMetricAttributesFromRequest(c *fiber.Ctx, cfg config) (out []attr
 func httpServerTraceAttributesFromRequest(c *fiber.Ctx, cfg config) (out []attribute.KeyValue) {
 
 	out = []attribute.KeyValue{
-		semconv.HTTPRequestMethodKey.String(utils.CopyString(c.Method())),
-		semconv.URLScheme(utils.CopyString(c.Protocol())),
-		semconv.URLPath(utils.CopyString(c.Path())),
-		semconv.URLFull(utils.CopyString(c.OriginalURL())),
-		semconv.UserAgentOriginal(string(utils.CopyBytes(c.Request().Header.UserAgent()))),
-		semconv.HostName(utils.CopyString(c.Hostname())),
+		semconv.HTTPRequestMethodKey.String(c.Method()),
+		semconv.URLScheme(c.Protocol()),
+		semconv.URLPath(clipAttr(c.Path())),
+		semconv.URLFull(clipAttr(c.OriginalURL())),
+		semconv.UserAgentOriginal(clipAttr(c.Get(fiber.HeaderUserAgent))),
+		semconv.HostName(clipAttr(c.Hostname())),
 	}
 	if cfg.collectClientIP {
 		clientIP := c.IP()
 		if len(clientIP) > 0 {
-			out = append(out, semconv.ClientAddress(utils.CopyString(clientIP)))
+			out = append(out, semconv.ClientAddress(clientIP))
 		}
 	}
 	return

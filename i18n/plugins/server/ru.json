@@ -11,6 +11,8 @@
   "out option is required and must be a string": "опция out обязательна и должна быть строкой",
   "failed to cleanup generated files": "не удалось очистить сгенерированные файлы",
   "generating transport files": "генерация транспортных файлов",
+  "failed to parse contracts": "не удалось разобрать список контрактов",
+  "failed to filter contracts": "не удалось отфильтровать контракты",
   "failed to generate transport files": "не удалось сгенерировать транспортные файлы",
   "generating server": "генерация сервера",
   "failed to generate server": "не удалось сгенерировать сервер",

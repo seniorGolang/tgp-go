@@ -5,6 +5,7 @@ package tags
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 
@@ -41,9 +42,6 @@ func (tags *DocTags) UnmarshalJSON(data []byte) (err error) {
 		return
 	}
 	// Булевы true из JSON обратно в пустую строку в DocTags.
-	if tags == nil {
-		*tags = make(DocTags)
-	}
 	if *tags == nil {
 		*tags = make(DocTags)
 	}
@@ -71,9 +69,7 @@ func (tags DocTags) Merge(t DocTags) DocTags {
 		tags = make(DocTags)
 	}
 
-	for k, v := range t {
-		tags[k] = v
-	}
+	maps.Copy(tags, t)
 	return tags
 }
 
@@ -153,8 +149,8 @@ func (tags DocTags) Sub(prefix string) (subTags DocTags) {
 	prefix += "."
 	subTags = make(DocTags)
 	for key, value := range tags {
-		if strings.HasPrefix(key, prefix) {
-			subTags[strings.TrimPrefix(key, prefix)] = value
+		if after, ok := strings.CutPrefix(key, prefix); ok {
+			subTags[after] = value
 		}
 	}
 	return
@@ -207,9 +203,9 @@ func (tags DocTags) ToMap(tagName, separator, splitter string, defValue ...strin
 
 	m = make(map[string]string)
 
-	pairs := strings.Split(tags.Value(tagName, defValue...), separator)
+	pairs := strings.SplitSeq(tags.Value(tagName, defValue...), separator)
 
-	for _, pair := range pairs {
+	for pair := range pairs {
 		if kv := strings.Split(pair, splitter); len(kv) == 2 {
 			m[kv[0]] = kv[1]
 		}
@@ -217,7 +213,7 @@ func (tags DocTags) ToMap(tagName, separator, splitter string, defValue ...strin
 	return
 }
 
-func (tags DocTags) contains(tagName string) (found bool) { // nolint
+func (tags DocTags) contains(tagName string) (found bool) { //nolint:unused
 	_, found = tags[tagName]
 	return
 }

@@ -11,15 +11,15 @@ import (
 	"tgp/internal/generated"
 )
 
-func (r *ClientRenderer) RenderTsConfig() (err error) {
+func (r *ClientRenderer) RenderTSConfig() (err error) {
 
 	outDir := r.outDir
 
 	// Структура для tsconfig.json
 	compilerOptions := map[string]any{
-		"target":                           "ES2020",
-		"module":                           "ES2020",
-		"lib":                              []string{"ES2020", "DOM"},
+		"target":                           targetES2020,
+		"module":                           targetES2020,
+		"lib":                              []string{targetES2020, "DOM"},
 		"moduleResolution":                 "bundler",
 		"strict":                           true,
 		"esModuleInterop":                  true,
@@ -55,7 +55,7 @@ func (r *ClientRenderer) RenderTsConfig() (err error) {
 	fileContent := generated.ByToolGatewayComment + string(jsonData) + "\n"
 
 	tsConfigPath := path.Join(outDir, "tsconfig.json")
-	if err = os.WriteFile(tsConfigPath, []byte(fileContent), 0600); err != nil {
+	if err = os.WriteFile(tsConfigPath, []byte(fileContent), 0o600); err != nil {
 		return fmt.Errorf("failed to write tsconfig.json: %w", err)
 	}
 

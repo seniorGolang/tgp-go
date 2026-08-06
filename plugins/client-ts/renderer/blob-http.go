@@ -54,7 +54,7 @@ func (r *ClientRenderer) methodRequestMultipart(contract *model.Contract, method
 	if len(readerArgs) > 1 {
 		return true
 	}
-	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpMultipart) {
+	if len(readerArgs) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMultipart) {
 		return true
 	}
 	return false
@@ -66,21 +66,21 @@ func (r *ClientRenderer) methodResponseMultipart(contract *model.Contract, metho
 	if len(readCloserResults) > 1 {
 		return true
 	}
-	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpMultipart) {
+	if len(readCloserResults) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMultipart) {
 		return true
 	}
 	return false
 }
 
-func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.Method, v *model.Variable) (s string) {
+func (r *ClientRenderer) streamPartName(_contract *model.Contract, method *model.Method, v *model.Variable) (s string) {
 
 	if v != nil && v.Annotations != nil {
-		if val, found := v.Annotations[model.TagHttpPartName]; found && val != "" {
+		if val, found := v.Annotations[model.TagHTTPPartName]; found && val != "" {
 			return val
 		}
 	}
 	if method != nil && method.Annotations != nil {
-		if val, found := method.Annotations[model.TagHttpPartName]; found && val != "" {
+		if val, found := method.Annotations[model.TagHTTPPartName]; found && val != "" {
 			if v != nil && v.Name != "" {
 				if partName := r.varValueFromMethodMap(val, v.Name); partName != "" {
 					return partName
@@ -96,7 +96,7 @@ func (r *ClientRenderer) streamPartName(contract *model.Contract, method *model.
 
 func (r *ClientRenderer) varValueFromMethodMap(annotationValue string, varName string) (s string) {
 
-	for _, pair := range strings.Split(annotationValue, ",") {
+	for pair := range strings.SplitSeq(annotationValue, ",") {
 		if pairTokens := strings.Split(strings.TrimSpace(pair), "|"); len(pairTokens) == 2 {
 			arg := strings.TrimSpace(pairTokens[0])
 			value := strings.TrimSpace(pairTokens[1])

@@ -20,9 +20,9 @@ func ResolveFileRef(rootDir string, value string) (resolved string, err error) {
 	rest := value[len(filePrefix):]
 	var relPath string
 	var section string
-	if idx := strings.Index(rest, "#"); idx >= 0 {
-		relPath = strings.TrimSpace(rest[:idx])
-		section = strings.TrimSpace(rest[idx+1:])
+	if before, after, ok := strings.Cut(rest, "#"); ok {
+		relPath = strings.TrimSpace(before)
+		section = strings.TrimSpace(after)
 	} else {
 		relPath = strings.TrimSpace(rest)
 	}

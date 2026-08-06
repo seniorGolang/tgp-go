@@ -1,0 +1,39 @@
+{{.DoNotEditComment}}
+package token
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+)
+
+var ErrBodyNotRewindable = errors.New("token: request body is not rewindable")
+
+func cloneRequest(req *http.Request) (clone *http.Request, err error) {
+
+	clone = req.Clone(req.Context())
+	if req.Body == nil || req.Body == http.NoBody {
+		return
+	}
+	if req.GetBody == nil {
+		err = ErrBodyNotRewindable
+		return
+	}
+	if clone.Body, err = req.GetBody(); err != nil {
+		err = fmt.Errorf("token: clone request body: %w", err)
+	}
+	return
+}
+
+func prepareAttempt(req *http.Request) (attempt *http.Request, rewindable bool, err error) {
+
+	if req.Body == nil || req.Body == http.NoBody || req.GetBody != nil {
+		if attempt, err = cloneRequest(req); err != nil {
+			return
+		}
+		return attempt, true, nil
+	}
+	attempt = req.Clone(req.Context())
+	attempt.Body = req.Body
+	return attempt, false, nil
+}

@@ -48,7 +48,7 @@ func MethodIsHTTP(project *Project, contract *Contract, method *Method) (ok bool
 	if !IsAnnotationSet(project, contract, nil, nil, TagServerHTTP) {
 		return false
 	}
-	if !IsAnnotationSet(project, contract, nil, nil, TagServerJsonRPC) {
+	if !IsAnnotationSet(project, contract, nil, nil, TagServerJSONRPC) {
 		return true
 	}
 	return IsAnnotationSet(project, contract, method, nil, TagHTTPMethod)
@@ -63,7 +63,7 @@ func MethodIsJSONRPC(project *Project, contract *Contract, method *Method) (ok b
 	if MethodIsStream(project, contract, method) {
 		return false
 	}
-	if !IsAnnotationSet(project, contract, nil, nil, TagServerJsonRPC) {
+	if !IsAnnotationSet(project, contract, nil, nil, TagServerJSONRPC) {
 		return false
 	}
 	return !IsAnnotationSet(project, contract, method, nil, TagHTTPMethod)
@@ -104,9 +104,9 @@ func ContractWSPath(project *Project, contract *Contract) (path string) {
 
 	path = strings.TrimSpace(GetAnnotationValue(project, contract, nil, nil, TagWSPath, ""))
 	if path != "" {
-		return JoinHTTPPath(GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, ""), path)
+		return JoinHTTPPath(GetAnnotationValue(project, contract, nil, nil, TagHTTPPrefix, ""), path)
 	}
-	prefix := GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, "")
+	prefix := GetAnnotationValue(project, contract, nil, nil, TagHTTPPrefix, "")
 	return JoinHTTPPath(prefix, "/ws/"+LowerCamel(contract.Name))
 }
 
@@ -115,9 +115,9 @@ func MethodSSEPath(project *Project, contract *Contract, method *Method) (path s
 
 	path = strings.TrimSpace(GetAnnotationValue(project, contract, method, nil, TagSSEPath, ""))
 	if path != "" {
-		return JoinHTTPPath(GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, ""), path)
+		return JoinHTTPPath(GetAnnotationValue(project, contract, nil, nil, TagHTTPPrefix, ""), path)
 	}
-	prefix := GetAnnotationValue(project, contract, nil, nil, TagHttpPrefix, "")
+	prefix := GetAnnotationValue(project, contract, nil, nil, TagHTTPPrefix, "")
 	return JoinHTTPPath(prefix, "/sse/"+LowerCamel(contract.Name)+"/"+LowerCamel(method.Name))
 }
 
@@ -181,7 +181,7 @@ func MethodStreamOutChan(project *Project, method *Method) (result *Variable, el
 		return nil, nil, false
 	}
 	for _, candidate := range method.Results {
-		if candidate.TypeID == "error" {
+		if candidate.TypeID == string(TypeKindError) {
 			continue
 		}
 		var elem *TypeRef

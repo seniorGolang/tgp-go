@@ -19,7 +19,7 @@ var templates embed.FS
 func Generate(rootDir string, moduleName string) (err error) {
 
 	astgDir := filepath.Join(rootDir, "astg")
-	if err = os.MkdirAll(astgDir, 0700); err != nil {
+	if err = os.MkdirAll(astgDir, 0o700); err != nil {
 		return fmt.Errorf("failed to create astg directory: %w", err)
 	}
 
@@ -108,13 +108,13 @@ func renderFile(tmpl *template.Template, templateName, filePath string, data any
 
 	_ = os.Remove(filePath)
 	dir := filepath.Dir(filePath)
-	if err = os.MkdirAll(dir, 0700); err != nil {
+	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
 	var buf bytes.Buffer
 	if err = tmpl.ExecuteTemplate(&buf, templateName, data); err != nil {
 		return
 	}
-	err = os.WriteFile(filePath, buf.Bytes(), 0600)
+	err = os.WriteFile(filePath, buf.Bytes(), 0o600)
 	return
 }

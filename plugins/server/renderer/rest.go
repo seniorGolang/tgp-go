@@ -3,16 +3,14 @@
 package renderer
 
 import (
-	"fmt"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/content"
-	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
@@ -20,17 +18,16 @@ import (
 func (r *contractRenderer) RenderREST() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	jsonPkg := r.getPackageJSON()
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(r.contract.PkgPath, filepath.Base(r.contract.PkgPath))
-	srcFile.ImportName(jsonPkg, "json")
+	srcFile.ImportName(jsonPkg, keyJSON)
 	srcFile.ImportName(PackageReflect, "reflect")
 	srcFile.ImportName(PackageFmt, "fmt")
 	srcFile.ImportName(PackageStrconv, "strconv")
+	srcFile.ImportName(PackageStrings, "strings")
 	srcFile.ImportName("io", "io")
-	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
+	srcFile.ImportName(r.pkgPath(r.outDir)+"/srvctx", "srvctx")
 	for _, method := range r.contract.Methods {
 		if !r.methodIsHTTP(method) || (!r.methodRequestMultipart(method) && !r.methodResponseMultipart(method)) {
 			continue
@@ -41,7 +38,7 @@ func (r *contractRenderer) RenderREST() (err error) {
 		srcFile.ImportName(PackageNetTextproto, "textproto")
 		srcFile.ImportName(PackageErrors, "errors")
 		if len(r.methodRequestBodyStreamArgs(method)) > 1 {
-			srcFile.ImportName(fmt.Sprintf("%s/stream", r.pkgPath(r.outDir)), "stream")
+			srcFile.ImportName(r.pkgPath(r.outDir)+"/stream", "stream")
 		}
 	}
 	for _, method := range r.contract.Methods {
@@ -100,7 +97,7 @@ func (r *contractRenderer) RenderREST() (err error) {
 	return
 }
 
-func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *model.Method) (c Code) {
+func (r *contractRenderer) httpMethodFunc(_typeGen *types.Generator, method *model.Method) (c Code) {
 
 	return Func().Params(Id("http").Op("*").Id("http"+r.contract.Name)).
 		Id(toLowerCamel(method.Name)).
@@ -138,7 +135,7 @@ func (r *contractRenderer) httpMethodFunc(typeGen *types.Generator, method *mode
 
 func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.Generator, method *model.Method, jsonPkg string) (c Code) {
 
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
 	return Func().Params(Id("http").Op("*").Id("http" + r.contract.Name)).
 		Id("serve" + method.Name).
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).
@@ -154,7 +151,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 				).Call()
 			})
 			bg.Var().Id("request").Id(requestStructName(r.contract.Name, method.Name))
-			if successCodeStr := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHttpSuccess, ""); successCodeStr != "" {
+			if successCodeStr := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagHTTPSuccess, ""); successCodeStr != "" {
 				if successCode, err := strconv.Atoi(successCodeStr); err == nil && successCode != 0 {
 					bg.Id(VarNameFtx).Dot("Response").Call().Dot("SetStatusCode").Call(Lit(successCode))
 				}
@@ -166,13 +163,13 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 			} else if bodyStreamArg == nil && model.HTTPNeedsRequestBodyDecode(r.project, r.contract, method) {
 				reqKind := content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagRequestContentType, "application/json"))
 				r.httpServeRequestBodyDecode(bg, jsonPkg, method, reqKind)
-				bg.Add(r.httpArgHeadersBodyMode(srcFile, typeGen, method, func(arg, header string) []Code {
+				bg.Add(r.httpArgHeadersBodyMode(srcFile, typeGen, method, func(_arg, _header string) []Code {
 					return []Code{
 						Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 						Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call()),
 					}
 				}))
-				bg.Add(r.httpCookiesBodyMode(srcFile, typeGen, method, func(arg, header string) []Code {
+				bg.Add(r.httpCookiesBodyMode(srcFile, typeGen, method, func(_arg, _header string) []Code {
 					return []Code{
 						Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 						Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call()),
@@ -181,33 +178,33 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 			}
 			if !requestMultipart && bodyStreamArg != nil {
 				bg.Add(r.httpServePipeRequestContentTypeCheck(method))
-				bg.Id("request").Dot(r.requestStructFieldName(method, bodyStreamArg)).Op("=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+				bg.Id("request").Dot(r.requestStructFieldName(method, bodyStreamArg)).Op("=").Id("streamBodyReader").Call(Id(VarNameFtx))
 			}
-			bg.Add(r.urlArgs(srcFile, typeGen, method, func(arg, header string) []Code {
+			bg.Add(r.urlArgs(srcFile, typeGen, method, func(_arg, _header string) []Code {
 				return []Code{
 					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 					Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("path arguments could not be decoded: ").Op("+").Err().Dot("Error").Call()),
 				}
 			}))
-			bg.Add(r.urlParams(srcFile, typeGen, method, func(arg, header string) []Code {
+			bg.Add(r.urlParams(srcFile, typeGen, method, func(_arg, _header string) []Code {
 				return []Code{
 					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 					Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("url arguments could not be decoded: ").Op("+").Err().Dot("Error").Call()),
 				}
 			}))
-			bg.Add(r.httpArgHeaders(srcFile, typeGen, method, func(arg, header string) []Code {
+			bg.Add(r.httpArgHeaders(srcFile, typeGen, method, func(_arg, _header string) []Code {
 				return []Code{
 					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 					Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call()),
 				}
 			}))
-			bg.Add(r.httpCookies(srcFile, typeGen, method, func(arg, header string) []Code {
+			bg.Add(r.httpCookies(srcFile, typeGen, method, func(_arg, _header string) []Code {
 				return []Code{
 					Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 					Return().Id("sendResponse").Call(Id(VarNameFtx), Lit("http header could not be decoded: ").Op("+").Err().Dot("Error").Call()),
 				}
 			}))
-			if responseMethod := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpResponse, ""); responseMethod != "" {
+			if responseMethod := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHTTPResponse, ""); responseMethod != "" {
 				args := argsWithoutContext(method)
 				callArgs := make([]Code, 0, len(args)+2)
 				callArgs = append(callArgs, Id(VarNameFtx), Id("http").Dot("base"))
@@ -218,11 +215,19 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 			} else {
 				responseStreamResult := r.methodResponseBodyStreamResult(method)
 				bg.Var().Id("response").Id(responseStructName(r.contract.Name, method.Name))
-				bg.If().List(Id("response"), Err()).Op("=").Id("http").Dot(toLowerCamel(method.Name)).Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("request")).Op(";").Err().Op("==").Nil().BlockFunc(func(bf *Group) {
-					if r.methodResponseMultipart(method) {
-						bf.Add(r.httpServeMultipartResponseDefers(method))
-						bf.Line()
-					}
+				bg.List(Id("response"), Err()).Op("=").Id("http").Dot(toLowerCamel(method.Name)).Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("request"))
+				if r.methodResponseMultipart(method) {
+					bg.Add(r.httpServeMultipartResponseDefers(method))
+					bg.Line()
+				} else if responseStreamResult != nil {
+					fieldName := r.responseStructFieldName(method, responseStreamResult)
+					bg.If(Id("response").Dot(fieldName).Op("!=").Nil()).Block(
+						Defer().Func().Params().Block(
+							Id("_").Op("=").Id("response").Dot(fieldName).Dot("Close").Call(),
+						).Call(),
+					)
+				}
+				bg.If(Err().Op("==").Nil()).BlockFunc(func(bf *Group) {
 					var ex Statement
 					ex.Add(r.httpRetCookies(method))
 					ex.Add(r.httpRetHeaders(method))
@@ -239,13 +244,10 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 						bf.Return()
 					case responseStreamResult != nil:
 						contentType := model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/octet-stream")
-						bf.Defer().Func().Params().Block(
-							Id("_").Op("=").Id("response").Dot(r.responseStructFieldName(method, responseStreamResult)).Dot("Close").Call(),
-						).Call()
 						bf.Id(VarNameFtx).Dot("Response").Call().Dot("Header").Dot("SetContentType").Call(Lit(contentType))
 						bf.List(Id("_"), Err()).Op("=").Qual("io", "Copy").Call(Id(VarNameFtx).Dot("Response").Call().Dot("BodyWriter").Call(), Id("response").Dot(r.responseStructFieldName(method, responseStreamResult)))
 						bf.Return()
-					case len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle):
+					case len(resultsWithoutError(method)) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPEnableInlineSingle):
 						bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "response", true))
 					default:
 						if len(r.resultNamesExcludeFromBody(method)) > 0 {
@@ -256,7 +258,7 @@ func (r *contractRenderer) httpServeMethodFunc(srcFile *GoFile, typeGen *types.G
 								}
 							})
 							bf.Id("responseBody").Op(":=").Id(responseBodyStructName(r.contract.Name, method.Name)).Values(bodyDict)
-							inlineBody := len(bodyFields) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle)
+							inlineBody := len(bodyFields) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPEnableInlineSingle)
 							bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "responseBody", inlineBody))
 						} else {
 							bf.Add(r.httpServeResponseEncode(method, content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagResponseContentType, "application/json")), "response", false))

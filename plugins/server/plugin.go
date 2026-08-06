@@ -6,6 +6,7 @@ package main
 import (
 	_ "embed"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -36,7 +37,13 @@ func (p *ServerPlugin) Execute(request data.Storage) (response data.Storage, err
 		return nil, errors.New(i18n.Msg("out option is required and must be a string"))
 	}
 
-	// project уже отфильтрован по contracts в плагине astg (зависимость)
+	var contracts []string
+	if contracts, err = helper.ParseStringList(request, "contracts"); err != nil {
+		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
+	}
+	if project, err = helper.ProjectWithFilter(project, contracts); err != nil {
+		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts"), err)
+	}
 
 	// Очищаем старые сгенерированные файлы перед новой генерацией
 	if err = cleanup.GeneratedFiles(output); err != nil {
@@ -83,21 +90,21 @@ func (p *ServerPlugin) Execute(request data.Storage) (response data.Storage, err
 func (p *ServerPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{
-		Name:         "server",
+		Name:         nameServer,
 		Doc:          pluginDoc,
 		Description:  i18n.Msg("HTTP/JSON-RPC server code generator based on Fiber"),
 		Author:       "AlexK (seniorGolang@gmail.com)",
 		License:      "MIT",
-		Category:     "server",
+		Category:     nameServer,
 		Dependencies: []string{"astg"},
 		Commands: []plugin.Command{
 			{
-				Path:        []string{"server"},
+				Path:        []string{nameServer},
 				Description: i18n.Msg("Generate server code"),
 				Options: []plugin.Option{
 					{
 						Name:        "contracts-dir",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to contracts folder (relative to rootDir)"),
 						Required:    false,
 						Default:     "contracts",
@@ -105,13 +112,13 @@ func (p *ServerPlugin) Info() (info plugin.Info, err error) {
 					{
 						Name:        "out",
 						Short:       "o",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to output directory"),
 						Required:    true,
 					},
 					{
 						Name:        "contracts",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")"),
 						Required:    false,
 					},

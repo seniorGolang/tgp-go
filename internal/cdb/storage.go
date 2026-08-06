@@ -57,7 +57,7 @@ func WriteProject(root string, relPath string, project *model.Project) (err erro
 	}
 	path := filepath.Join(root, relPath)
 
-	if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
 

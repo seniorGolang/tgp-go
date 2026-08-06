@@ -3,7 +3,7 @@
 package renderer
 
 import (
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
@@ -144,7 +144,7 @@ func (r *Renderer) writeHandlerCall(group *Group, metrics bool, log bool, contra
 		group.If(Err().Op("!=").Nil()).Block(
 			Id("client").Dot("log").Dot("Error").Call(Lit("kafka handler failed"), Lit("tgp.contract"), Lit(contract.Name), Lit("tgp.method"), Lit(method.Name), Lit("messaging.destination"), Lit(topic), Lit("tgp.records"), records, Lit("tgp.duration"), Qual("time", "Since").Call(Id("started")), Lit("error"), Err()),
 		).Else().Block(
-			Id("client").Dot("log").Dot("Info").Call(Lit("kafka handler completed"), Lit("tgp.contract"), Lit(contract.Name), Lit("tgp.method"), Lit(method.Name), Lit("messaging.destination"), Lit(topic), Lit("tgp.records"), records, Lit("tgp.duration"), Qual("time", "Since").Call(Id("started"))),
+			Id("client").Dot("log").Dot("Debug").Call(Lit("kafka handler completed"), Lit("tgp.contract"), Lit(contract.Name), Lit("tgp.method"), Lit(method.Name), Lit("messaging.destination"), Lit(topic), Lit("tgp.records"), records, Lit("tgp.duration"), Qual("time", "Since").Call(Id("started"))),
 		)
 	}
 }

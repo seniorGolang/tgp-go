@@ -40,7 +40,7 @@ func ParseArgMapEntries(value string) (items []ArgMapItem) {
 		return
 	}
 
-	for _, pair := range strings.Split(value, ",") {
+	for pair := range strings.SplitSeq(value, ",") {
 		parts := strings.Split(strings.TrimSpace(pair), "|")
 		if len(parts) < 2 {
 			continue
@@ -136,9 +136,9 @@ type HTTPArgMappings struct {
 // BuildHTTPArgMappings returns parsed HTTPArgMappings for the given method.
 func BuildHTTPArgMappings(project *Project, contract *Contract, method *Method) (mappings HTTPArgMappings) {
 
-	headerValue := GetAnnotationValue(project, contract, method, nil, TagHttpHeader, "")
-	cookieValue := GetAnnotationValue(project, contract, method, nil, TagHttpCookies, "")
-	argValue := GetAnnotationValue(project, contract, method, nil, TagHttpArg, "")
+	headerValue := GetAnnotationValue(project, contract, method, nil, TagHTTPHeader, "")
+	cookieValue := GetAnnotationValue(project, contract, method, nil, TagHTTPCookies, "")
+	argValue := GetAnnotationValue(project, contract, method, nil, TagHTTPArg, "")
 
 	mappings.HeaderItems = ParseArgMapEntries(headerValue)
 	mappings.CookieItems = ParseArgMapEntries(cookieValue)
@@ -165,7 +165,7 @@ func HTTPImplicitArgSet(mappings HTTPArgMappings) (implicitArgs map[string]struc
 	}
 
 	for _, it := range mappings.ArgItems {
-		if it.Mode == ArgModeImplicit && it.Arg != "path" {
+		if it.Mode == ArgModeImplicit && it.Arg != argPath {
 			implicitArgs[it.Arg] = struct{}{}
 		}
 	}
@@ -193,7 +193,7 @@ func HTTPExcludeFromExchangeRequestSet(mappings HTTPArgMappings) (excludeArgs ma
 
 	for _, it := range mappings.ArgItems {
 		if it.Mode == ArgModeExplicit || it.Mode == ArgModeImplicit {
-			if it.Arg == "path" {
+			if it.Arg == argPath {
 				continue
 			}
 			excludeArgs[it.Arg] = struct{}{}
@@ -266,7 +266,7 @@ func HTTPArgQueryMapForRequest(project *Project, contract *Contract, method *Met
 	queryMap = make(map[string]string)
 
 	for _, it := range mappings.ArgItems {
-		if it.Arg == "path" {
+		if it.Arg == argPath {
 			continue
 		}
 
@@ -310,7 +310,7 @@ func HTTPPathParamArgMap(project *Project, contract *Contract, method *Method) (
 	if project == nil || contract == nil || method == nil {
 		return map[string]string{}
 	}
-	return PathParamArgMap(method, GetAnnotationValue(project, contract, method, nil, TagHttpPath, ""))
+	return PathParamArgMap(method, GetAnnotationValue(project, contract, method, nil, TagHTTPPath, ""))
 }
 
 // PathParamArgMap возвращает arg.Name → имя сегмента :name из произвольного URL path.
@@ -320,7 +320,7 @@ func PathParamArgMap(method *Method, urlPath string) (pathMap map[string]string)
 	if method == nil || urlPath == "" {
 		return pathMap
 	}
-	for _, token := range strings.Split(urlPath, "/") {
+	for token := range strings.SplitSeq(urlPath, "/") {
 		token = strings.TrimSpace(token)
 		if !strings.HasPrefix(token, ":") {
 			continue
@@ -430,7 +430,7 @@ func HTTPResultsForExchangeBody(project *Project, contract *Contract, method *Me
 
 	exclude := HTTPResultNamesOmitFromExchangeBody(project, contract, method)
 	for _, res := range method.Results {
-		if res.TypeID == "error" || res.TypeID == typeIDIOReadCloser {
+		if res.TypeID == string(TypeKindError) || res.TypeID == typeIDIOReadCloser {
 			continue
 		}
 		if _, ok := exclude[res.Name]; ok {
@@ -551,7 +551,7 @@ func resultByName(method *Method, resultName string) (variable *Variable) {
 	}
 
 	for _, res := range method.Results {
-		if res.Name == resultName && res.TypeID != "error" {
+		if res.Name == resultName && res.TypeID != string(TypeKindError) {
 			return res
 		}
 	}

@@ -22,7 +22,7 @@ func TestMethodHTTPAnnotations_rejectsInvalidHttpArgs(t *testing.T) {
 			Name: "Get",
 			Annotations: tags.DocTags{
 				model.TagHTTPMethod: "GET",
-				model.TagHttpArg:    "broken",
+				model.TagHTTPArg:    "broken",
 			},
 		}},
 	}
@@ -48,7 +48,7 @@ func TestMethodHTTPAnnotations_acceptsValidMapping(t *testing.T) {
 			Name: "Get",
 			Annotations: tags.DocTags{
 				model.TagHTTPMethod: "GET",
-				model.TagHttpArg:    "q|q",
+				model.TagHTTPArg:    "q|q",
 			},
 		}},
 	}
@@ -75,8 +75,8 @@ func TestMethodHTTPAnnotations_rejectsFormArgWithoutFormTag(t *testing.T) {
 				"optionalNote.tags":         "json:note,omitempty",
 			},
 			Args: []*model.Variable{
-				{Name: "name", TypeRef: model.TypeRef{TypeID: "string"}},
-				{Name: "optionalNote", TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1}},
+				{Name: "name", TypeID: "string"},
+				{Name: "optionalNote", TypeID: "string", NumberOfPointers: 1},
 			},
 		}},
 	}
@@ -107,8 +107,8 @@ func TestMethodHTTPAnnotations_acceptsFormArgWithFormTag(t *testing.T) {
 				"optionalNote.tags":         "form:note",
 			},
 			Args: []*model.Variable{
-				{Name: "name", TypeRef: model.TypeRef{TypeID: "string"}},
-				{Name: "optionalNote", TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1}},
+				{Name: "name", TypeID: "string"},
+				{Name: "optionalNote", TypeID: "string", NumberOfPointers: 1},
 			},
 		}},
 	}
@@ -144,7 +144,7 @@ func TestMethodHTTPAnnotations_acceptsFormInlineStructArg(t *testing.T) {
 				"params.tags":               "json:inline",
 			},
 			Args: []*model.Variable{
-				{Name: "params", TypeRef: model.TypeRef{TypeID: tokenParamsTypeID}},
+				{Name: "params", TypeID: tokenParamsTypeID},
 			},
 		}},
 	}
@@ -179,7 +179,7 @@ func TestMethodHTTPAnnotations_rejectsFormNonInlineStructArg(t *testing.T) {
 				model.TagRequestContentType: "application/x-www-form-urlencoded",
 			},
 			Args: []*model.Variable{
-				{Name: "params", TypeRef: model.TypeRef{TypeID: tokenParamsTypeID}},
+				{Name: "params", TypeID: tokenParamsTypeID},
 			},
 		}},
 	}

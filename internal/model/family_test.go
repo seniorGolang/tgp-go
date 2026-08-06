@@ -23,7 +23,7 @@ func TestContractMarks(t *testing.T) {
 		t.Fatalf("http: httpFamily=%v kafka=%v", httpFamily, kafka)
 	}
 
-	rpcContract := &Contract{Name: "Rpc", Annotations: tags.DocTags{TagServerJsonRPC: ""}}
+	rpcContract := &Contract{Name: "Rpc", Annotations: tags.DocTags{TagServerJSONRPC: ""}}
 	if !ContractIsHTTPFamily(project, rpcContract) {
 		t.Fatal("jsonRPC-server is HTTP family")
 	}

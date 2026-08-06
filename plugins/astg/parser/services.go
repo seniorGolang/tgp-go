@@ -3,12 +3,14 @@
 package parser
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"tgp/internal"
@@ -23,36 +25,33 @@ func findServices(project *model.Project, loader *AutonomousPackageLoader) (err 
 	candidateFiles := make([]string, 0)
 
 	err = filepath.Walk(internal.ProjectRoot, func(filePath string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return nil
-		}
-
-		if info.IsDir() {
-			if helper.IsDirNameExcluded(info.Name()) {
-				return filepath.SkipDir
+		if walkErr == nil && info != nil {
+			if info.IsDir() {
+				if helper.IsDirNameExcluded(info.Name()) {
+					return filepath.SkipDir
+				}
+				if shouldExcludeDir(filePath, project.ExcludeDirs) {
+					return filepath.SkipDir
+				}
+				return nil
 			}
-			if shouldExcludeDir(filePath, project.ExcludeDirs) {
-				return filepath.SkipDir
+
+			if shouldExcludeDir(filepath.Dir(filePath), project.ExcludeDirs) {
+				return nil
 			}
-			return nil
-		}
 
-		if shouldExcludeDir(filepath.Dir(filePath), project.ExcludeDirs) {
-			return nil
-		}
+			if !helper.IsRelevantGoFile(info.Name()) {
+				return nil
+			}
 
-		if !helper.IsRelevantGoFile(info.Name()) {
-			return nil
-		}
+			if isGeneratedFile(filePath) {
+				return nil
+			}
 
-		if isGeneratedFile(filePath) {
-			return nil
+			if hasMainFunction(filePath) {
+				candidateFiles = append(candidateFiles, filePath)
+			}
 		}
-
-		if hasMainFunction(filePath) {
-			candidateFiles = append(candidateFiles, filePath)
-		}
-
 		return nil
 	})
 
@@ -121,7 +120,7 @@ func extractServiceName(mainPath string) (name string) {
 	return
 }
 
-func findContractsInMainFile(file *ast.File, filePath string, project *model.Project, loader *AutonomousPackageLoader) (contractIDs []string) {
+func findContractsInMainFile(file *ast.File, _filePath string, project *model.Project, loader *AutonomousPackageLoader) (contractIDs []string) {
 
 	contractIDs = make([]string, 0)
 	contractNames := make(map[string]*model.Contract)
@@ -145,13 +144,7 @@ func findContractsInMainFile(file *ast.File, filePath string, project *model.Pro
 					if transportAliases[transportAlias.Name] {
 						if contract, exists := contractNames[sel.Sel.Name]; exists {
 							contractID := contract.ID
-							found := false
-							for _, id := range contractIDs {
-								if id == contractID {
-									found = true
-									break
-								}
-							}
+							found := slices.Contains(contractIDs, contractID)
 							if !found {
 								contractIDs = append(contractIDs, contractID)
 							}
@@ -195,7 +188,7 @@ func hasMainFunction(filePath string) (hasMain bool) {
 
 	buf := make([]byte, 8192)
 	var n int
-	if n, err = file.Read(buf); err != nil && err != io.EOF {
+	if n, err = file.Read(buf); err != nil && !errors.Is(err, io.EOF) {
 		return
 	}
 

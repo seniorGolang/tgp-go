@@ -26,18 +26,18 @@ func kafkaMethod(name string, topic string, args ...*model.Variable) (method *mo
 		Name:        name,
 		Annotations: tags.DocTags{model.TagKafkaTopic: topic},
 		Args:        args,
-		Results:     []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}},
+		Results:     []*model.Variable{{Name: "err", TypeID: "error"}},
 	}
 }
 
 func ctxArg() (arg *model.Variable) {
 
-	return &model.Variable{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}}
+	return &model.Variable{Name: "ctx", TypeID: "context:Context"}
 }
 
 func eventArg() (arg *model.Variable) {
 
-	return &model.Variable{Name: "event", TypeRef: model.TypeRef{TypeID: "example:Order"}}
+	return &model.Variable{Name: "event", TypeID: "example:Order"}
 }
 
 func TestContractKafkaOK(t *testing.T) {
@@ -57,11 +57,11 @@ func TestContractKafkaOK(t *testing.T) {
 				},
 				Args: []*model.Variable{
 					ctxArg(),
-					{Name: "orderID", TypeRef: model.TypeRef{TypeID: "string"}},
-					{Name: "traceID", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "orderID", TypeID: "string"},
+					{Name: "traceID", TypeID: "string"},
 					eventArg(),
 				},
-				Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}},
+				Results: []*model.Variable{{Name: "err", TypeID: "error"}},
 			},
 		},
 	}
@@ -169,8 +169,8 @@ func TestContractKafkaRejectsPointerMessage(t *testing.T) {
 
 	project := kafkaProject()
 	method := kafkaMethod("X", "t", ctxArg(), &model.Variable{
-		Name:    "event",
-		TypeRef: model.TypeRef{TypeID: "example:Order", NumberOfPointers: 1},
+		Name:   "event",
+		TypeID: "example:Order", NumberOfPointers: 1,
 	})
 	contract := &model.Contract{
 		Name:        "Events",
@@ -186,8 +186,8 @@ func TestContractKafkaBytesCodec(t *testing.T) {
 
 	project := kafkaProject()
 	method := kafkaMethod("X", "t", ctxArg(), &model.Variable{
-		Name:    "body",
-		TypeRef: model.TypeRef{TypeID: "byte", IsSlice: true},
+		Name:   "body",
+		TypeID: "byte", IsSlice: true,
 	})
 	method.Annotations[model.TagKafkaCodec] = model.KafkaCodecBytes
 	contract := &model.Contract{
@@ -240,7 +240,7 @@ func TestContractKafkaEmptyHeaderName(t *testing.T) {
 
 	project := kafkaProject()
 	method := kafkaMethod("X", "t", ctxArg(),
-		&model.Variable{Name: "traceID", TypeRef: model.TypeRef{TypeID: "string"}},
+		&model.Variable{Name: "traceID", TypeID: "string"},
 		eventArg(),
 	)
 	method.Annotations[model.TagKafkaHeaders] = "traceID|   "

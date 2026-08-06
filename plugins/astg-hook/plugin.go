@@ -54,35 +54,32 @@ func (p *AstgHookPlugin) Execute(request data.Storage) (response data.Storage, e
 		return
 	}
 
+	// Best-effort persist: DB failures are logged and do not fail the hook.
 	root, rootErr := cdb.Root()
-	if rootErr != nil {
+	if rootErr == nil {
+		idx, loadErr := cdb.LoadIndex(root)
+		if loadErr == nil {
+			relPath, upsertErr := cdb.UpsertProject(root, idx, projectKey, origin, modulePath, version, kind)
+			if upsertErr == nil {
+				if writeErr := cdb.WriteProject(root, relPath, project); writeErr == nil {
+					if saveErr := cdb.SaveIndex(root, idx); saveErr == nil {
+						slog.Debug(i18n.Msg("contract saved to db"), slog.String("ref", projectKey+"@"+version))
+					} else {
+						slog.Debug(i18n.Msg("contracts db save index failed"), slog.String("error", saveErr.Error()))
+					}
+				} else {
+					slog.Debug(i18n.Msg("contracts db write project failed"), slog.String("error", writeErr.Error()))
+				}
+			} else {
+				slog.Debug(i18n.Msg("contracts db upsert failed"), slog.String("error", upsertErr.Error()))
+			}
+		} else {
+			slog.Debug(i18n.Msg("contracts db index load failed"), slog.String("error", loadErr.Error()))
+		}
+	} else {
 		slog.Debug(i18n.Msg("contracts db root unavailable"), slog.String("error", rootErr.Error()))
-		return
 	}
 
-	idx, loadErr := cdb.LoadIndex(root)
-	if loadErr != nil {
-		slog.Debug(i18n.Msg("contracts db index load failed"), slog.String("error", loadErr.Error()))
-		return
-	}
-
-	relPath, upsertErr := cdb.UpsertProject(root, idx, projectKey, origin, modulePath, version, kind)
-	if upsertErr != nil {
-		slog.Debug(i18n.Msg("contracts db upsert failed"), slog.String("error", upsertErr.Error()))
-		return
-	}
-
-	if writeErr := cdb.WriteProject(root, relPath, project); writeErr != nil {
-		slog.Debug(i18n.Msg("contracts db write project failed"), slog.String("error", writeErr.Error()))
-		return
-	}
-
-	if saveErr := cdb.SaveIndex(root, idx); saveErr != nil {
-		slog.Debug(i18n.Msg("contracts db save index failed"), slog.String("error", saveErr.Error()))
-		return
-	}
-
-	slog.Debug(i18n.Msg("contract saved to db"), slog.String("ref", projectKey+"@"+version))
 	return
 }
 

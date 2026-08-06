@@ -51,27 +51,23 @@ func testProjectWithDtoID() (project *model.Project) {
 				PkgName:       "filters",
 				StructFields: []*model.StructField{
 					{
-						Name:    "scope",
-						TypeRef: model.TypeRef{TypeID: "string"},
-						Tags:    map[string][]string{"json": {"scope"}},
+						Name:   "scope",
+						TypeID: "string",
+						Tags:   map[string][]string{"json": {"scope"}},
 					},
 					{
-						Name: "objects",
-						TypeRef: model.TypeRef{
-							TypeID:          uidTypeID,
-							IsSlice:         true,
-							ElementPointers: 1,
-						},
-						Tags: map[string][]string{"json": {"objects"}},
+						Name:            "objects",
+						TypeID:          uidTypeID,
+						IsSlice:         true,
+						ElementPointers: 1,
+						Tags:            map[string][]string{"json": {"objects"}},
 					},
 					{
-						Name: "subjects",
-						TypeRef: model.TypeRef{
-							TypeID:          uidTypeID,
-							IsSlice:         true,
-							ElementPointers: 1,
-						},
-						Tags: map[string][]string{"json": {"subjects"}},
+						Name:            "subjects",
+						TypeID:          uidTypeID,
+						IsSlice:         true,
+						ElementPointers: 1,
+						Tags:            map[string][]string{"json": {"subjects"}},
 					},
 				},
 			},
@@ -167,9 +163,9 @@ func TestRenderExchange_declaresDtoIDWithoutUUIDInProject(t *testing.T) {
 				PkgName:       "dto",
 				StructFields: []*model.StructField{
 					{
-						Name:    "ID",
-						TypeRef: model.TypeRef{TypeID: testDtoPkg + ":ID"},
-						Tags:    map[string][]string{"json": {"id"}},
+						Name:   "ID",
+						TypeID: testDtoPkg + ":ID",
+						Tags:   map[string][]string{"json": {"id"}},
 					},
 				},
 			},
@@ -179,15 +175,15 @@ func TestRenderExchange_declaresDtoIDWithoutUUIDInProject(t *testing.T) {
 		Name:    "Shapes",
 		PkgPath: "example/contracts",
 		Annotations: tags.DocTags{
-			model.TagServerJsonRPC: "",
+			model.TagServerJSONRPC: "",
 		},
 		Methods: []*model.Method{{
 			Name: "EchoEntity",
 			Args: []*model.Variable{
-				{Name: "entity", TypeRef: model.TypeRef{TypeID: testDtoPkg + ":Entity"}},
+				{Name: "entity", TypeID: testDtoPkg + ":Entity"},
 			},
 			Results: []*model.Variable{
-				{Name: "out", TypeRef: model.TypeRef{TypeID: testDtoPkg + ":Entity"}},
+				{Name: "out", TypeID: testDtoPkg + ":Entity"},
 			},
 		}},
 	}}
@@ -298,7 +294,7 @@ func TestWalkTypeRef_opaqueMarshalerMapsToAny(t *testing.T) {
 				PkgName:              "custom",
 				ImplementsInterfaces: []string{"encoding/json:Marshaler", "encoding/json:Unmarshaler"},
 				StructFields: []*model.StructField{
-					{Name: "value", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "value", TypeID: "string"},
 				},
 			},
 		},
@@ -352,9 +348,9 @@ func TestRenderExchange_declaresDtoIDAndUsesIt(t *testing.T) {
 		PkgName:       "dto",
 		StructFields: []*model.StructField{
 			{
-				Name:    "id",
-				TypeRef: model.TypeRef{TypeID: testDtoPkg + ":ID"},
-				Tags:    map[string][]string{"json": {"id"}},
+				Name:   "id",
+				TypeID: testDtoPkg + ":ID",
+				Tags:   map[string][]string{"json": {"id"}},
 			},
 		},
 	}
@@ -362,17 +358,17 @@ func TestRenderExchange_declaresDtoIDAndUsesIt(t *testing.T) {
 		Name:    "Attr",
 		PkgPath: "example/contracts",
 		Annotations: tags.DocTags{
-			model.TagServerJsonRPC: "",
+			model.TagServerJSONRPC: "",
 		},
 		Methods: []*model.Method{{
 			Name: "List",
 			Args: []*model.Variable{
-				{Name: "filter", TypeRef: model.TypeRef{TypeID: testFiltersPkg + ":AttrFilter"}},
-				{Name: "limit", TypeRef: model.TypeRef{TypeID: "int"}},
-				{Name: "offset", TypeRef: model.TypeRef{TypeID: "int"}},
+				{Name: "filter", TypeID: testFiltersPkg + ":AttrFilter"},
+				{Name: "limit", TypeID: "int"},
+				{Name: "offset", TypeID: "int"},
 			},
 			Results: []*model.Variable{
-				{Name: "attrs", TypeRef: model.TypeRef{TypeID: testDtoPkg + ":Attr", IsSlice: true, NumberOfPointers: 1}},
+				{Name: "attrs", TypeID: testDtoPkg + ":Attr", IsSlice: true, NumberOfPointers: 1},
 			},
 		}},
 	}}
@@ -417,17 +413,17 @@ func TestRenderJsonRPCClient_skipsNamespaceTypeDuplicates(t *testing.T) {
 		Name:    "Attr",
 		PkgPath: "example/contracts",
 		Annotations: tags.DocTags{
-			model.TagServerJsonRPC: "",
+			model.TagServerJSONRPC: "",
 		},
 		Methods: []*model.Method{{
 			Name: "List",
 			Args: []*model.Variable{
-				{Name: "filter", TypeRef: model.TypeRef{TypeID: testDtoPkg + ":AttrFilter"}},
-				{Name: "limit", TypeRef: model.TypeRef{TypeID: "int"}},
-				{Name: "offset", TypeRef: model.TypeRef{TypeID: "int"}},
+				{Name: "filter", TypeID: testDtoPkg + ":AttrFilter"},
+				{Name: "limit", TypeID: "int"},
+				{Name: "offset", TypeID: "int"},
 			},
 			Results: []*model.Variable{
-				{Name: "attrs", TypeRef: model.TypeRef{TypeID: testDtoPkg + ":Attr", IsSlice: true, NumberOfPointers: 1}},
+				{Name: "attrs", TypeID: testDtoPkg + ":Attr", IsSlice: true, NumberOfPointers: 1},
 			},
 		}},
 	}}
@@ -437,8 +433,8 @@ func TestRenderJsonRPCClient_skipsNamespaceTypeDuplicates(t *testing.T) {
 	if err := renderer.RenderExchangeTypes(project.Contracts[0]); err != nil {
 		t.Fatalf("RenderExchangeTypes: %v", err)
 	}
-	if err := renderer.RenderJsonRPCClientClass(project.Contracts[0]); err != nil {
-		t.Fatalf("RenderJsonRPCClientClass: %v", err)
+	if err := renderer.RenderJSONRPCClientClass(project.Contracts[0]); err != nil {
+		t.Fatalf("RenderJSONRPCClientClass: %v", err)
 	}
 
 	content, err := os.ReadFile(filepath.Join(dir, "attr.ts"))

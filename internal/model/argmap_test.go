@@ -10,7 +10,7 @@ import (
 
 func testStringVar(name string) (variable *Variable) {
 
-	return &Variable{Name: name, TypeRef: TypeRef{TypeID: "string"}}
+	return &Variable{Name: name, TypeID: "string"}
 }
 
 func TestArgByPathSegment(t *testing.T) {
@@ -18,7 +18,7 @@ func TestArgByPathSegment(t *testing.T) {
 	method := &Method{
 		Name: "Get",
 		Args: []*Variable{
-			{Name: "ctx", TypeRef: TypeRef{TypeID: typeIDContext}},
+			{Name: "ctx", TypeID: typeIDContext},
 			testStringVar("UserId"),
 		},
 	}
@@ -47,7 +47,7 @@ func TestHTTPPathParamArgMapAndSet(t *testing.T) {
 			testStringVar("extra"),
 		},
 		Annotations: tags.DocTags{
-			TagHttpPath: "/users/:userId",
+			TagHTTPPath: "/users/:userId",
 		},
 	}
 	project := &Project{}
@@ -78,7 +78,7 @@ func TestStreamPathParamArgMapAndOmit(t *testing.T) {
 		Annotations: tags.DocTags{
 			TagServerWS:   "",
 			TagServerSSE:  "",
-			TagHttpPrefix: "api/v1",
+			TagHTTPPrefix: "api/v1",
 			TagWSPath:     "/ws/:room",
 		},
 	}
@@ -90,13 +90,13 @@ func TestStreamPathParamArgMapAndOmit(t *testing.T) {
 			testStringVar("token"),
 		},
 		Results: []*Variable{
-			{Name: "ticks", TypeRef: TypeRef{ChanOf: &TypeRef{TypeID: "string"}, ChanDirection: 2}},
-			{Name: "err", TypeRef: TypeRef{TypeID: "error"}},
+			{Name: "ticks", ChanOf: &TypeRef{TypeID: "string"}, ChanDirection: 2},
+			{Name: "err", TypeID: "error"},
 		},
 		Annotations: tags.DocTags{
 			TagStream:     StreamModeServer,
 			TagSSEPath:    "/sse/:room/subscribe",
-			TagHttpHeader: "token|X-Token|explicit",
+			TagHTTPHeader: "token|X-Token|explicit",
 		},
 	}
 	project := &Project{Contracts: []*Contract{contract}}
@@ -136,10 +136,10 @@ func TestHTTPResultNamesBodyModeStaysInBody(t *testing.T) {
 		Name: "ResultHeader",
 		Results: []*Variable{
 			testStringVar("correlationId"),
-			{Name: "err", TypeRef: TypeRef{TypeID: "error"}},
+			{Name: "err", TypeID: "error"},
 		},
 		Annotations: tags.DocTags{
-			TagHttpHeader: "correlationId|X-Correlation-Id",
+			TagHTTPHeader: "correlationId|X-Correlation-Id",
 		},
 	}
 	project := &Project{}
@@ -163,10 +163,10 @@ func TestHTTPResultNamesExplicitNotInBody(t *testing.T) {
 		Name: "ResultHeader",
 		Results: []*Variable{
 			testStringVar("correlationId"),
-			{Name: "err", TypeRef: TypeRef{TypeID: "error"}},
+			{Name: "err", TypeID: "error"},
 		},
 		Annotations: tags.DocTags{
-			TagHttpHeader: "correlationId|X-Correlation-Id|explicit",
+			TagHTTPHeader: "correlationId|X-Correlation-Id|explicit",
 		},
 	}
 	project := &Project{}
@@ -189,10 +189,10 @@ func TestHTTPResultNamesImplicitNotInBody(t *testing.T) {
 		Name: "ResultHeader",
 		Results: []*Variable{
 			testStringVar("locale"),
-			{Name: "err", TypeRef: TypeRef{TypeID: "error"}},
+			{Name: "err", TypeID: "error"},
 		},
 		Annotations: tags.DocTags{
-			TagHttpHeader: "locale|X-Locale|implicit",
+			TagHTTPHeader: "locale|X-Locale|implicit",
 		},
 	}
 	project := &Project{}
@@ -212,7 +212,7 @@ func TestHTTPOmitFromRequestJSON_IncludesPath(t *testing.T) {
 			testStringVar("body"),
 		},
 		Annotations: tags.DocTags{
-			TagHttpPath: "/item/:id",
+			TagHTTPPath: "/item/:id",
 		},
 	}
 	project := &Project{}

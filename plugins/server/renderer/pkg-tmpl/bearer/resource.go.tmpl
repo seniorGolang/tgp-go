@@ -1,0 +1,14 @@
+{{.DoNotEditComment}}
+package bearer
+
+type Metadata struct {
+	Resource               string   `json:"resource"`
+	AuthorizationServers   []string `json:"authorization_servers,omitempty"`
+	BearerMethodsSupported []string `json:"bearer_methods_supported,omitempty"`
+	Audience               string   `json:"audience,omitempty"`
+}
+
+const WellKnownPath = "/.well-known/oauth-protected-resource"
+
+// MethodsHeader is the RFC 9728 bearer_methods_supported value for Authorization header.
+var MethodsHeader = []string{"header"}

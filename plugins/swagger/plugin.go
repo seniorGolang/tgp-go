@@ -101,26 +101,26 @@ func (p *SwaggerPlugin) Info() (info plugin.Info, err error) {
 				Options: []plugin.Option{
 					{
 						Name:        "contracts-dir",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to contracts folder (relative to rootDir)"),
 						Required:    false,
 						Default:     "contracts",
 					},
 					{
 						Name:        "out",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to output file (.json and .yaml/.yml supported)"),
 						Required:    false,
 					},
 					{
 						Name:        "serve",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Start HTTP server with Swagger UI on specified address (e.g., :8080 or localhost:3000)"),
 						Required:    false,
 					},
 					{
 						Name:        "contracts",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")"),
 						Required:    false,
 					},

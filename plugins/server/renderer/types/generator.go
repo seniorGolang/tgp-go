@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
@@ -45,7 +45,7 @@ func (g *Generator) FieldTypeFromTypeRef(typeRef *model.TypeRef, allowEllipsis b
 	}
 
 	if typeRef.IsSlice || typeRef.ArrayLen > 0 {
-		for i := 0; i < typeRef.NumberOfPointers; i++ {
+		for range typeRef.NumberOfPointers {
 			c.Op("*")
 		}
 		if typeRef.IsSlice {
@@ -65,7 +65,7 @@ func (g *Generator) FieldTypeFromTypeRef(typeRef *model.TypeRef, allowEllipsis b
 	}
 
 	if typeRef.MapKey != nil && typeRef.MapValue != nil {
-		for i := 0; i < typeRef.NumberOfPointers; i++ {
+		for range typeRef.NumberOfPointers {
 			c.Op("*")
 		}
 		keyType := g.FieldTypeFromTypeRef(typeRef.MapKey, false)
@@ -74,7 +74,7 @@ func (g *Generator) FieldTypeFromTypeRef(typeRef *model.TypeRef, allowEllipsis b
 	}
 
 	if typeRef.ChanOf != nil {
-		for i := 0; i < typeRef.NumberOfPointers; i++ {
+		for range typeRef.NumberOfPointers {
 			c.Op("*")
 		}
 		switch typeRef.ChanDirection {
@@ -147,7 +147,7 @@ func (g *Generator) fieldTypeImpl(typeID string, numberOfPointers int, allowElli
 
 	c := &Statement{}
 
-	for i := 0; i < numberOfPointers; i++ {
+	for range numberOfPointers {
 		c.Op("*")
 	}
 

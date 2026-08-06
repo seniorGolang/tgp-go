@@ -8,7 +8,7 @@ const (
 	PackageFmt            = "fmt"
 	PackageTLS            = "crypto/tls"
 	PackageTime           = "time"
-	PackageHttp           = "net/http"
+	PackageHTTP           = "net/http"
 	PackageURL            = "net/url"
 	PackagePath           = "path"
 	PackageContext        = "context"
@@ -20,6 +20,7 @@ const (
 	PackageReflect        = "reflect"
 	PackageSort           = "sort"
 	PackageUUID           = "github.com/google/uuid"
+	PackageOAuth2         = "golang.org/x/oauth2"
 	PackageFiber          = "github.com/gofiber/fiber/v2"
 	PackageSlog           = "log/slog"
 	PackagePrometheus     = "github.com/prometheus/client_golang/prometheus"
@@ -44,4 +45,36 @@ const (
 const (
 	TypeIDIOReader     = "io:Reader"
 	TypeIDIOReadCloser = "io:ReadCloser"
+)
+
+const (
+	jsonTagCode            = "code"
+	jsonTagDataOmitempty   = "data,omitempty"
+	jsonTagErrorOmitempty  = "error,omitempty"
+	jsonTagMessage         = "message"
+	jsonTagResultOmitempty = "result,omitempty"
+	keyJSON                = "json"
+	labelDescription       = "Описание"
+	labelNo                = "Нет"
+	metricsLabelNames      = "service, method, success, errCode, client_id"
+	nameResult             = "result"
+	nameTime               = "Time"
+	pkgClient              = "client"
+	pkgDTO                 = "dto"
+	pkgJSONRPC             = "jsonrpc"
+	tplContractName        = "ContractName"
+	tplMethodCall          = "MethodCall"
+	tplPkgName             = "PkgName"
+	tplPkgPath             = "PkgPath"
+	tplServiceVar          = "ServiceVar"
+	typeAny                = "any"
+	typeError              = "error"
+	typeString             = "string"
+)
+
+const (
+	labelField   = "Поле"
+	labelName    = "Имя"
+	labelType    = "Тип"
+	labelTypeRef = "Ссылка на тип"
 )

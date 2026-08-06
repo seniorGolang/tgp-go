@@ -5,4 +5,14 @@ type ConfigState struct {
 	MaxDepth int
 }
 
-var Config = ConfigState{}
+var Config = ConfigState{
+	MaxDepth: defaultMaxDepth,
+}
+
+func clipViewerString(value string) (out string) {
+
+	if len(value) <= stringMaxLen {
+		return value
+	}
+	return value[:stringMaxLen]
+}

@@ -25,6 +25,8 @@
   "out option is required and must be a string": "опция out обязательна и должна быть строкой",
   "failed to create output directory": "не удалось создать директорию вывода",
   "failed to cleanup generated files": "не удалось очистить сгенерированные файлы",
+  "failed to parse contracts": "не удалось разобрать список контрактов",
+  "failed to filter contracts": "не удалось отфильтровать контракты",
   "generating TypeScript client": "генерация TypeScript клиента",
   "failed to generate TypeScript client": "не удалось сгенерировать TypeScript клиент",
   "TypeScript client generated successfully": "TypeScript клиент успешно сгенерирован",

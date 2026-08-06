@@ -3,6 +3,7 @@
 package renderer
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"path"
@@ -12,18 +13,17 @@ import (
 
 	"tgp/core/i18n"
 	"tgp/internal/common"
-	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err error) {
+func (r *ClientRenderer) RenderJSONRPCClientClass(contract *model.Contract) (err error) {
 
 	if contract == nil {
-		slog.Error(i18n.Msg("RenderJsonRPCClientClass: contract is nil"))
-		return fmt.Errorf("contract is nil")
+		slog.Error(i18n.Msg("RenderJSONRPCClientClass: contract is nil"))
+		return errors.New("contract is nil")
 	}
 	if contract.PkgPath == "" {
-		slog.Error(i18n.Msg("RenderJsonRPCClientClass: contract.PkgPath is empty"), slog.String("contract", contract.Name))
+		slog.Error(i18n.Msg("RenderJSONRPCClientClass: contract.PkgPath is empty"), slog.String("contract", contract.Name))
 		return fmt.Errorf("contract.PkgPath is empty for contract %s", contract.Name)
 	}
 	hasUnary := r.contractHasUnaryJSONRPC(contract)
@@ -31,11 +31,9 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	outDir := r.outDir
 	r.contract = contract
 	r.knownTypes = make(map[string]int)
-	r.typeDefTs = make(map[string]typeDefTs)
+	r.typeDefTS = make(map[string]typeDefTS)
 
 	file := tsg.NewFile()
-	file.Comment(generated.ByToolGatewayComment)
-
 	file.ImportNamed("./client", "Client")
 	if hasUnary {
 		file.ImportNamed("./jsonrpc/client", "JsonRpcClient")
@@ -46,7 +44,7 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 
 	for _, method := range contract.Methods {
 		var args []*model.Variable
-		if r.methodIsJsonRPC(contract, method) {
+		if r.methodIsJSONRPC(contract, method) {
 			args = r.argsForExchangeRequest(contract, method)
 		} else {
 			args = r.argsForClient(contract, method)
@@ -64,7 +62,7 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	exchangeTypes := make([]string, 0, len(contract.Methods)*2)
 	seenTypes := make(map[string]bool)
 	for _, method := range contract.Methods {
-		if r.methodIsJsonRPC(contract, method) {
+		if r.methodIsJSONRPC(contract, method) {
 			args := r.argsForExchangeRequest(contract, method)
 			if len(args) > 0 {
 				requestType := r.requestTypeName(contract, method)
@@ -88,14 +86,14 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 		file.ImportType(exchangePath, exchangeTypes...)
 	}
 	hasDtoTypes := false
-	for _, def := range common.SortedPairs(r.typeDefTs) {
-		if def.importPkg == "dto" {
+	for _, def := range common.SortedPairs(r.typeDefTS) {
+		if def.importPkg == pkgDTO {
 			hasDtoTypes = true
 			break
 		}
 	}
 	if hasDtoTypes {
-		file.ImportAll(exchangePath, "dto")
+		file.ImportAll(exchangePath, pkgDTO)
 	}
 	usedPkgs := r.collectUsedNamespacePackages(contract)
 	for _, pkg := range common.SortedKeys(usedPkgs) {
@@ -109,7 +107,7 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	for _, typeName := range exchangeTypes {
 		importedTypes[typeName] = true
 	}
-	for _, def := range common.SortedPairs(r.typeDefTs) {
+	for _, def := range common.SortedPairs(r.typeDefTS) {
 		typeName := def.importName
 		if typeName == "" {
 			typeName = def.name
@@ -151,32 +149,33 @@ func (r *ClientRenderer) RenderJsonRPCClientClass(contract *model.Contract) (err
 	}
 
 	for _, method := range contract.Methods {
-		if r.methodIsJsonRPC(contract, method) {
-			results := r.resultsWithoutError(method)
-			callbackTypeStmt := tsg.NewStatement()
-			callbackTypeStmt.Export().Type("ret" + contract.Name + method.Name)
-			callbackTypeStmt.Op("=")
-			callbackFnType := tsg.NewStatement()
-			callbackFnType.Params(func(fg *tsg.Group) {
-				for _, ret := range results {
-					typeStr := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
-					nullableType := tsg.NewStatement()
-					nullableType.Add(tsg.TypeFromString(typeStr)).Op("|").Id("null")
-					fg.Add(tsg.NewStatement().Id(ret.Name).Colon().Add(nullableType))
-				}
-				fg.Add(tsg.NewStatement().Id("error").Colon().Id("Error").Op("|").Id("null"))
-			}).Op("=>").Id("void")
-			callbackTypeStmt.Add(callbackFnType).Semicolon()
-			file.Add(callbackTypeStmt)
-			file.Line()
+		if !r.methodIsJSONRPC(contract, method) {
+			continue
 		}
+		results := r.resultsWithoutError(method)
+		callbackTypeStmt := tsg.NewStatement()
+		callbackTypeStmt.Export().Type("ret" + contract.Name + method.Name)
+		callbackTypeStmt.Op("=")
+		callbackFnType := tsg.NewStatement()
+		callbackFnType.Params(func(fg *tsg.Group) {
+			for _, ret := range results {
+				typeStr := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
+				nullableType := tsg.NewStatement()
+				nullableType.Add(tsg.TypeFromString(typeStr)).Op("|").ID("null")
+				fg.Add(tsg.NewStatement().ID(ret.Name).Colon().Add(nullableType))
+			}
+			fg.Add(tsg.NewStatement().ID(typeError).Colon().ID("Error").Op("|").ID("null"))
+		}).Op("=>").ID("void")
+		callbackTypeStmt.Add(callbackFnType).Semicolon()
+		file.Add(callbackTypeStmt)
+		file.Line()
 	}
 
-	clientClass := r.renderJsonRPCClientClass(contract)
+	clientClass := r.renderJSONRPCClientClass(contract)
 	file.Add(clientClass)
 	file.Line()
 
-	outFilename := path.Join(outDir, fmt.Sprintf("%s.ts", r.tsFileName(contract)))
+	outFilename := path.Join(outDir, r.tsFileName(contract)+".ts")
 	return file.Save(outFilename)
 }
 
@@ -197,7 +196,7 @@ func (r *ClientRenderer) collectUsedNamespacePackages(contract *model.Contract) 
 	pkgs = make(map[string]bool)
 	for _, method := range contract.Methods {
 		streamMethod := model.MethodIsStream(r.project, contract, method)
-		if !r.methodIsJsonRPC(contract, method) && !streamMethod {
+		if !r.methodIsJSONRPC(contract, method) && !streamMethod {
 			continue
 		}
 		for _, arg := range r.argsForExchangeRequest(contract, method) {
@@ -216,8 +215,8 @@ func (r *ClientRenderer) collectUsedNamespacePackages(contract *model.Contract) 
 			r.collectNamespaceFromVariable(contract, method, &model.Variable{Name: out.Name, TypeRef: *element}, false, pkgs)
 		}
 	}
-	delete(pkgs, "dto")
-	delete(pkgs, "time")
+	delete(pkgs, pkgDTO)
+	delete(pkgs, pkgTime)
 	delete(pkgs, "uuid")
 	return pkgs
 }
@@ -249,7 +248,7 @@ func namespaceFromTypeLink(link string) (pkg string) {
 	return strings.TrimSpace(before)
 }
 
-func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) (st *tsg.Statement) {
+func (r *ClientRenderer) renderJSONRPCClientClass(contract *model.Contract) (st *tsg.Statement) {
 	// Захват contract в замыкании: r.contract может меняться при обходе контрактов.
 	currentContract := contract
 
@@ -260,37 +259,37 @@ func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) (st 
 		stmt.Comment(strings.Join(filteredSvcDocs, "\n"))
 	}
 	stmt.Export().Class(contract.Name+"Client", func(grp *tsg.Group) {
-		grp.Add(tsg.NewStatement().Private().Id("baseClient").Colon().Id("Client").Semicolon())
+		grp.Add(tsg.NewStatement().Private().ID("baseClient").Colon().ID("Client").Semicolon())
 		if r.contractHasUnaryJSONRPC(contract) {
-			grp.Add(tsg.NewStatement().Private().Id("client").Colon().Id("JsonRpcClient").Semicolon())
+			grp.Add(tsg.NewStatement().Private().ID("client").Colon().ID("JsonRpcClient").Semicolon())
 		}
 		grp.Line()
 
 		constructor := tsg.NewStatement()
 		constructor.Comment(fmt.Sprintf("Creates a new JSON-RPC client for %s service", contract.Name))
 		constructorStmt := tsg.NewStatement()
-		constructorStmt.Id("constructor")
+		constructorStmt.ID("constructor")
 		constructorStmt.Params(func(cg *tsg.Group) {
-			cg.Add(tsg.NewStatement().Id("_baseClient").Colon().Id("Client"))
+			cg.Add(tsg.NewStatement().ID("_baseClient").Colon().ID("Client"))
 		})
 		constructorStmt.Block(func(cg *tsg.Group) {
-			cg.Add(tsg.NewStatement().This().Dot("baseClient").Op("=").Id("_baseClient").Semicolon())
+			cg.Add(tsg.NewStatement().This().Dot("baseClient").Op("=").ID("_baseClient").Semicolon())
 			if r.contractHasUnaryJSONRPC(contract) {
-				cg.Add(tsg.NewStatement().This().Dot("client").Op("=").Id("_baseClient").Dot("getRpcClient").Call().Semicolon())
+				cg.Add(tsg.NewStatement().This().Dot("client").Op("=").ID("_baseClient").Dot("getRpcClient").Call().Semicolon())
 			}
 		})
 		grp.Add(constructorStmt)
 		grp.Line()
 
 		if r.contract == nil {
-			slog.Error(i18n.Msg("renderJsonRPCClientClass: r.contract is nil in closure"))
+			slog.Error(i18n.Msg("renderJSONRPCClientClass: r.contract is nil in closure"))
 			return
 		}
 
 		for _, method := range currentContract.Methods {
-			if r.methodIsJsonRPC(currentContract, method) {
-				r.renderJsonRPCMethod(grp, currentContract, method)
-				r.renderJsonRPCRequestMethod(grp, currentContract, method)
+			if r.methodIsJSONRPC(currentContract, method) {
+				r.renderJSONRPCMethod(grp, currentContract, method)
+				r.renderJSONRPCRequestMethod(grp, currentContract, method)
 			}
 		}
 		hasStream := false
@@ -308,7 +307,7 @@ func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) (st 
 		}
 
 		if r.contractHasUnaryJSONRPC(contract) {
-			r.renderJsonRPCBatchMethod(grp, contract)
+			r.renderJSONRPCBatchMethod(grp, contract)
 		}
 	})
 	stmt.Export()
@@ -318,14 +317,14 @@ func (r *ClientRenderer) renderJsonRPCClientClass(contract *model.Contract) (st 
 func (r *ClientRenderer) contractHasUnaryJSONRPC(contract *model.Contract) (ok bool) {
 
 	for _, method := range contract.Methods {
-		if r.methodIsJsonRPC(contract, method) {
+		if r.methodIsJSONRPC(contract, method) {
 			return true
 		}
 	}
 	return false
 }
 
-func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Contract, method *model.Method) {
+func (r *ClientRenderer) renderJSONRPCMethod(grp *tsg.Group, contract *model.Contract, method *model.Method) {
 
 	filteredDocs := r.filterDocsComments(method.Docs)
 	if len(filteredDocs) > 0 {
@@ -343,7 +342,7 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 			for _, arg := range args {
 				typeStr := r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true).typeLink()
 				paramStmt := tsg.NewStatement()
-				paramStmt.Id(tsSafeName(arg.Name))
+				paramStmt.ID(tsSafeName(arg.Name))
 				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					paramStmt.Optional()
 				}
@@ -364,22 +363,22 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 	methodStmt.AsyncMethodWithParams(r.lcName(method.Name), methodParams, returnType, func(mg *tsg.Group) {
 		if len(argsForBody) > 0 {
 			paramsObj := tsg.NewStatement()
-			paramsObj.Const("params").Colon().Id(requestTypeName).Op("=")
+			paramsObj.Const("params").Colon().ID(requestTypeName).Op("=")
 			paramsObj.Values(func(vg *tsg.Group) {
 				for _, arg := range argsForBody {
-					vg.Add(tsg.NewStatement().Id(arg.Name).Colon().Id(tsSafeName(arg.Name)))
+					vg.Add(tsg.NewStatement().ID(arg.Name).Colon().ID(tsSafeName(arg.Name)))
 				}
 			})
 			mg.Add(paramsObj.Semicolon())
 		} else {
-			mg.Add(tsg.NewStatement().Const("params").Colon().Id("Record").Generic("string", "never").Op("=").Values(nil).Semicolon())
+			mg.Add(tsg.NewStatement().Const("params").Colon().ID("Record").Generic(typeString, "never").Op("=").Values(nil).Semicolon())
 		}
-		methodName := model.JsonRPCWireMethod(contract.Name, method.Name)
+		methodName := model.JSONRPCWireMethod(contract.Name, method.Name)
 		execCall := tsg.NewStatement()
 		execCall.This().Dot("client").Dot("exec")
 		execCall.Call(
 			tsg.NewStatement().Lit(methodName),
-			tsg.NewStatement().Id("params"),
+			tsg.NewStatement().ID("params"),
 		)
 
 		mg.Add(
@@ -392,13 +391,13 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 
 		mg.If(
 			tsg.NewStatement().
-				Id("execResult").
+				ID("execResult").
 				Dot("type").
 				Op("!==").
 				Lit("success"),
 			func(ig *tsg.Group) {
-				ig.Throw(tsg.NewStatement().Id("this").Dot("baseClient").Dot("decodeRPCError").Call(
-					tsg.NewStatement().Id("execResult").Dot("error"),
+				ig.Throw(tsg.NewStatement().ID("this").Dot("baseClient").Dot("decodeRPCError").Call(
+					tsg.NewStatement().ID("execResult").Dot(typeError),
 				))
 			},
 		)
@@ -406,7 +405,7 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 		if len(results) == 0 {
 			mg.Return()
 		} else {
-			mg.Add(tsg.NewStatement().Const("result").Colon().Id(responseTypeName).Op("=").Id("execResult").Dot("result").Op("as").Id(responseTypeName).Semicolon())
+			mg.Add(tsg.NewStatement().Const(nameResult).Colon().ID(responseTypeName).Op("=").ID("execResult").Dot(nameResult).Op("as").ID(responseTypeName).Semicolon())
 
 			if len(results) == 1 {
 				mg.Return(r.tsRPCSingleResultExpr(contract, method, results[0]))
@@ -414,7 +413,7 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 				returnObj := tsg.NewStatement()
 				returnObj.Values(func(rg *tsg.Group) {
 					for _, ret := range results {
-						rg.Add(tsg.NewStatement().Id(ret.Name).Colon().Id("result").Dot(ret.Name))
+						rg.Add(tsg.NewStatement().ID(ret.Name).Colon().ID(nameResult).Dot(ret.Name))
 					}
 				})
 				mg.Return(returnObj)
@@ -425,7 +424,7 @@ func (r *ClientRenderer) renderJsonRPCMethod(grp *tsg.Group, contract *model.Con
 	grp.Line()
 }
 
-func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *model.Contract, method *model.Method) {
+func (r *ClientRenderer) renderJSONRPCRequestMethod(grp *tsg.Group, contract *model.Contract, method *model.Method) {
 
 	filteredDocs := r.filterDocsComments(method.Docs)
 	if len(filteredDocs) > 0 {
@@ -439,12 +438,12 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 	methodParams := tsg.NewStatement()
 	methodParams.Params(func(pg *tsg.Group) {
 		callbackTypeName := "ret" + contract.Name + method.Name
-		pg.Add(tsg.NewStatement().Id("callback").Colon().Id(callbackTypeName))
+		pg.Add(tsg.NewStatement().ID("callback").Colon().ID(callbackTypeName))
 		if len(args) > 0 {
 			for _, arg := range args {
 				typeStr := r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true).typeLink()
 				paramStmt := tsg.NewStatement()
-				paramStmt.Id(tsSafeName(arg.Name))
+				paramStmt.ID(tsSafeName(arg.Name))
 				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					paramStmt.Optional()
 				}
@@ -456,17 +455,17 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 	})
 
 	returnType := tsg.NewStatement()
-	returnType.Id("BatchRequest")
+	returnType.ID("BatchRequest")
 
 	requestTypeName := r.requestTypeName(contract, method)
 	argsForBody := r.argsForExchangeRequest(contract, method)
 
 	methodStmt := tsg.NewStatement()
-	methodStmt.Id("req" + method.Name)
+	methodStmt.ID("req" + method.Name)
 	if methodParams != nil {
 		methodStmt.Add(methodParams)
 	} else {
-		methodStmt.Id("()")
+		methodStmt.ID("()")
 	}
 	if returnType != nil {
 		methodStmt.Colon().Add(returnType)
@@ -474,103 +473,103 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 	methodStmt.Block(func(bg *tsg.Group) {
 		if len(argsForBody) > 0 {
 			paramsObj := tsg.NewStatement()
-			paramsObj.Const("params").Colon().Id(requestTypeName).Op("=")
+			paramsObj.Const("params").Colon().ID(requestTypeName).Op("=")
 			paramsObj.Values(func(vg *tsg.Group) {
 				for _, arg := range argsForBody {
-					vg.Add(tsg.NewStatement().Id(arg.Name).Colon().Id(tsSafeName(arg.Name)))
+					vg.Add(tsg.NewStatement().ID(arg.Name).Colon().ID(tsSafeName(arg.Name)))
 				}
 			})
 			bg.Add(paramsObj.Semicolon())
 		} else {
-			bg.Add(tsg.NewStatement().Const("params").Colon().Id("Record").Generic("string", "never").Op("=").Values(nil).Semicolon())
+			bg.Add(tsg.NewStatement().Const("params").Colon().ID("Record").Generic(typeString, "never").Op("=").Values(nil).Semicolon())
 		}
 
 		requestStmt := tsg.NewStatement()
-		requestStmt.Const("_request").Colon().Id("BatchRequest").Op("=")
+		requestStmt.Const("_request").Colon().ID("BatchRequest").Op("=")
 		requestStmt.Values(func(vg *tsg.Group) {
 			rpcRequestStmt := tsg.NewStatement()
-			rpcRequestStmt.Id("rpcRequest").Colon()
+			rpcRequestStmt.ID("rpcRequest").Colon()
 			rpcRequestStmt.Values(func(rg *tsg.Group) {
 				rg.Add(tsg.NewStatement().ObjectField("jsonrpc", tsg.NewStatement().Lit("2.0")))
-				rg.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit(model.JsonRPCWireMethod(contract.Name, method.Name))))
-				rg.Add(tsg.NewStatement().ObjectField("params", tsg.NewStatement().Id("params")))
+				rg.Add(tsg.NewStatement().ObjectField("method", tsg.NewStatement().Lit(model.JSONRPCWireMethod(contract.Name, method.Name))))
+				rg.Add(tsg.NewStatement().ObjectField("params", tsg.NewStatement().ID("params")))
 				idGen := tsg.NewStatement()
-				idGen.Id("id").Colon().Id("this.baseClient.getRpcClient").Call().Dot("generateId").Call()
+				idGen.ID("id").Colon().ID("this.baseClient.getRpcClient").Call().Dot("generateId").Call()
 				rg.Add(idGen)
 			})
 			vg.Add(rpcRequestStmt)
-			vg.Add(tsg.NewStatement().ObjectField("retHandler", tsg.NewStatement().Id("undefined")))
+			vg.Add(tsg.NewStatement().ObjectField("retHandler", tsg.NewStatement().ID(typeUndefined)))
 		})
 		bg.Add(requestStmt.Semicolon())
 
 		bg.If(
-			tsg.NewStatement().Id("callback"),
+			tsg.NewStatement().ID("callback"),
 			func(ig *tsg.Group) {
 				results := r.resultsWithoutError(method)
 				responseTypeName := r.responseTypeName(contract, method)
 
 				retHandlerStmt := tsg.NewStatement()
-				retHandlerStmt.Id("_request.retHandler").Op("=")
+				retHandlerStmt.ID("_request.retHandler").Op("=")
 				retHandlerFn := tsg.NewStatement()
 				arrowParams := tsg.NewStatement()
 				arrowParams.Params(func(fg *tsg.Group) {
-					fg.Add(tsg.NewStatement().Id("error").Colon().Id("Error").Op("|").Id("null"))
-					fg.Add(tsg.NewStatement().Id("rpcResponse").Colon().Id("ResponseRPC").Op("|").Id("null"))
+					fg.Add(tsg.NewStatement().ID(typeError).Colon().ID("Error").Op("|").ID("null"))
+					fg.Add(tsg.NewStatement().ID("rpcResponse").Colon().ID("ResponseRPC").Op("|").ID("null"))
 				})
 				retHandlerFn.Add(arrowParams).Op("=>")
 				retHandlerFn.Block(func(hg *tsg.Group) {
 					hg.If(
-						tsg.NewStatement().Id("error").Op("===").Id("null").Op("&&").Id("rpcResponse"),
+						tsg.NewStatement().ID(typeError).Op("===").ID("null").Op("&&").ID("rpcResponse"),
 						func(ig *tsg.Group) {
 							ig.If(
-								tsg.NewStatement().Id("rpcResponse.error"),
+								tsg.NewStatement().ID("rpcResponse.error"),
 								func(eg *tsg.Group) {
-									eg.Add(tsg.NewStatement().Const("rpcErr").Op("=").Id("this").Dot("baseClient").Dot("decodeRPCError").Call(
-										tsg.NewStatement().Id("rpcResponse.error"),
+									eg.Add(tsg.NewStatement().Const("rpcErr").Op("=").ID("this").Dot("baseClient").Dot("decodeRPCError").Call(
+										tsg.NewStatement().ID("rpcResponse.error"),
 									).Semicolon())
 
 									callbackArgs := make([]*tsg.Statement, 0, len(results)+1)
 									for range results {
-										callbackArgs = append(callbackArgs, tsg.NewStatement().Id("null"))
+										callbackArgs = append(callbackArgs, tsg.NewStatement().ID("null"))
 									}
-									callbackArgs = append(callbackArgs, tsg.NewStatement().Id("rpcErr"))
-									eg.Add(tsg.NewStatement().Id("callback").Call(callbackArgs...).Semicolon())
+									callbackArgs = append(callbackArgs, tsg.NewStatement().ID("rpcErr"))
+									eg.Add(tsg.NewStatement().ID("callback").Call(callbackArgs...).Semicolon())
 								},
 							)
 							ig.If(
-								tsg.NewStatement().Id("rpcResponse").Op("&&").Op("!").Id("rpcResponse.error"),
+								tsg.NewStatement().ID("rpcResponse").Op("&&").Op("!").ID("rpcResponse.error"),
 								func(sg *tsg.Group) {
 									if len(results) == 0 {
-										sg.Add(tsg.NewStatement().Id("callback").Call(
-											tsg.NewStatement().Id("null"),
+										sg.Add(tsg.NewStatement().ID("callback").Call(
+											tsg.NewStatement().ID("null"),
 										).Semicolon())
 									} else {
-										sg.Add(tsg.NewStatement().Const("result").Colon().Id(responseTypeName).Op("=").Id("rpcResponse.result").Op("as").Id(responseTypeName).Semicolon())
+										sg.Add(tsg.NewStatement().Const(nameResult).Colon().ID(responseTypeName).Op("=").ID("rpcResponse.result").Op("as").ID(responseTypeName).Semicolon())
 
 										callbackArgs := []*tsg.Statement{}
 										if len(results) == 1 {
 											callbackArgs = append(callbackArgs, r.tsRPCSingleResultExpr(contract, method, results[0]))
 										} else {
 											for _, ret := range results {
-												callbackArgs = append(callbackArgs, tsg.NewStatement().Id("result").Dot(ret.Name))
+												callbackArgs = append(callbackArgs, tsg.NewStatement().ID(nameResult).Dot(ret.Name))
 											}
 										}
-										callbackArgs = append(callbackArgs, tsg.NewStatement().Id("null"))
-										sg.Add(tsg.NewStatement().Id("callback").Call(callbackArgs...).Semicolon())
+										callbackArgs = append(callbackArgs, tsg.NewStatement().ID("null"))
+										sg.Add(tsg.NewStatement().ID("callback").Call(callbackArgs...).Semicolon())
 									}
 								},
 							)
 						},
 					)
 					hg.If(
-						tsg.NewStatement().Id("error").Op("||").Op("!").Id("rpcResponse"),
+						tsg.NewStatement().ID(typeError).Op("||").Op("!").ID("rpcResponse"),
 						func(eg *tsg.Group) {
 							callbackArgs := make([]*tsg.Statement, 0, len(results)+1)
 							for range results {
-								callbackArgs = append(callbackArgs, tsg.NewStatement().Id("null"))
+								callbackArgs = append(callbackArgs, tsg.NewStatement().ID("null"))
 							}
-							callbackArgs = append(callbackArgs, tsg.NewStatement().Id("error").Op("||").New("Error").Call(tsg.NewStatement().Lit("unknown error")))
-							eg.Add(tsg.NewStatement().Id("callback").Call(callbackArgs...).Semicolon())
+							callbackArgs = append(callbackArgs, tsg.NewStatement().ID(typeError).Op("||").New("Error").Call(tsg.NewStatement().Lit("unknown error")))
+							eg.Add(tsg.NewStatement().ID("callback").Call(callbackArgs...).Semicolon())
 						},
 					)
 				})
@@ -579,13 +578,13 @@ func (r *ClientRenderer) renderJsonRPCRequestMethod(grp *tsg.Group, contract *mo
 			},
 		)
 
-		bg.Return(tsg.NewStatement().Id("_request"))
+		bg.Return(tsg.NewStatement().ID("_request"))
 	})
 	grp.Add(methodStmt)
 	grp.Line()
 }
 
-func (r *ClientRenderer) renderJsonRPCBatchMethod(grp *tsg.Group, contract *model.Contract) {
+func (r *ClientRenderer) renderJSONRPCBatchMethod(grp *tsg.Group, _contract *model.Contract) {
 
 	grp.Comment("Executes a batch of JSON-RPC requests")
 	grp.Comment("@param calls - Array of JSON-RPC calls to execute")
@@ -595,11 +594,11 @@ func (r *ClientRenderer) renderJsonRPCBatchMethod(grp *tsg.Group, contract *mode
 
 	methodParams := tsg.NewStatement()
 	methodParams.Params(func(pg *tsg.Group) {
-		pg.Add(tsg.NewStatement().Id("calls").Colon().Id("Calls"))
+		pg.Add(tsg.NewStatement().ID("calls").Colon().ID("Calls"))
 	})
 
 	returnType := tsg.NewStatement()
-	returnType.Id("MapBatchResult").Generic("Calls")
+	returnType.ID("MapBatchResult").Generic("Calls")
 
 	methodStmt := tsg.NewStatement()
 	methodStmt.AsyncMethodWithGeneric("execBatch", genericParams, methodParams, returnType, func(mg *tsg.Group) {
@@ -608,9 +607,9 @@ func (r *ClientRenderer) renderJsonRPCBatchMethod(grp *tsg.Group, contract *mode
 				This().
 				Dot("client").
 				Dot("callBatch").
-				Call(tsg.NewStatement().Id("calls")).
+				Call(tsg.NewStatement().ID("calls")).
 				Op("as").
-				Id("MapBatchResult").
+				ID("MapBatchResult").
 				Generic("Calls"),
 		)
 	})
@@ -621,13 +620,13 @@ func (r *ClientRenderer) renderJsonRPCBatchMethod(grp *tsg.Group, contract *mode
 func (r *ClientRenderer) resultToTypeStatement(method *model.Method, vars []*model.Variable) (st *tsg.Statement) {
 
 	if len(vars) == 0 {
-		return tsg.NewStatement().Id("void")
+		return tsg.NewStatement().ID("void")
 	}
 
 	// r.contract может быть nil при обходе контрактов; обращение к полям вызовет панику.
 	if r.contract == nil {
 		slog.Error(i18n.Msg("resultToTypeStatement: r.contract is nil"), slog.String("method", method.Name))
-		return tsg.NewStatement().Id("any")
+		return tsg.NewStatement().ID(typeAny)
 	}
 
 	var pkgPath string
@@ -635,11 +634,11 @@ func (r *ClientRenderer) resultToTypeStatement(method *model.Method, vars []*mod
 		pkgPath = r.contract.PkgPath
 		if pkgPath == "" {
 			slog.Error(i18n.Msg("resultToTypeStatement: contract.PkgPath is empty"), slog.String("contract", r.contract.Name), slog.String("method", method.Name))
-			return tsg.NewStatement().Id("any")
+			return tsg.NewStatement().ID(typeAny)
 		}
 	} else {
 		slog.Error(i18n.Msg("resultToTypeStatement: r.contract is nil after check"), slog.String("method", method.Name))
-		return tsg.NewStatement().Id("any")
+		return tsg.NewStatement().ID(typeAny)
 	}
 
 	if len(vars) == 1 {
@@ -654,7 +653,7 @@ func (r *ClientRenderer) resultToTypeStatement(method *model.Method, vars []*mod
 			schema := r.walkVariable(ret.Name, pkgPath, ret, method.Annotations, false)
 			typeStr := schema.typeLink()
 			field := tsg.NewStatement()
-			field.Id(ret.Name)
+			field.ID(ret.Name)
 			if model.IsAnnotationSet(r.project, r.contract, method, nil, "nullable") {
 				field.Optional()
 			}

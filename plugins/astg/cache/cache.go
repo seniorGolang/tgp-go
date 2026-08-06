@@ -93,8 +93,8 @@ func getGitBranchForCache(rootDir string) (branch string) {
 			var content []byte
 			if content, err = os.ReadFile(gitPath); err == nil {
 				gitDir = strings.TrimSpace(string(content))
-				if strings.HasPrefix(gitDir, "gitdir: ") {
-					gitDir = strings.TrimPrefix(gitDir, "gitdir: ")
+				if after, ok := strings.CutPrefix(gitDir, "gitdir: "); ok {
+					gitDir = after
 					if !filepath.IsAbs(gitDir) {
 						gitDir = filepath.Join(dir, gitDir)
 					}
@@ -121,11 +121,11 @@ func getGitBranchForCache(rootDir string) (branch string) {
 
 	headStr := strings.TrimSpace(string(headContent))
 
-	if strings.HasPrefix(headStr, "ref: ") {
-		refPath := strings.TrimPrefix(headStr, "ref: ")
+	if after, ok := strings.CutPrefix(headStr, "ref: "); ok {
+		refPath := after
 		refPath = strings.TrimSpace(refPath)
-		if strings.HasPrefix(refPath, "refs/heads/") {
-			branch = strings.TrimPrefix(refPath, "refs/heads/")
+		if after, ok := strings.CutPrefix(refPath, "refs/heads/"); ok {
+			branch = after
 			return branch
 		}
 	}
@@ -265,7 +265,7 @@ func stringSlicesEqual(left []string, right []string) (ok bool) {
 func saveEntry(cacheFile string, entry *cacheEntry) (err error) {
 
 	cacheDir := filepath.Dir(cacheFile)
-	if err = os.MkdirAll(cacheDir, 0755); err != nil {
+	if err = os.MkdirAll(cacheDir, 0o755); err != nil {
 		slog.Debug(i18n.Msg("failed to create cache directory"), slog.Any("error", err), slog.String("cacheDir", cacheDir))
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}

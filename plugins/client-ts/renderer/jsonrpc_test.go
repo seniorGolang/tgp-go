@@ -23,28 +23,28 @@ func TestRenderJsonRPCClient_AsyncThrowsDecodedRPCError(t *testing.T) {
 				Name:    "RPC",
 				PkgPath: "example/contracts",
 				Annotations: tags.DocTags{
-					model.TagServerJsonRPC: "",
-					model.TagHttpPrefix:    "api/v1",
+					model.TagServerJSONRPC: "",
+					model.TagHTTPPrefix:    "api/v1",
 				},
 				Methods: []*model.Method{
 					{
 						Name: "Echo",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "msg", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "msg", TypeID: "string"},
 						},
 						Results: []*model.Variable{
-							{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "out", TypeID: "string"},
+							{Name: "err", TypeID: "error"},
 						},
 					},
 					{
 						Name: "ReturnsError",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+							{Name: "ctx", TypeID: "context:Context"},
 						},
 						Results: []*model.Variable{
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "err", TypeID: "error"},
 						},
 					},
 				},
@@ -57,8 +57,8 @@ func TestRenderJsonRPCClient_AsyncThrowsDecodedRPCError(t *testing.T) {
 	if err := renderer.RenderExchangeTypes(project.Contracts[0]); err != nil {
 		t.Fatalf("RenderExchangeTypes: %v", err)
 	}
-	if err := renderer.RenderJsonRPCClientClass(project.Contracts[0]); err != nil {
-		t.Fatalf("RenderJsonRPCClientClass: %v", err)
+	if err := renderer.RenderJSONRPCClientClass(project.Contracts[0]); err != nil {
+		t.Fatalf("RenderJSONRPCClientClass: %v", err)
 	}
 	body, err := os.ReadFile(filepath.Join(dir, "rpc.ts"))
 	if err != nil {
@@ -73,5 +73,24 @@ func TestRenderJsonRPCClient_AsyncThrowsDecodedRPCError(t *testing.T) {
 	}
 	if strings.Contains(src, "as ReturnsErrorError") {
 		t.Fatalf("async path must not cast/throw typed error unions without decode:\n%s", src)
+	}
+	if err = renderer.RenderClient(); err != nil {
+		t.Fatalf("RenderClient: %v", err)
+	}
+	clientBody, err := os.ReadFile(filepath.Join(dir, "client.ts"))
+	if err != nil {
+		t.Fatalf("read client.ts: %v", err)
+	}
+	clientSrc := string(clientBody)
+	for _, fragment := range []string{
+		"requestIDs.has(request.rpcRequest.id)",
+		"duplicate batch request id:",
+		"callbacks.delete(id)",
+		"for (const callback of callbacks.values())",
+		"batch response missing",
+	} {
+		if !strings.Contains(clientSrc, fragment) {
+			t.Fatalf("batch client missing %q:\n%s", fragment, clientSrc)
+		}
 	}
 }

@@ -6,9 +6,8 @@ import (
 	"path"
 	"path/filepath"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
-	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
@@ -17,11 +16,14 @@ func (r *transportRenderer) RenderTransportOptions() (err error) {
 	optionsPath := path.Join(r.outDir, "options.go")
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(PackageUUID, "uuid")
 	srcFile.ImportName(PackageTime, "time")
+	srcFile.ImportName(PackageContext, "context")
+	srcFile.ImportName(PackageStrings, "strings")
+	if r.hasTrace() {
+		srcFile.ImportName(PackageTraceSDK, "trace")
+	}
 
 	r.renderOptionsTypes(&srcFile)
 	r.renderOptionsService(&srcFile)
@@ -63,7 +65,7 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 
 	for _, contract := range r.contractsSorted() {
 		hasHTTP := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP)
-		hasJSONRPC := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC)
+		hasJSONRPC := model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC)
 		hasStream := model.ContractHasWS(r.project, contract) || model.ContractHasSSE(r.project, contract)
 		if !hasHTTP && !hasJSONRPC && !hasStream {
 			continue
@@ -78,7 +80,7 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 						If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(func(gr *Group) {
 							gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
 							gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
-							if model.ContractHasSSE(r.project, contract) {
+							if model.ContractHasSSE(r.project, contract) || model.ContractHasWS(r.project, contract) {
 								gr.Id("httpSvc").Dot("srv").Op("=").Id("srv")
 							}
 							gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
@@ -113,7 +115,7 @@ func (r *transportRenderer) renderOptionsForContracts(srcFile *GoFile) {
 					If(Id("srv").Dot("srvHTTP").Op("!=").Nil()).BlockFunc(func(gr *Group) {
 						gr.Id("httpSvc").Op(":=").Id("new" + contract.Name).Call(Id("svc"))
 						gr.Id("srv").Dot("http" + contract.Name).Op("=").Id("httpSvc")
-						if model.ContractHasSSE(r.project, contract) {
+						if model.ContractHasSSE(r.project, contract) || model.ContractHasWS(r.project, contract) {
 							gr.Id("httpSvc").Dot("srv").Op("=").Id("srv")
 						}
 						gr.Id("httpSvc").Dot("SetRoutes").Call(Id("srv").Dot("Fiber").Call())
@@ -131,6 +133,7 @@ func (r *transportRenderer) renderOptionsConfig(srcFile *GoFile) {
 		Block(
 			Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
 				Id("srv").Dot("config").Op("=").Id("cfg"),
+				Id("srv").Dot("config").Dot("Immutable").Op("=").True(),
 				Id("srv").Dot("config").Dot("StreamRequestBody").Op("=").True(),
 				Id("srv").Dot("config").Dot("DisableStartupMessage").Op("=").True(),
 				Id("srv").Dot("config").Dot("DisablePreParseMultipartForm").Op("=").True(),
@@ -160,12 +163,69 @@ func (r *transportRenderer) renderOptionsConfig(srcFile *GoFile) {
 				Id("srv").Dot("config").Dot("BodyLimit").Op("=").Id("size"),
 			)),
 		)
-	if r.hasJsonRPC() {
+	srcFile.Line().Func().Id("MaxStreamBodySize").
+		Params(Id("size").Int64()).
+		Id("Option").
+		Block(
+			Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+				If(Id("size").Op("<").Lit(0)).Block(
+					Return(),
+				),
+				Id("srv").Dot("maxStreamBodySize").Op("=").Id("size"),
+			)),
+		)
+	srcFile.Line().Func().Id("MaxClientIDs").
+		Params(Id("n").Int()).
+		Id("Option").
+		Block(
+			Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+				If(Id("n").Op("<").Lit(0)).Block(
+					Return(),
+				),
+				Id("srv").Dot("maxClientIDs").Op("=").Id("n"),
+			)),
+		)
+	srcFile.Line().Func().Id("AllowClientLogLevel").
+		Params().
+		Params(Id("opt").Id("Option")).
+		Block(
+			Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+				Id("srv").Dot("allowClientLogLevel").Op("=").True(),
+			)),
+		)
+	if r.hasMetrics() {
+		srcFile.Line().Func().Id("DurationBuckets").
+			Params(Id("buckets").Op("...").Float64()).
+			Params(Id("opt").Id("Option")).
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Op("!").Id("validBuckets").Call(Id("buckets"))).Block(
+						Return(),
+					),
+					Id("srv").Dot("durationBuckets").Op("=").Append(Index().Float64().Values(), Id("buckets").Op("...")),
+				)),
+			)
+		srcFile.Line().Func().Id("LatencyBuckets").
+			Params(Id("buckets").Op("...").Float64()).
+			Params(Id("opt").Id("Option")).
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Op("!").Id("validBuckets").Call(Id("buckets"))).Block(
+						Return(),
+					),
+					Id("srv").Dot("latencyBuckets").Op("=").Append(Index().Float64().Values(), Id("buckets").Op("...")),
+				)),
+			)
+	}
+	if r.hasJSONRPC() {
 		srcFile.Line().Func().Id("MaxBatchSize").
 			Params(Id("size").Int()).
 			Id("Option").
 			Block(
 				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Id("size").Op("<=").Lit(0)).Block(
+						Return(),
+					),
 					Id("srv").Dot("maxBatchSize").Op("=").Id("size"),
 				)),
 			)
@@ -174,7 +234,57 @@ func (r *transportRenderer) renderOptionsConfig(srcFile *GoFile) {
 			Id("Option").
 			Block(
 				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Id("size").Op("<=").Lit(0)).Block(
+						Return(),
+					),
 					Id("srv").Dot("maxParallelBatch").Op("=").Id("size"),
+				)),
+			)
+	}
+	if r.hasWS() {
+		srcFile.Line().Func().Id("MaxOpenStreams").
+			Params(Id("size").Int()).
+			Id("Option").
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Id("size").Op(">").Lit(0)).Block(
+						Id("srv").Dot("maxOpenStreams").Op("=").Id("size"),
+					),
+				)),
+			)
+		srcFile.Line().Func().Id("MaxWSConnections").
+			Params(Id("n").Int()).
+			Id("Option").
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Id("n").Op("<").Lit(0)).Block(
+						Return(),
+					),
+					Id("srv").Dot("maxWSConnections").Op("=").Id("n"),
+				)),
+			)
+		srcFile.Line().Func().Id("MaxWSMessageSize").
+			Params(Id("n").Int64()).
+			Id("Option").
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Id("n").Op("<").Lit(0)).Block(
+						Return(),
+					),
+					Id("srv").Dot("maxWSMessageSize").Op("=").Id("n"),
+				)),
+			)
+	}
+	if r.hasSSE() {
+		srcFile.Line().Func().Id("MaxSSEConnections").
+			Params(Id("n").Int()).
+			Id("Option").
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Id("n").Op("<").Lit(0)).Block(
+						Return(),
+					),
+					Id("srv").Dot("maxSSEConnections").Op("=").Id("n"),
 				)),
 			)
 	}
@@ -198,6 +308,19 @@ func (r *transportRenderer) renderOptionsTimeouts(srcFile *GoFile) {
 				Id("srv").Dot("config").Dot("WriteTimeout").Op("=").Id("timeout"),
 			)),
 		)
+	if r.hasWS() || r.hasSSE() {
+		srcFile.Line().Func().Id("StreamWriteTimeout").
+			Params(Id("timeout").Qual(PackageTime, "Duration")).
+			Id("Option").
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					If(Id("timeout").Op("<").Lit(0)).Block(
+						Return(),
+					),
+					Id("srv").Dot("streamWriteTimeout").Op("=").Id("timeout"),
+				)),
+			)
+	}
 	if r.hasSSE() {
 		srcFile.Line().Func().Id("SetSSEHeartbeat").
 			Params(Id("interval").Qual(PackageTime, "Duration")).
@@ -205,6 +328,24 @@ func (r *transportRenderer) renderOptionsTimeouts(srcFile *GoFile) {
 			Block(
 				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
 					Id("srv").Dot("sseHeartbeat").Op("=").Id("interval"),
+				)),
+			)
+	}
+	if r.hasTrace() {
+		srcFile.Line().Func().Id("TraceSampler").
+			Params(Id("sampler").Qual(PackageTraceSDK, "Sampler")).
+			Id("Option").
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					Id("srv").Dot("traceSampler").Op("=").Id("sampler"),
+				)),
+			)
+		srcFile.Line().Func().Id("TraceInsecure").
+			Params().
+			Params(Id("opt").Id("Option")).
+			Block(
+				Return(Func().Params(Id("srv").Op("*").Id("Server")).Block(
+					Id("srv").Dot("traceInsecure").Op("=").True(),
 				)),
 			)
 	}

@@ -7,17 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
-	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
 func (r *contractRenderer) RenderHTTP() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	srcFile.ImportName(PackageCors, "cors")
 	srcFile.ImportName(PackageFiber, "fiber")
 	srcFile.ImportName(r.contract.PkgPath, filepath.Base(r.contract.PkgPath))
@@ -38,8 +35,9 @@ func (r *contractRenderer) renderHTTPTypes(srcFile *GoFile) {
 		Id("svc").Op("*").Id("server" + r.contract.Name),
 		Id("base").Qual(r.contract.PkgPath, r.contract.Name),
 	}
-	if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) ||
-		model.ContractHasSSE(r.project, r.contract) {
+	if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJSONRPC) ||
+		model.ContractHasSSE(r.project, r.contract) ||
+		model.ContractHasWS(r.project, r.contract) {
 		fields = append(fields, Id("srv").Op("*").Id("Server"))
 	}
 	srcFile.Type().Id("http" + r.contract.Name).Struct(fields...)
@@ -93,13 +91,13 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 		Id("SetRoutes").
 		Params(Id("route").Op("*").Qual(PackageFiber, "App")).
 		BlockFunc(func(bg *Group) {
-			if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJsonRPC) {
+			if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerJSONRPC) {
 				bg.Id("route").Dot("Post").Call(Lit(r.batchPath()), Id("http").Dot("serveBatch"))
 				for _, method := range r.contract.Methods {
-					if !r.methodIsJsonRPC(method) {
+					if !r.methodIsJSONRPC(method) {
 						continue
 					}
-					bg.Id("route").Dot("Post").Call(Lit(r.methodJsonRPCPath(method)), Id("http").Dot("serve"+method.Name))
+					bg.Id("route").Dot("Post").Call(Lit(r.methodJSONRPCPath(method)), Id("http").Dot("serve"+method.Name))
 				}
 			}
 			if model.IsAnnotationSet(r.project, r.contract, nil, nil, model.TagServerHTTP) {
@@ -122,10 +120,22 @@ func (r *contractRenderer) renderHTTPSetRoutes(srcFile *GoFile) {
 			if model.ContractHasWS(r.project, r.contract) {
 				wsPath := model.ContractWSPath(r.project, r.contract)
 				bg.Id("route").Dot("Use").Call(Lit(wsPath), Func().Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx")).Params(Err().Error()).Block(
-					If(Qual(PackageFiberWebsocket, "IsWebSocketUpgrade").Call(Id(VarNameFtx))).Block(
-						Return(Id(VarNameFtx).Dot("Next").Call()),
+					If(Op("!").Qual(PackageFiberWebsocket, "IsWebSocketUpgrade").Call(Id(VarNameFtx))).Block(
+						Return(Qual(PackageFiber, "ErrUpgradeRequired")),
 					),
-					Return(Qual(PackageFiber, "ErrUpgradeRequired")),
+					If(Id("http").Dot("srv").Op("!=").Nil()).Block(
+						If(Op("!").Id("http").Dot("srv").Dot("acquireWS").Call()).Block(
+							Return(Qual(PackageFiber, "NewError").Call(Qual(PackageFiber, "StatusServiceUnavailable"), Lit("too many WS connections"))),
+						),
+					),
+					Id(VarNameFtx).Dot("Locals").Call(Lit("wsCtx"), Id(VarNameFtx).Dot("UserContext").Call()),
+					If(Err().Op("=").Id(VarNameFtx).Dot("Next").Call().Op(";").Err().Op("!=").Nil()).Block(
+						If(Id("http").Dot("srv").Op("!=").Nil()).Block(
+							Id("http").Dot("srv").Dot("releaseWS").Call(),
+						),
+						Return(),
+					),
+					Return(),
 				))
 				bg.Id("route").Dot("Get").Call(Lit(wsPath), Qual(PackageFiberWebsocket, "New").Call(Id("http").Dot("serveWS")))
 			}

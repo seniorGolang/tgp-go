@@ -24,23 +24,23 @@ func TestIsRequiredGeneratedRequestField(t *testing.T) {
 		{
 			name: "required value type",
 			variable: &model.Variable{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "UserID",
+				TypeID: "string",
+				Name:   "UserID",
 			},
 			want: true,
 		},
 		{
 			name: "optional pointer",
 			variable: &model.Variable{
-				TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1},
-				Name:    "Filter",
+				TypeID: "string", NumberOfPointers: 1,
+				Name: "Filter",
 			},
 			want: false,
 		},
 		{
 			name: "optional by omitempty annotation",
 			variable: &model.Variable{
-				TypeRef:     model.TypeRef{TypeID: "string"},
+				TypeID:      "string",
 				Name:        "Filter",
 				Annotations: tags.DocTags{"json": "filter,omitempty"},
 			},
@@ -49,8 +49,8 @@ func TestIsRequiredGeneratedRequestField(t *testing.T) {
 		{
 			name: "optional by method var tag",
 			variable: &model.Variable{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "OptionalByTag",
+				TypeID: "string",
+				Name:   "OptionalByTag",
 			},
 			methodTags: methodTags,
 			want:       false,
@@ -58,7 +58,7 @@ func TestIsRequiredGeneratedRequestField(t *testing.T) {
 		{
 			name: "forced required pointer",
 			variable: &model.Variable{
-				TypeRef:     model.TypeRef{TypeID: "string", NumberOfPointers: 1},
+				TypeID: "string", NumberOfPointers: 1,
 				Name:        "Forced",
 				Annotations: tags.DocTags{"required": ""},
 			},
@@ -91,23 +91,23 @@ func TestIsRequiredGeneratedResponseField(t *testing.T) {
 		{
 			name: "required value type",
 			variable: &model.Variable{
-				TypeRef: model.TypeRef{TypeID: "int"},
-				Name:    "TotalCount",
+				TypeID: "int",
+				Name:   "TotalCount",
 			},
 			want: true,
 		},
 		{
 			name: "required pointer",
 			variable: &model.Variable{
-				TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1},
-				Name:    "Response",
+				TypeID: "string", NumberOfPointers: 1,
+				Name: "Response",
 			},
 			want: true,
 		},
 		{
 			name: "optional by omitempty",
 			variable: &model.Variable{
-				TypeRef:     model.TypeRef{TypeID: "string"},
+				TypeID:      "string",
 				Name:        "Message",
 				Annotations: tags.DocTags{"json": "message,omitempty"},
 			},
@@ -135,33 +135,33 @@ func TestIsRequiredStructField(t *testing.T) {
 		{
 			name: "required without json tag",
 			field: &model.StructField{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "RequiredWithoutJSONTag",
+				TypeID: "string",
+				Name:   "RequiredWithoutJSONTag",
 			},
 			want: true,
 		},
 		{
 			name: "optional by omitempty",
 			field: &model.StructField{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "OptionalByOmitEmpty",
-				Tags:    map[string][]string{"json": {"optionalByOmitEmpty", "omitempty"}},
+				TypeID: "string",
+				Name:   "OptionalByOmitEmpty",
+				Tags:   map[string][]string{"json": {"optionalByOmitEmpty", "omitempty"}},
 			},
 			want: false,
 		},
 		{
 			name: "required pointer without omitempty",
 			field: &model.StructField{
-				TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1},
-				Name:    "OptionalPointer",
-				Tags:    map[string][]string{"json": {"optionalPointer"}},
+				TypeID: "string", NumberOfPointers: 1,
+				Name: "OptionalPointer",
+				Tags: map[string][]string{"json": {"optionalPointer"}},
 			},
 			want: true,
 		},
 		{
 			name: "forced required pointer",
 			field: &model.StructField{
-				TypeRef:     model.TypeRef{TypeID: "string", NumberOfPointers: 1},
+				TypeID: "string", NumberOfPointers: 1,
 				Name:        "ForcedPointer",
 				Tags:        map[string][]string{"json": {"forcedPointer"}},
 				Annotations: tags.DocTags{"required": ""},
@@ -195,23 +195,23 @@ func TestIsRequiredQueryParameter(t *testing.T) {
 		{
 			name: "required value type",
 			variable: &model.Variable{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "Filter",
+				TypeID: "string",
+				Name:   "Filter",
 			},
 			want: true,
 		},
 		{
 			name: "optional pointer",
 			variable: &model.Variable{
-				TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1},
-				Name:    "Filter",
+				TypeID: "string", NumberOfPointers: 1,
+				Name: "Filter",
 			},
 			want: false,
 		},
 		{
 			name: "forced required pointer",
 			variable: &model.Variable{
-				TypeRef:     model.TypeRef{TypeID: "string", NumberOfPointers: 1},
+				TypeID: "string", NumberOfPointers: 1,
 				Name:        "Filter",
 				Annotations: tags.DocTags{"required": ""},
 			},
@@ -232,13 +232,13 @@ func TestIsRequiredQueryParameter(t *testing.T) {
 func TestIsRequiredHeaderOrCookie(t *testing.T) {
 
 	requiredVariable := &model.Variable{
-		TypeRef:     model.TypeRef{TypeID: "string"},
+		TypeID:      "string",
 		Name:        "Token",
 		Annotations: tags.DocTags{"required": ""},
 	}
 	optionalVariable := &model.Variable{
-		TypeRef: model.TypeRef{TypeID: "string"},
-		Name:    "Token",
+		TypeID: "string",
+		Name:   "Token",
 	}
 
 	if !isRequiredHeaderOrCookie(requiredVariable) {

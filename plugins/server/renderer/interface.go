@@ -10,7 +10,7 @@ type ContractRenderer interface {
 	RenderTrace() (err error)
 	RenderMetrics() (err error)
 	RenderLogger() (err error)
-	RenderJsonRPC() (err error)
+	RenderJSONRPC() (err error)
 	RenderREST() (err error)
 	RenderWebSocket() (err error)
 	RenderSSE() (err error)
@@ -18,12 +18,16 @@ type ContractRenderer interface {
 
 type TransportRenderer interface {
 	RenderTransportContext() (err error)
+	RenderTransportLimits() (err error)
 	RenderTransportFiber() (err error)
 	RenderTransportHeader() (err error)
 	RenderTransportErrors() (err error)
 	RenderTransportServer() (err error)
 	RenderTransportOptions() (err error)
+	RenderTransportAuth() (err error)
+	RenderTransportSecurity() (err error)
 	RenderTransportMetrics() (err error)
 	RenderTransportVersion() (err error)
-	RenderTransportJsonRPC() (err error)
+	RenderTransportJSONRPC() (err error)
+	RenderLogViews() (err error)
 }

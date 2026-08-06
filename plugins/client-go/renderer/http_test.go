@@ -48,8 +48,8 @@ func TestRenderServiceClient_DoesNotDuplicateHTTPHelpers(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "client")
 
 	renderer := NewClientRenderer(project, dir, "example", "client")
-	if err := renderer.RenderJsonRPCPackage(dir); err != nil {
-		t.Fatalf("RenderJsonRPCPackage: %v", err)
+	if err := renderer.RenderJSONRPCPackage(dir); err != nil {
+		t.Fatalf("RenderJSONRPCPackage: %v", err)
 	}
 	if err := renderer.RenderHTTP(); err != nil {
 		t.Fatalf("RenderHTTP: %v", err)
@@ -94,17 +94,17 @@ func TestRenderHTTP_SkippedWithoutHTTPContracts(t *testing.T) {
 				PkgPath: "example/contracts",
 				ID:      "Rpc",
 				Annotations: tags.DocTags{
-					model.TagServerJsonRPC: "",
+					model.TagServerJSONRPC: "",
 				},
 				Methods: []*model.Method{
 					{
 						Name: "Ping",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+							{Name: "ctx", TypeID: "context:Context"},
 						},
 						Results: []*model.Variable{
-							{Name: "message", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "message", TypeID: "string"},
+							{Name: "err", TypeID: "error"},
 						},
 					},
 				},
@@ -158,21 +158,21 @@ func TestRenderServiceClient_EmptyResultsSkipsBodyDecode(t *testing.T) {
 				ID:      "Http",
 				Annotations: tags.DocTags{
 					model.TagServerHTTP: "",
-					model.TagHttpPrefix: "api/v1",
+					model.TagHTTPPrefix: "api/v1",
 				},
 				Methods: []*model.Method{
 					{
 						Name: "Delete",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "id", TypeRef: model.TypeRef{TypeID: "string"}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "id", TypeID: "string"},
 						},
 						Results: []*model.Variable{
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
 							model.TagHTTPMethod: "DELETE",
-							model.TagHttpPath:   "/item/:id",
+							model.TagHTTPPath:   "/item/:id",
 						},
 					},
 				},
@@ -181,8 +181,11 @@ func TestRenderServiceClient_EmptyResultsSkipsBodyDecode(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "client")
 	renderer := NewClientRenderer(project, dir, "example", "client")
-	if err := renderer.RenderJsonRPCPackage(dir); err != nil {
-		t.Fatalf("RenderJsonRPCPackage: %v", err)
+	if err := renderer.RenderJSONRPCPackage(dir); err != nil {
+		t.Fatalf("RenderJSONRPCPackage: %v", err)
+	}
+	if err := renderer.RenderPathHelpers(); err != nil {
+		t.Fatalf("RenderPathHelpers: %v", err)
 	}
 	if err := renderer.RenderHTTP(); err != nil {
 		t.Fatalf("RenderHTTP: %v", err)
@@ -198,6 +201,128 @@ func TestRenderServiceClient_EmptyResultsSkipsBodyDecode(t *testing.T) {
 	if strings.Contains(source, "Decode(&_response_)") || strings.Contains(source, "Decode(&_response_") {
 		t.Fatalf("Delete with no body results must skip decode:\n%s", source)
 	}
+	if !strings.Contains(source, `routePath := path.Join("/", "api", "v1", "item", url.PathEscape`) {
+		t.Fatalf("HTTP path must build declared route with http-prefix:\n%s", source)
+	}
+	if !strings.Contains(source, `baseURL.Path = joinEndpointPath(baseURL.Path, routePath)`) {
+		t.Fatalf("HTTP client must join endpoint path with declared route:\n%s", source)
+	}
+	if !strings.Contains(source, `baseURL.RawQuery = ""`) {
+		t.Fatalf("HTTP client must clear endpoint query before request query:\n%s", source)
+	}
+}
+
+func TestRenderServiceClient_QuerySliceUsesCSVJoin(t *testing.T) {
+
+	project := &model.Project{
+		ModulePath: "example",
+		Types:      map[string]*model.Type{},
+		Contracts: []*model.Contract{
+			{
+				Name:    "Animals",
+				PkgPath: "example/contracts",
+				ID:      "Animals",
+				Annotations: tags.DocTags{
+					model.TagServerHTTP: "",
+					model.TagHTTPPrefix: "api/v1",
+				},
+				Methods: []*model.Method{
+					{
+						Name: "All",
+						Args: []*model.Variable{
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "animalID", TypeID: "int64", IsSlice: true},
+						},
+						Results: []*model.Variable{
+							{Name: "err", TypeID: "error"},
+						},
+						Annotations: tags.DocTags{
+							model.TagHTTPMethod: "GET",
+							model.TagHTTPPath:   "/animals",
+							model.TagHTTPArg:    "animalID|animalId",
+						},
+					},
+				},
+			},
+		},
+	}
+	dir := filepath.Join(t.TempDir(), "client")
+	renderer := NewClientRenderer(project, dir, "example", "client")
+	if err := renderer.RenderJSONRPCPackage(dir); err != nil {
+		t.Fatalf("RenderJSONRPCPackage: %v", err)
+	}
+	if err := renderer.RenderHTTP(); err != nil {
+		t.Fatalf("RenderHTTP: %v", err)
+	}
+	if err := renderer.RenderServiceClient(project.Contracts[0]); err != nil {
+		t.Fatalf("RenderServiceClient: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "animals-client.go"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	source := string(content)
+	if !strings.Contains(source, `strings.Join(_parts, ",")`) {
+		t.Fatalf("query slice must CSV-join elements:\n%s", source)
+	}
+	if strings.Contains(source, "fmt.Sprint(animalID)") {
+		t.Fatalf("must not Sprint whole slice into query:\n%s", source)
+	}
+}
+
+func TestRenderServiceClient_QueryStringSliceUsesJoin(t *testing.T) {
+
+	project := &model.Project{
+		ModulePath: "example",
+		Types:      map[string]*model.Type{},
+		Contracts: []*model.Contract{
+			{
+				Name:    "Animals",
+				PkgPath: "example/contracts",
+				ID:      "Animals",
+				Annotations: tags.DocTags{
+					model.TagServerHTTP: "",
+					model.TagHTTPPrefix: "api/v1",
+				},
+				Methods: []*model.Method{
+					{
+						Name: "ByTags",
+						Args: []*model.Variable{
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "tags", TypeID: "string", IsSlice: true},
+						},
+						Results: []*model.Variable{
+							{Name: "err", TypeID: "error"},
+						},
+						Annotations: tags.DocTags{
+							model.TagHTTPMethod: "GET",
+							model.TagHTTPPath:   "/by-tags",
+							model.TagHTTPArg:    "tags|tags",
+						},
+					},
+				},
+			},
+		},
+	}
+	dir := filepath.Join(t.TempDir(), "client")
+	renderer := NewClientRenderer(project, dir, "example", "client")
+	if err := renderer.RenderJSONRPCPackage(dir); err != nil {
+		t.Fatalf("RenderJSONRPCPackage: %v", err)
+	}
+	if err := renderer.RenderHTTP(); err != nil {
+		t.Fatalf("RenderHTTP: %v", err)
+	}
+	if err := renderer.RenderServiceClient(project.Contracts[0]); err != nil {
+		t.Fatalf("RenderServiceClient: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(dir, "animals-client.go"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	source := string(content)
+	if !strings.Contains(source, `strings.Join(tags, ",")`) {
+		t.Fatalf("string slice query must use strings.Join(tags, \",\"):\n%s", source)
+	}
 }
 
 func annotationsResultHeaderProject(headerAnnotation string) (project *model.Project) {
@@ -212,22 +337,22 @@ func annotationsResultHeaderProject(headerAnnotation string) (project *model.Pro
 				ID:      "Annotations",
 				Annotations: tags.DocTags{
 					model.TagServerHTTP: "",
-					model.TagHttpPrefix: "api/v1",
+					model.TagHTTPPrefix: "api/v1",
 				},
 				Methods: []*model.Method{
 					{
 						Name: "ResultHeader",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
+							{Name: "ctx", TypeID: "context:Context"},
 						},
 						Results: []*model.Variable{
-							{Name: "correlationId", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "correlationId", TypeID: "string"},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
 							model.TagHTTPMethod: "GET",
-							model.TagHttpPath:   "/annotations/result-header",
-							model.TagHttpHeader: headerAnnotation,
+							model.TagHTTPPath:   "/annotations/result-header",
+							model.TagHTTPHeader: headerAnnotation,
 						},
 					},
 				},
@@ -241,8 +366,8 @@ func renderAnnotationsClientSource(t *testing.T, project *model.Project) (source
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "client")
 	renderer := NewClientRenderer(project, dir, "example", "client")
-	if err := renderer.RenderJsonRPCPackage(dir); err != nil {
-		t.Fatalf("RenderJsonRPCPackage: %v", err)
+	if err := renderer.RenderJSONRPCPackage(dir); err != nil {
+		t.Fatalf("RenderJSONRPCPackage: %v", err)
 	}
 	if err := renderer.RenderHTTP(); err != nil {
 		t.Fatalf("RenderHTTP: %v", err)
@@ -275,17 +400,17 @@ func httpClientTestProject() (project *model.Project) {
 					{
 						Name: "BodyHeader",
 						Args: []*model.Variable{
-							{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-							{Name: "token", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "body", TypeRef: model.TypeRef{TypeID: "example/contracts/dto:Item"}},
+							{Name: "ctx", TypeID: "context:Context"},
+							{Name: "token", TypeID: "string"},
+							{Name: "body", TypeID: "example/contracts/dto:Item"},
 						},
 						Results: []*model.Variable{
-							{Name: "ok", TypeRef: model.TypeRef{TypeID: "bool"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "ok", TypeID: "bool"},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
 							model.TagHTTPMethod: "POST",
-							model.TagHttpPath:   "/modes/body-header",
+							model.TagHTTPPath:   "/modes/body-header",
 						},
 					},
 				},

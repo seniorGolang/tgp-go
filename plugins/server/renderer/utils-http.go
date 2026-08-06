@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
@@ -43,9 +43,9 @@ func (r *contractRenderer) methodHTTPPath(method *model.Method) (path string) {
 	return model.MethodHTTPFullPath(r.project, r.contract, method)
 }
 
-func (r *contractRenderer) methodJsonRPCPath(method *model.Method) (path string) {
+func (r *contractRenderer) methodJSONRPCPath(method *model.Method) (path string) {
 
-	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHttpPrefix, "")
+	prefix := model.GetAnnotationValue(r.project, r.contract, nil, nil, model.TagHTTPPrefix, "")
 	pathValue := model.MethodHTTPPathValue(r.project, r.contract, method)
 	pathBase := strings.TrimPrefix(strings.Split(pathValue, ":")[0], "/")
 
@@ -62,7 +62,7 @@ func (r *contractRenderer) methodIsHTTP(method *model.Method) (ok bool) {
 	return methodIsHTTP(r.project, r.contract, method)
 }
 
-func (r *contractRenderer) methodIsJsonRPC(method *model.Method) (ok bool) {
+func (r *contractRenderer) methodIsJSONRPC(method *model.Method) (ok bool) {
 
 	return model.MethodIsJSONRPC(r.project, r.contract, method)
 }
@@ -90,6 +90,6 @@ func (r *contractRenderer) methodUsesRouteOverride(method *model.Method) (ok boo
 	if handlerValue != "" && strings.Contains(handlerValue, ":") {
 		return true
 	}
-	responseValue := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHttpResponse, "")
+	responseValue := model.GetAnnotationValue(r.project, r.contract, method, nil, TagHTTPResponse, "")
 	return responseValue != "" && strings.Contains(responseValue, ":")
 }

@@ -22,8 +22,9 @@ tg astg json -o .tg/project.json
 4. Generate:
 
 ```bash
-tg client go -o ./client
+tg client go --out ./client
 # optional: --contracts=… --doc-file=… --no-doc
+# pinned model (requires astg-db): --from-db name@version
 ```
 
 5. Use the actual generated constructor:
@@ -48,26 +49,16 @@ user, err := c.UserService().GetUser(ctx, id)
 
 `implicit` mapped arguments may be absent from public client signatures. Supply those values through configured headers/context as designed.
 
-## Runtime options
+## Gotchas
 
-- `Name` sets client identity / `X-Client-Id`
-- `Headers` copies selected values from context
-- `ConfigTLS`, `ClientHTTP`, `Transport` control networking
-- `BeforeRequest`, `AfterRequest` add hooks
-- `DecodeError` and `DecodeHTTPError` customize RPC and REST errors separately
-- `LogRequest` and `LogOnError` control logging
-- `WithMetrics` creates a dedicated registry available through `GetMetricsRegistry`
+- Only `--out` (no `-o`); path must sit under a `go.mod`
+- REST/SSE/WS join `endpoint` path with the declared route (`http-prefix` + `http-path`); overlapping segments collapse (keeps mounts like `/cli`, no `/api/v1/api/v1`)
+- `New(endpoint)` JSON-RPC calls hit the endpoint URL itself; REST/SSE/WS clear endpoint query then join paths
+- Auth/`token` package appears only when `@tg security` includes `http:bearer` or `oauth2:` — see [references/auth.md](references/auth.md)
+- Always close returned `io.ReadCloser`; multipart parts are ordered
+- `--from-db` skips `astg-hook` save in the same run
 
-Do not enable full request logging around secrets without reviewing `log-skip` and payload exposure.
-
-## Batch, streams, and files
-
-- JSON-RPC batch uses generated `Req<Method>` values and callbacks
-- WS/SSE stream signatures use channels; handle cancellation and channel closure
-- A returned `io.ReadCloser` must always be closed by the caller
-- Multiple readers/results or multipart contracts use generated multipart/schema support
-
-Examples and caveats: [references/usage.md](references/usage.md).
+Runtime options overview and batch/streams/files: [references/usage.md](references/usage.md) · `tg plugin doc client-go`.
 
 ## Verify
 
@@ -75,31 +66,30 @@ Examples and caveats: [references/usage.md](references/usage.md).
 go test ./...
 ```
 
-Confirm:
-
-- expected contract accessor and method exist
-- signatures match intended `explicit`/`implicit` mapping
-- REST path/header/body or RPC method is correct
-- custom error decoder receives the expected payload
-- stream and file resources close on success, error, and cancellation
+- [ ] Expected contract accessor and method exist
+- [ ] Signatures match intended `explicit`/`implicit` mapping
+- [ ] REST path/header/body or RPC method is correct
+- [ ] Custom error decoder receives the expected payload
+- [ ] Stream and file resources close on success, error, and cancellation
 
 ## Diagnose
 
-- `go.mod not found` — move `-o` under the target module
+- `go.mod not found` — move `--out` under the target module
 - Missing contract/method — wrong family flag/filter or stale ASTG model
 - Argument “disappeared” — effective mode is `implicit`
 - Header/query remains in body — mode is `body`
+- Doubled or wrong REST URL — check endpoint mount vs declared `http-prefix`/`http-path` overlap join
 - Response shape changed — check `enableInlineSingle` and result tags
 - Caller no longer compiles — regenerate, then update caller; never patch client sources
 
 ## Never
 
 - Reimplement HTTP/RPC manually when a generated client exists
-- Point `-o` at server `transport/`
+- Point `--out` at server `transport/`
 - Put handwritten code in the generated client package
 - Forget to close `io.ReadCloser`
 - Expect Kafka contracts in this client
 
 ## Dig deeper
 
-`tg plugin doc client-go` · skills `tgp-contracts`, `tgp-astg-json`, `tgp-server`
+`tg plugin doc client-go` · [references/usage.md](references/usage.md) · [references/auth.md](references/auth.md) · skills `tgp-contracts`, `tgp-astg-json`, `tgp-astg-db`, `tgp-pipeline`

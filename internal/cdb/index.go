@@ -72,7 +72,7 @@ func LoadIndex(root string) (idx *Index, err error) {
 
 func SaveIndex(root string, idx *Index) (err error) {
 
-	if err = os.MkdirAll(root, 0700); err != nil {
+	if err = os.MkdirAll(root, 0o700); err != nil {
 		return fmt.Errorf("mkdir root: %w", err)
 	}
 
@@ -82,14 +82,14 @@ func SaveIndex(root string, idx *Index) (err error) {
 	}
 
 	p := filepath.Join(root, indexFilename)
-	if err = os.WriteFile(p, data, 0600); err != nil {
+	if err = os.WriteFile(p, data, 0o600); err != nil {
 		return fmt.Errorf("write index: %w", err)
 	}
 	return
 }
 
 // UpsertProject добавляет или обновляет запись проекта и версии в индексе.
-func UpsertProject(root string, idx *Index, projectKey string, origin string, modulePath string, version string, kind VersionKind) (projectFile string, err error) {
+func UpsertProject(_root string, idx *Index, projectKey string, origin string, modulePath string, version string, kind VersionKind) (projectFile string, err error) {
 
 	if idx.Projects == nil {
 		idx.Projects = make(map[string]ProjectMeta)
@@ -158,7 +158,7 @@ func ResolveRef(idx *Index, ref Ref) (projectKey string, projectFile string, err
 func OriginFromProject(project *model.Project) (origin string, modulePath string, version string, kind VersionKind) {
 
 	if project.Git == nil {
-		return "", project.ModulePath, "default", VersionKindBranch
+		return "", project.ModulePath, versionDefault, VersionKindBranch
 	}
 	origin = NormalizeRemoteURLToHostPath(project.Git.RemoteURL)
 	modulePath = project.ModulePath
@@ -168,7 +168,7 @@ func OriginFromProject(project *model.Project) (origin string, modulePath string
 	if project.Git.Branch != "" {
 		return origin, modulePath, project.Git.Branch, VersionKindBranch
 	}
-	return origin, modulePath, "default", VersionKindBranch
+	return origin, modulePath, versionDefault, VersionKindBranch
 }
 
 func ListRefs(idx *Index) (refs []string) {

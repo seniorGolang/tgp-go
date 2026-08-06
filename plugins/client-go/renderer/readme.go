@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -45,13 +46,10 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 	md.PlainText("Автоматически сгенерированная документация API для Go клиента.")
 
 	contracts := model.ContractsSorted(r.project.Contracts)
-	hasJsonRPC := r.HasJsonRPC()
+	hasJSONRPC := r.HasJSONRPC()
 
 	typeUsages := r.collectStructTypes()
-	allTypes := make(map[string]*typeUsage)
-	for key, usage := range common.SortedPairs(typeUsages) {
-		allTypes[key] = usage
-	}
+	allTypes := maps.Collect(common.SortedPairs(typeUsages))
 
 	r.typeAnchorsSet = make(map[string]bool)
 	for _, usage := range common.SortedPairs(allTypes) {
@@ -72,9 +70,9 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 		md.PlainText(fmt.Sprintf("- [%s](#%s)", contract.Name, contractAnchor))
 		md.LF()
 
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 			for _, method := range contract.Methods {
-				if r.methodIsJsonRPC(contract, method) {
+				if r.methodIsJSONRPC(contract, method) {
 					methodAnchor := methodAnchorID(contract.Name, method.Name)
 					md.PlainText(fmt.Sprintf("  - [%s](#%s)", method.Name, methodAnchor))
 					md.LF()
@@ -84,14 +82,15 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 
 		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 			for _, method := range contract.Methods {
-				if r.methodIsHTTP(contract, method) {
-					httpMethod := model.GetHTTPMethod(r.project, contract, method)
-					httpPath := model.MethodHTTPFullPath(r.project, contract, method)
-					methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
-					methodAnchor := methodAnchorID(contract.Name, methodTitle)
-					md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
-					md.LF()
+				if !r.methodIsHTTP(contract, method) {
+					continue
 				}
+				httpMethod := model.GetHTTPMethod(r.project, contract, method)
+				httpPath := model.MethodHTTPFullPath(r.project, contract, method)
+				methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
+				methodAnchor := methodAnchorID(contract.Name, methodTitle)
+				md.PlainText(fmt.Sprintf("  - [%s](#%s)", methodTitle, methodAnchor))
+				md.LF()
 			}
 		}
 	}
@@ -113,7 +112,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 
 	md.PlainText(markdown.Bold("Вспомогательные разделы:"))
 	md.LF()
-	if hasJsonRPC {
+	if hasJSONRPC {
 		md.PlainText(fmt.Sprintf("- [Batch запросы (JSON-RPC)](#%s)", generateAnchor("Batch запросы (JSON-RPC)")))
 		md.LF()
 	}
@@ -137,7 +136,7 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 		r.renderAllTypes(md, allTypes)
 	}
 
-	if hasJsonRPC {
+	if hasJSONRPC {
 		r.renderBatchSection(md, contracts, outDir)
 	}
 
@@ -157,12 +156,12 @@ func (r *ClientRenderer) RenderReadmeGo(docOpts any) (err error) {
 	if opts.FilePath != "" {
 		outFilename = opts.FilePath
 		readmeDir := path.Dir(outFilename)
-		if err = os.MkdirAll(readmeDir, 0700); err != nil {
+		if err = os.MkdirAll(readmeDir, 0o700); err != nil {
 			return
 		}
 	}
 
-	err = os.WriteFile(outFilename, buf.Bytes(), 0600)
+	err = os.WriteFile(outFilename, buf.Bytes(), 0o600)
 	return
 }
 
@@ -195,9 +194,9 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 		if contract == nil {
 			continue
 		}
-		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+		if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 			for _, method := range contract.Methods {
-				if r.methodIsJsonRPC(contract, method) {
+				if r.methodIsJSONRPC(contract, method) {
 					exampleContract = contract
 					exampleMethod = method
 					break
@@ -224,7 +223,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 	pkgPath := r.pkgPath(r.outDir)
 	pkgName := filepath.Base(r.outDir)
 	if pkgName == "" || pkgName == "." {
-		pkgName = "client"
+		pkgName = pkgClient
 	}
 
 	md.PlainText(markdown.Bold("Инициализация клиента:"))
@@ -251,15 +250,15 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 
 		var resultVar string
 		if len(results) > 0 {
-			resultVar = "result"
+			resultVar = nameResult
 		}
 
 		templateData := map[string]any{
-			"PkgPath":      pkgPath,
-			"PkgName":      pkgName,
-			"ServiceVar":   serviceVar,
-			"ContractName": exampleContract.Name,
-			"MethodCall":   methodCall,
+			tplPkgPath:      pkgPath,
+			tplPkgName:      pkgName,
+			tplServiceVar:   serviceVar,
+			tplContractName: exampleContract.Name,
+			tplMethodCall:   methodCall,
 		}
 
 		var codeExample string
@@ -301,15 +300,15 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 
 		var resultVar string
 		if len(results) > 0 {
-			resultVar = "result"
+			resultVar = nameResult
 		}
 
 		templateData := map[string]any{
-			"PkgPath":      pkgPath,
-			"PkgName":      pkgName,
-			"ServiceVar":   serviceVar,
-			"ContractName": exampleContract.Name,
-			"MethodCall":   methodCall,
+			tplPkgPath:      pkgPath,
+			tplPkgName:      pkgName,
+			tplServiceVar:   serviceVar,
+			tplContractName: exampleContract.Name,
+			tplMethodCall:   methodCall,
 		}
 
 		var codeExample string
@@ -352,16 +351,16 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 
 		var resultVar string
 		if len(results) > 0 {
-			resultVar = "result"
+			resultVar = nameResult
 		}
 
 		templateData := map[string]any{
-			"PkgPath":      pkgPath,
-			"PkgName":      pkgName,
-			"ServiceVar":   serviceVar,
-			"ContractName": exampleContract.Name,
-			"MethodName":   exampleMethod.Name,
-			"MethodCall":   methodCall,
+			tplPkgPath:      pkgPath,
+			tplPkgName:      pkgName,
+			tplServiceVar:   serviceVar,
+			tplContractName: exampleContract.Name,
+			"MethodName":    exampleMethod.Name,
+			tplMethodCall:   methodCall,
 		}
 
 		var codeExample string
@@ -388,7 +387,7 @@ func (r *ClientRenderer) renderClientDescription(md *markdown.Markdown) {
 func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.Contract, outDir string, typeUsages map[string]*typeUsage) {
 
 	contractAnchor := contractAnchorID(contract.Name)
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", contractAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", contractAnchor))
 	md.LF()
 	md.H2(contract.Name)
 
@@ -398,9 +397,9 @@ func (r *ClientRenderer) renderContract(md *markdown.Markdown, contract *model.C
 		md.LF()
 	}
 
-	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 		for _, method := range contract.Methods {
-			if !r.methodIsJsonRPC(contract, method) {
+			if !r.methodIsJSONRPC(contract, method) {
 				continue
 			}
 			r.renderMethodDoc(md, method, contract, outDir, typeUsages)
@@ -470,7 +469,7 @@ func (r *ClientRenderer) renderClientOptions(md *markdown.Markdown, pkgPath, pkg
 		example     string
 	}
 
-	if r.HasJsonRPC() {
+	if r.HasJSONRPC() {
 		options = append(options, struct {
 			name        string
 			description string
@@ -478,7 +477,7 @@ func (r *ClientRenderer) renderClientOptions(md *markdown.Markdown, pkgPath, pkg
 			example     string
 		}{
 			name:        "DecodeError",
-			description: "Декодер JSON-RPC error из ответа; по умолчанию errorJsonRPC",
+			description: "Декодер JSON-RPC error из ответа; по умолчанию errorJSONRPC",
 			signature:   "func DecodeError(decoder ErrorDecoder) Option",
 			example: fmt.Sprintf(`client := %s.New("http://localhost:9000",
     %s.DecodeError(func(errData json.RawMessage) error {
@@ -514,7 +513,7 @@ func (r *ClientRenderer) renderClientOptions(md *markdown.Markdown, pkgPath, pkg
 		})
 	}
 
-	if r.HasJsonRPC() || r.HasHTTP() {
+	if r.HasJSONRPC() || r.HasHTTP() {
 		options = append(options, []struct {
 			name        string
 			description string
@@ -615,9 +614,22 @@ client := %s.New("http://localhost:9000",
 			signature   string
 			example     string
 		}{
+			name:        "LatencyBuckets",
+			description: "Задаёт бакеты гистограммы client_requests_latency_seconds (до WithMetrics)",
+			signature:   "func LatencyBuckets(buckets ...float64) (opt Option)",
+			example: fmt.Sprintf(`client := %s.New("http://localhost:9000",
+    %s.LatencyBuckets(0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5, 10),
+    %s.WithMetrics(),
+)`, pkgName, pkgName, pkgName),
+		}, struct {
+			name        string
+			description string
+			signature   string
+			example     string
+		}{
 			name:        "WithMetrics",
 			description: "Включает сбор Prometheus метрик",
-			signature:   "func WithMetrics() Option",
+			signature:   "func WithMetrics() (opt Option)",
 			example: fmt.Sprintf(`client := %s.New("http://localhost:9000",
     %s.WithMetrics(),
 )`, pkgName, pkgName),
@@ -637,7 +649,7 @@ client := %s.New("http://localhost:9000",
 func (r *ClientRenderer) renderMetricsSection(md *markdown.Markdown, outDir string) {
 
 	metricsAnchor := generateAnchor("Метрики")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", metricsAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", metricsAnchor))
 	md.LF()
 	md.H2("Метрики")
 	md.PlainText("Клиент поддерживает сбор Prometheus метрик для мониторинга работы API клиента.")
@@ -646,7 +658,7 @@ func (r *ClientRenderer) renderMetricsSection(md *markdown.Markdown, outDir stri
 	pkgPath := r.pkgPath(outDir)
 	pkgName := filepath.Base(outDir)
 	if pkgName == "" || pkgName == "." {
-		pkgName = "client"
+		pkgName = pkgClient
 	}
 
 	md.PlainText(markdown.Bold("Включение метрик:"))
@@ -684,24 +696,24 @@ func main() {
 		{
 			name:        "client_requests_count",
 			description: "Количество отправленных запросов",
-			labels:      "service, method, success, errCode, client_id",
+			labels:      metricsLabelNames,
 		},
 		{
 			name:        "client_requests_all_count",
 			description: "Общее количество всех запросов",
-			labels:      "service, method, success, errCode, client_id",
+			labels:      metricsLabelNames,
 		},
 		{
 			name:        "client_requests_latency_seconds",
 			description: "Задержка выполнения запросов в секундах",
-			labels:      "service, method, success, errCode, client_id",
+			labels:      metricsLabelNames,
 		},
 	}
 
 	for _, metric := range metrics {
 		md.PlainText(fmt.Sprintf("- **%s** - %s", markdown.Code(metric.name), metric.description))
 		md.LF()
-		md.PlainText(fmt.Sprintf("  Метки: %s", markdown.Code(metric.labels)))
+		md.PlainText("  Метки: " + markdown.Code(metric.labels))
 		md.LF()
 	}
 
@@ -770,7 +782,7 @@ func (r *ClientRenderer) renderTemplate(templatePath string, data any) (s string
 func (r *ClientRenderer) renderLoggingSection(md *markdown.Markdown, outDir string) {
 
 	loggingAnchor := generateAnchor("Логирование")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", loggingAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", loggingAnchor))
 	md.LF()
 	md.H2("Логирование")
 	md.PlainText("Клиент поддерживает структурированное логирование через стандартную библиотеку `log/slog`. Логирование позволяет отслеживать все HTTP/JSON-RPC запросы и ошибки, а также интегрировать логи клиента с существующей системой логирования приложения.")
@@ -779,7 +791,7 @@ func (r *ClientRenderer) renderLoggingSection(md *markdown.Markdown, outDir stri
 	pkgPath := r.pkgPath(outDir)
 	pkgName := filepath.Base(outDir)
 	if pkgName == "" || pkgName == "." {
-		pkgName = "client"
+		pkgName = pkgClient
 	}
 
 	md.PlainText(markdown.Bold("Структурированное логирование с slog:"))
@@ -836,8 +848,8 @@ func (r *ClientRenderer) renderLoggingSection(md *markdown.Markdown, outDir stri
 	md.LF()
 
 	templateData := map[string]any{
-		"PkgPath": pkgPath,
-		"PkgName": pkgName,
+		tplPkgPath: pkgPath,
+		tplPkgName: pkgName,
 	}
 	loggingInitExample, err := r.renderTemplate("templates/logging-init.tmpl", templateData)
 	if err != nil {

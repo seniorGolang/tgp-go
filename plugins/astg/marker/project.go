@@ -4,6 +4,7 @@ package marker
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -41,7 +42,7 @@ func ProjectID(rootDir string) (id string, err error) {
 		return "", fmt.Errorf("go.mod not found or invalid: %w", err)
 	}
 	if modulePath == "" {
-		return "", fmt.Errorf("module path is empty")
+		return "", errors.New("module path is empty")
 	}
 
 	// 5. Сгенерировать UUIDv5
@@ -93,8 +94,8 @@ func getGitRemoteURLFromConfig(gitDir string) (remoteURL string, err error) {
 
 		if inOriginSection {
 			lineTrimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(lineTrimmed, "url = ") {
-				remoteURL = strings.TrimSpace(strings.TrimPrefix(lineTrimmed, "url = "))
+			if after, ok := strings.CutPrefix(lineTrimmed, "url = "); ok {
+				remoteURL = strings.TrimSpace(after)
 				return remoteURL, nil
 			}
 		}
@@ -122,7 +123,7 @@ func getModulePath(rootDir string) (modulePath string, err error) {
 
 		parentDir := filepath.Dir(currentDir)
 		if parentDir == currentDir {
-			return "", fmt.Errorf("go.mod not found")
+			return "", errors.New("go.mod not found")
 		}
 		currentDir = parentDir
 	}
@@ -138,7 +139,7 @@ func getModulePath(rootDir string) (modulePath string, err error) {
 	}
 
 	if modFile.Module == nil {
-		return "", fmt.Errorf("module declaration not found in go.mod")
+		return "", errors.New("module declaration not found in go.mod")
 	}
 
 	modulePath = modFile.Module.Mod.Path

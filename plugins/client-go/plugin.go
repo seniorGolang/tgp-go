@@ -39,7 +39,7 @@ func (p *ClientGoPlugin) Execute(request data.Storage) (response data.Storage, e
 		return
 	}
 
-	if err = os.MkdirAll(output, 0700); err != nil {
+	if err = os.MkdirAll(output, 0o700); err != nil {
 		return
 	}
 
@@ -70,9 +70,9 @@ func (p *ClientGoPlugin) Execute(request data.Storage) (response data.Storage, e
 	if contracts, err = helper.ParseStringList(request, "contracts"); err != nil {
 		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
 	}
-
-	// Фильтруем контракты, если указаны
-	project.Contracts = helper.FilterContracts(project, contracts)
+	if project, err = helper.ProjectWithFilter(project, contracts); err != nil {
+		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts"), err)
+	}
 
 	clientStats := stats.CollectClientStats(project)
 
@@ -118,26 +118,26 @@ func (p *ClientGoPlugin) Info() (info plugin.Info, err error) {
 				Options: []plugin.Option{
 					{
 						Name:        "contracts-dir",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to contracts folder (relative to rootDir)"),
 						Required:    false,
 						Default:     "contracts",
 					},
 					{
 						Name:        "out",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to output directory"),
 						Required:    true,
 					},
 					{
 						Name:        "contracts",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Comma-separated list of contracts for filtering (e.g., \"Contract1,Contract2\")"),
 						Required:    false,
 					},
 					{
 						Name:        "doc-file",
-						Type:        "string",
+						Type:        typeString,
 						Description: i18n.Msg("Path to documentation file (default: <out>/readme.md)"),
 						Required:    false,
 					},

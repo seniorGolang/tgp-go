@@ -3,60 +3,33 @@
 package renderer
 
 import (
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
 
-// Потоковое чтение multipart-ответа без буферизации всего тела в памяти.
 func (r *ClientRenderer) StreamingMultipartHelperTypes() *Statement {
 
 	return Line().Type().Id("sharedMultipartCloser").Struct(
 		Id("body").Qual(PackageIO, "Closer"),
-		Id("count").Int(),
-		Id("mu").Qual(PackageSync, "Mutex"),
-		Id("readMu").Qual(PackageSync, "Mutex"),
+		Id("once").Qual(PackageSync, "Once"),
 	).Line().
 		Func().Params(Id("s").Op("*").Id("sharedMultipartCloser")).Id("Close").Params().Params(Err().Error()).Block(
-		Id("s").Dot("mu").Dot("Lock").Call(),
-		Id("s").Dot("count").Op("--"),
-		Id("c").Op(":=").Id("s").Dot("count"),
-		Id("s").Dot("mu").Dot("Unlock").Call(),
-		If(Id("c").Op("==").Lit(0)).Block(
-			Return(Id("s").Dot("body").Dot("Close").Call()),
-		),
-		Return(Nil()),
+		Id("s").Dot("once").Dot("Do").Call(Func().Params().Block(
+			Err().Op("=").Id("s").Dot("body").Dot("Close").Call(),
+		)),
+		Return(),
 	).Line().
-		Type().Id("streamingPartReader").Struct(
-		Id("mr").Op("*").Qual(PackageMimeMultipart, "Reader"),
-		Id("wantPart").String(),
-		Id("cur").Op("*").Qual(PackageMimeMultipart, "Part"),
+		Type().Id("bufferedPartReader").Struct(
+		Op("*").Qual(PackageBytes, "Reader"),
 		Id("shared").Op("*").Id("sharedMultipartCloser"),
+		Id("once").Qual(PackageSync, "Once"),
 	).Line().
-		Func().Params(Id("r").Op("*").Id("streamingPartReader")).Id("Read").Params(Id("p").Index().Byte()).Params(Id("n").Int(), Err().Error()).BlockFunc(func(bg *Group) {
-		bg.Id("r").Dot("shared").Dot("readMu").Dot("Lock").Call()
-		bg.Defer().Id("r").Dot("shared").Dot("readMu").Dot("Unlock").Call()
-		bg.Line()
-		bg.If(Id("r").Dot("cur").Op("==").Nil()).BlockFunc(func(adv *Group) {
-			adv.For().BlockFunc(func(loop *Group) {
-				loop.List(Id("part"), Id("partErr")).Op(":=").Id("r").Dot("mr").Dot("NextPart").Call()
-				loop.If(Id("partErr").Op("==").Qual(PackageIO, "EOF")).Block(Return(Lit(0), Id("partErr")))
-				loop.If(Id("partErr").Op("!=").Nil()).Block(Return(Lit(0), Id("partErr")))
-				loop.If(Id("part").Dot("FormName").Call().Op("==").Id("r").Dot("wantPart")).Block(
-					Id("r").Dot("cur").Op("=").Id("part"),
-					Break(),
-				)
-				loop.Id("_").Op("=").Id("part").Dot("Close").Call()
-			})
-		})
-		bg.Return(Id("r").Dot("cur").Dot("Read").Call(Id("p")))
-	}).Line().
-		Func().Params(Id("r").Op("*").Id("streamingPartReader")).Id("Close").Params().Params(Err().Error()).Block(
-		If(Id("r").Dot("cur").Op("!=").Nil()).Block(
-			Id("_").Op("=").Id("r").Dot("cur").Dot("Close").Call(),
-			Id("r").Dot("cur").Op("=").Nil(),
-		),
-		Return(Id("r").Dot("shared").Dot("Close").Call()),
+		Func().Params(Id("r").Op("*").Id("bufferedPartReader")).Id("Close").Params().Params(Err().Error()).Block(
+		Id("r").Dot("once").Dot("Do").Call(Func().Params().Block(
+			Err().Op("=").Id("r").Dot("shared").Dot("Close").Call(),
+		)),
+		Return(),
 	)
 }
 
@@ -77,7 +50,7 @@ func (r *ClientRenderer) httpMultipartRequestBody(contract *model.Contract, meth
 	st.Go().Func().Params().BlockFunc(func(goBg *Group) {
 		goBg.Var().Id("partHeader").Qual(PackageNetTextproto, "MIMEHeader")
 		goBg.Var().Id("partWriter").Qual(PackageIO, "Writer")
-		goBg.Var().Id("writeErr").Id("error")
+		goBg.Var().Id("writeErr").Id(typeError)
 		goBg.Line()
 		for i, arg := range streamArgs {
 			partName := r.streamPartName(contract, method, arg)
@@ -110,9 +83,12 @@ func (r *ClientRenderer) httpMultipartRequestBody(contract *model.Contract, meth
 		goBg.Id("_").Op("=").Id("pipeWriter").Dot("Close").Call()
 	}).Call()
 	st.Line()
-	st.Var().Id("httpReq").Op("*").Qual(PackageHttp, "Request")
+	st.Var().Id("httpReq").Op("*").Qual(PackageHTTP, "Request")
 	st.Line()
-	st.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(r.httpMethodForContract(contract, method)), Id("baseURL").Dot("String").Call(), Id("pipeReader")).Op(";").Err().Op("!=").Nil()).Block(Return())
+	st.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHTTP, "NewRequestWithContext").Call(Id(_ctx), Lit(r.httpMethodForContract(contract, method)), Id("baseURL").Dot("String").Call(), Id("pipeReader")).Op(";").Err().Op("!=").Nil()).Block(
+		Id("_").Op("=").Id("pipeReader").Dot("Close").Call(),
+		Return(),
+	)
 	st.Line()
 	st.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Content-Type"), Lit("multipart/form-data; boundary=").Op("+").Id("multipartBoundary"))
 	st.Line()
@@ -150,16 +126,40 @@ func (r *ClientRenderer) httpMultipartResponseBody(contract *model.Contract, met
 	st.Id("mr").Op(":=").Qual(PackageMimeMultipart, "NewReader").Call(Id("httpResp").Dot("Body"), Id("boundary"))
 	st.Line()
 	st.Id("sharedCloser").Op(":=").Op("&").Id("sharedMultipartCloser").Values(Dict{
-		Id("body"):  Id("httpResp").Dot("Body"),
-		Id("count"): Lit(len(streamResults)),
+		Id("body"): Id("httpResp").Dot("Body"),
 	})
+	st.Line()
+	st.Id("parts").Op(":=").Map(String()).Op("*").Qual(PackageBytes, "Buffer").Values()
 	st.Line()
 	for _, res := range streamResults {
 		partName := r.streamPartName(contract, method, res)
-		st.Id(ToLowerCamel(res.Name)).Op("=").Op("&").Id("streamingPartReader").Values(Dict{
-			Id("mr"):       Id("mr"),
-			Id("wantPart"): Lit(partName),
-			Id("shared"):   Id("sharedCloser"),
+		st.Id("parts").Index(Lit(partName)).Op("=").Op("&").Qual(PackageBytes, "Buffer").Values()
+		st.Line()
+	}
+	st.For().Block(
+		List(Id("part"), Id("partErr")).Op(":=").Id("mr").Dot("NextPart").Call(),
+		If(Id("partErr").Op("==").Qual(PackageIO, "EOF")).Block(Break()),
+		If(Id("partErr").Op("!=").Nil()).Block(
+			Err().Op("=").Id("partErr"),
+			Id("_").Op("=").Id("sharedCloser").Dot("Close").Call(),
+			Return(),
+		),
+		If(Id("partBuffer").Op(":=").Id("parts").Index(Id("part").Dot("FormName").Call()).Op(";").Id("partBuffer").Op("!=").Nil()).Block(
+			If(List(Id("_"), Id("copyErr")).Op(":=").Qual(PackageIO, "Copy").Call(Id("partBuffer"), Id("part")).Op(";").Id("copyErr").Op("!=").Nil()).Block(
+				Err().Op("=").Id("copyErr"),
+				Id("_").Op("=").Id("part").Dot("Close").Call(),
+				Id("_").Op("=").Id("sharedCloser").Dot("Close").Call(),
+				Return(),
+			),
+		),
+		Id("_").Op("=").Id("part").Dot("Close").Call(),
+	)
+	st.Line()
+	for _, res := range streamResults {
+		partName := r.streamPartName(contract, method, res)
+		st.Id(ToLowerCamel(res.Name)).Op("=").Op("&").Id("bufferedPartReader").Values(Dict{
+			Id("Reader"): Qual(PackageBytes, "NewReader").Call(Id("parts").Index(Lit(partName)).Dot("Bytes").Call()),
+			Id("shared"): Id("sharedCloser"),
 		})
 		st.Line()
 	}

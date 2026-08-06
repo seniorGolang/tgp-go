@@ -28,10 +28,10 @@ func TestGenerateServerSkipsNonHTTPFamily(t *testing.T) {
 				Name:        "Publish",
 				Annotations: tags.DocTags{model.TagKafkaTopic: "demo.orders"},
 				Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-					{Name: "event", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "ctx", TypeID: "context:Context"},
+					{Name: "event", TypeID: "string"},
 				},
-				Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}},
+				Results: []*model.Variable{{Name: "err", TypeID: "error"}},
 			}},
 		}},
 	}
@@ -56,15 +56,15 @@ func TestGenerateServerAcceptsHTTPFamily(t *testing.T) {
 			ID:          "Http",
 			Name:        "Http",
 			PkgPath:     "example.com/app/contracts",
-			Annotations: tags.DocTags{model.TagServerHTTP: "", model.TagHttpPrefix: "api/v1"},
+			Annotations: tags.DocTags{model.TagServerHTTP: "", model.TagHTTPPrefix: "api/v1"},
 			Methods: []*model.Method{{
 				Name: "Ping",
 				Annotations: tags.DocTags{
 					model.TagHTTPMethod: "GET",
-					model.TagHttpPath:   "/ping",
+					model.TagHTTPPath:   "/ping",
 				},
-				Args:    []*model.Variable{{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}}},
-				Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}},
+				Args:    []*model.Variable{{Name: "ctx", TypeID: "context:Context"}},
+				Results: []*model.Variable{{Name: "err", TypeID: "error"}},
 			}},
 		}},
 	}

@@ -22,11 +22,11 @@ func TestAddResponseHeaders_BodyModeIncluded(t *testing.T) {
 					{
 						Name: "ResultHeader",
 						Results: []*model.Variable{
-							{Name: "correlationId", TypeRef: model.TypeRef{TypeID: "string"}},
-							{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+							{Name: "correlationId", TypeID: "string"},
+							{Name: "err", TypeID: "error"},
 						},
 						Annotations: tags.DocTags{
-							model.TagHttpHeader: "correlationId|X-Correlation-Id",
+							model.TagHTTPHeader: "correlationId|X-Correlation-Id",
 						},
 					},
 				},
@@ -129,8 +129,8 @@ func TestEffectiveResponseSchema_enableInlineSinglePointerStruct(t *testing.T) {
 				Kind:     model.TypeKindStruct,
 				TypeName: "CfgJWKS",
 				StructFields: []*model.StructField{
-					{Name: "Issuer", TypeRef: model.TypeRef{TypeID: "string"}, Tags: map[string][]string{"json": {"issuer"}}},
-					{Name: "UriJWKS", TypeRef: model.TypeRef{TypeID: "string"}, Tags: map[string][]string{"json": {"jwks_uri"}}},
+					{Name: "Issuer", TypeID: "string", Tags: map[string][]string{"json": {"issuer"}}},
+					{Name: "UriJWKS", TypeID: "string", Tags: map[string][]string{"json": {"jwks_uri"}}},
 				},
 			},
 		},
@@ -139,13 +139,13 @@ func TestEffectiveResponseSchema_enableInlineSinglePointerStruct(t *testing.T) {
 		Name:    "JWKS",
 		PkgPath: "example/contracts",
 		Annotations: tags.DocTags{
-			model.TagHttpEnableInlineSingle: "",
+			model.TagHTTPEnableInlineSingle: "",
 		},
 		Methods: []*model.Method{{
 			Name: "Configuration",
 			Results: []*model.Variable{
-				{Name: "config", TypeRef: model.TypeRef{TypeID: cfgTypeID, NumberOfPointers: 1}},
-				{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}},
+				{Name: "config", TypeID: cfgTypeID, NumberOfPointers: 1},
+				{Name: "err", TypeID: "error"},
 			},
 		}},
 	}

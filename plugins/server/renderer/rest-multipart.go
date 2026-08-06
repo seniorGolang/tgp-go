@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/model"
 )
@@ -31,7 +31,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Co
 		Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 		Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("missing boundary"))),
 	)
-	st.Line().Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+	st.Line().Id("bodyStream").Op(":=").Id("streamBodyReader").Call(Id(VarNameFtx))
 	st.Line().Id("mr").Op(":=").Qual(PackageMimeMultipart, "NewReader").Call(Id("bodyStream"), Id("boundary"))
 
 	if len(streamArgs) == 1 {
@@ -55,6 +55,7 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Co
 				Case(Lit(partName)).BlockFunc(func(cg *Group) {
 					if expectedContent != "" {
 						cg.If(Id("partContentType").Op("!=").Lit(expectedContent)).Block(
+							Id("_").Op("=").Id("p").Dot("Close").Call(),
 							Id("request").Dot(fieldName).Op("=").Qual(PackageBytes, "NewReader").Call(Nil()),
 							Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusBadRequest")),
 							Return().Id("sendResponse").Call(Id(VarNameFtx), Id("errBadRequestData").Call(Lit("part ").Op("+").Lit(partName).Op("+").Lit(": invalid content-type"))),
@@ -63,14 +64,19 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Co
 					cg.Id("request").Dot(fieldName).Op("=").Id("p")
 					cg.Id("found").Op("=").True()
 				}),
-				Default().Block(List(Id("_"), Id("_")).Op("=").Qual("io", "Copy").Call(Qual("io", "Discard"), Id("p"))),
+				Default().Block(Id("_").Op("=").Id("p").Dot("Close").Call()),
 			)
 			fg.If(Id("found")).Block(Break())
 		})
+		st.Line().If(Id("found")).Block(
+			Defer().Func().Params().Block(
+				Id("_").Op("=").Id("p").Dot("Close").Call(),
+			).Call(),
+		)
 		return st
 	}
 
-	streamPkg := fmt.Sprintf("%s/stream", r.pkgPath(r.outDir))
+	streamPkg := r.pkgPath(r.outDir) + "/stream"
 	st.Line().Id("partNames").Op(":=").Index().String().ValuesFunc(func(vg *Group) {
 		for _, arg := range streamArgs {
 			vg.Lit(r.streamPartName(method, arg))
@@ -81,15 +87,18 @@ func (r *contractRenderer) httpServeMultipartRequest(method *model.Method) (c Co
 			vg.Lit(r.streamPartContent(method, arg))
 		}
 	})
-	st.Line().Id("partReaders").Op(":=").Qual(streamPkg, "NewParts").Call(Id("mr"), Id("partNames"), Id("partContentTypes"))
+	st.Line().Id("parts").Op(":=").Qual(streamPkg, "NewParts").Call(Id("mr"), Id("partNames"), Id("partContentTypes"))
+	st.Line().Defer().Func().Params().Block(
+		Id("_").Op("=").Id("parts").Dot("Close").Call(),
+	).Call()
 	for i, arg := range streamArgs {
 		fieldName := r.requestStructFieldName(method, arg)
-		st.Line().Id("request").Dot(fieldName).Op("=").Id("partReaders").Index(Lit(i))
+		st.Line().Id("request").Dot(fieldName).Op("=").Id("parts").Dot("Reader").Call(Lit(i))
 	}
 	return st
 }
 
-// Вызывается в начале блока err == nil до проверки редиректа, чтобы при return по редиректу ресурсы освобождались.
+// Вызывается сразу после сервисного вызова, чтобы ресурсы освобождались и при ошибке, и при редиректе.
 func (r *contractRenderer) httpServeMultipartResponseDefers(method *model.Method) (c Code) {
 
 	streamResults := r.methodResponseBodyStreamResults(method)
@@ -100,9 +109,11 @@ func (r *contractRenderer) httpServeMultipartResponseDefers(method *model.Method
 	st := Line()
 	for _, res := range streamResults {
 		fieldName := r.responseStructFieldName(method, res)
-		st.Line().Defer().Func().Params().Block(
-			Id("_").Op("=").Id("response").Dot(fieldName).Dot("Close").Call(),
-		).Call()
+		st.Line().If(Id("response").Dot(fieldName).Op("!=").Nil()).Block(
+			Defer().Func().Params().Block(
+				Id("_").Op("=").Id("response").Dot(fieldName).Dot("Close").Call(),
+			).Call(),
+		)
 	}
 	return st
 }
@@ -149,7 +160,7 @@ func (r *contractRenderer) validatePartContentMapping(method *model.Method, vars
 	if method == nil || method.Annotations == nil {
 		return
 	}
-	annotationValue, found := method.Annotations[model.TagHttpPartContent]
+	annotationValue, found := method.Annotations[model.TagHTTPPartContent]
 	if !found || strings.TrimSpace(annotationValue) == "" {
 		return
 	}
@@ -165,21 +176,21 @@ func (r *contractRenderer) validatePartContentMapping(method *model.Method, vars
 	}
 	sort.Strings(allowedNames)
 
-	pairs := strings.Split(annotationValue, ",")
-	for _, rawPair := range pairs {
+	pairs := strings.SplitSeq(annotationValue, ",")
+	for rawPair := range pairs {
 		pair := strings.TrimSpace(rawPair)
 		if pair == "" {
 			continue
 		}
 		tokens := strings.Split(pair, "|")
 		if len(tokens) != 2 {
-			panic(fmt.Sprintf("invalid @tg %s for %s.%s: expected '<arg>|<mime>', got %q", model.TagHttpPartContent, r.contract.Name, method.Name, pair))
+			panic(fmt.Sprintf("invalid @tg %s for %s.%s: expected '<arg>|<mime>', got %q", model.TagHTTPPartContent, r.contract.Name, method.Name, pair))
 		}
 		argName := strings.TrimSpace(tokens[0])
 		if _, ok := allowedByName[argName]; !ok {
 			panic(fmt.Sprintf(
 				"invalid @tg %s for %s.%s (%s): unknown argument %q; allowed: %s",
-				model.TagHttpPartContent,
+				model.TagHTTPPartContent,
 				r.contract.Name,
 				method.Name,
 				direction,

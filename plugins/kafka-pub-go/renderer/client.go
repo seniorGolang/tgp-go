@@ -19,6 +19,8 @@ func (r *Renderer) renderClient() (err error) {
 		group.Id("log").Op("*").Qual("log/slog", "Logger")
 		group.Id("codecs").Map(jen.String()).Id("codec")
 		group.Id("mu").Qual("sync", "RWMutex")
+		group.Id("inflight").Qual("sync", "WaitGroup")
+		group.Id("shutdownTimeout").Qual("time", "Duration")
 		group.Id("closed").Bool()
 		for _, ack := range acks {
 			group.Id(ackField(ack)).Op("*").Qual(kgoPath, "Client")
@@ -59,7 +61,11 @@ func (r *Renderer) addNewClient(source *GoFile, acks []string) {
 		jen.For(jen.List(jen.Id("_"), jen.Id("name")).Op(":=").Range().Id("requiredCodecs").Call()).Block(
 			jen.If(jen.Id("codecs").Index(jen.Id("name")).Op("==").Nil()).Block(jen.Return(jen.Nil(), jen.Qual("fmt", "Errorf").Call(jen.Lit("kafka codec %q is not registered"), jen.Id("name")))),
 		),
-		jen.Id("client").Op("=").Op("&").Id("Client").Values(jen.Dict{jen.Id("log"): jen.Id("log"), jen.Id("codecs"): jen.Id("codecs")}),
+		jen.Id("client").Op("=").Op("&").Id("Client").Values(jen.Dict{
+			jen.Id("log"):             jen.Id("log"),
+			jen.Id("codecs"):          jen.Id("codecs"),
+			jen.Id("shutdownTimeout"): jen.Id("setup").Dot("shutdownTimeout"),
+		}),
 	}
 	if r.hasAnnotation(model.TagMetrics) {
 		body = append(body, jen.If(jen.Id("setup").Dot("metrics").Op("!=").Nil()).Block(
@@ -72,7 +78,10 @@ func (r *Renderer) addNewClient(source *GoFile, acks []string) {
 	body = append(body, jen.Var().Id("kafkaClient").Op("*").Qual(kgoPath, "Client"))
 	for _, ack := range acks {
 		body = append(body,
-			jen.If(jen.List(jen.Id("kafkaClient"), jen.Id("err")).Op("=").Id("newKafkaClient").Call(jen.Id("setup"), ackExpression(ack), jen.Lit(ack != model.KafkaAcksAllISR)), jen.Id("err").Op("!=").Nil()).Block(jen.Return(jen.Nil(), jen.Id("err"))),
+			jen.If(jen.List(jen.Id("kafkaClient"), jen.Id("err")).Op("=").Id("newKafkaClient").Call(jen.Id("setup"), ackExpression(ack), jen.Lit(ack != model.KafkaAcksAllISR)), jen.Id("err").Op("!=").Nil()).Block(
+				jen.Id("client").Dot("Close").Call(),
+				jen.Return(jen.Nil(), jen.Id("err")),
+			),
 			jen.Id("client").Dot(ackField(ack)).Op("=").Id("kafkaClient"),
 		)
 	}
@@ -93,10 +102,41 @@ func (r *Renderer) addClose(source *GoFile, acks []string) {
 		jen.If(jen.Id("client").Dot("closed")).Block(jen.Id("client").Dot("mu").Dot("Unlock").Call(), jen.Return()),
 		jen.Id("client").Dot("closed").Op("=").True(),
 		jen.Id("clients").Op(":=").Index().Op("*").Qual(kgoPath, "Client").Values(clients...),
+		jen.Id("deadline").Op(":=").Qual("time", "Now").Call().Dot("Add").Call(jen.Id("client").Dot("shutdownTimeout")),
 		jen.Id("client").Dot("mu").Dot("Unlock").Call(),
+		jen.Id("inflightDone").Op(":=").Make(jen.Chan().Struct()),
+		jen.Go().Func().Params().Block(
+			jen.Id("client").Dot("inflight").Dot("Wait").Call(),
+			jen.Close(jen.Id("inflightDone")),
+		).Call(),
+		jen.Id("waitTimer").Op(":=").Qual("time", "NewTimer").Call(jen.Qual("time", "Until").Call(jen.Id("deadline"))),
+		jen.Select().Block(
+			jen.Case(jen.Op("<-").Id("inflightDone")).Block(jen.Id("waitTimer").Dot("Stop").Call()),
+			jen.Case(jen.Op("<-").Id("waitTimer").Dot("C")).Block(
+				jen.Id("client").Dot("log").Dot("Error").Call(jen.Lit("kafka publisher Close: inflight operations did not finish before shutdown timeout")),
+			),
+		),
 		jen.For(jen.List(jen.Id("_"), jen.Id("kafkaClient")).Op(":=").Range().Id("clients")).Block(
 			jen.If(jen.Id("kafkaClient").Op("==").Nil()).Block(jen.Continue()),
-			jen.Id("_").Op("=").Id("kafkaClient").Dot("Flush").Call(jen.Qual("context", "Background").Call()),
+			jen.Id("remaining").Op(":=").Qual("time", "Until").Call(jen.Id("deadline")),
+			jen.If(jen.Id("remaining").Op("<=").Lit(0)).Block(
+				jen.Id("client").Dot("log").Dot("Error").Call(jen.Lit("kafka publisher Close: no time left to flush buffered records")),
+				jen.List(jen.Id("abortCtx"), jen.Id("abortCancel")).Op(":=").Qual("context", "WithDeadline").Call(jen.Qual("context", "Background").Call(), jen.Id("deadline")),
+				jen.If(jen.Id("abortErr").Op(":=").Id("kafkaClient").Dot("AbortBufferedRecords").Call(jen.Id("abortCtx")), jen.Id("abortErr").Op("!=").Nil()).Block(
+					jen.Id("client").Dot("log").Dot("Error").Call(jen.Lit("kafka publisher Close: abort buffered records failed"), jen.Qual("log/slog", "Any").Call(jen.Lit("error"), jen.Id("abortErr"))),
+				),
+				jen.Id("abortCancel").Call(),
+				jen.Id("kafkaClient").Dot("Close").Call(),
+				jen.Continue(),
+			),
+			jen.List(jen.Id("flushCtx"), jen.Id("flushCancel")).Op(":=").Qual("context", "WithTimeout").Call(jen.Qual("context", "Background").Call(), jen.Id("remaining")),
+			jen.If(jen.Id("flushErr").Op(":=").Id("kafkaClient").Dot("Flush").Call(jen.Id("flushCtx")), jen.Id("flushErr").Op("!=").Nil()).Block(
+				jen.Id("client").Dot("log").Dot("Error").Call(jen.Lit("kafka publisher Close: flush failed"), jen.Qual("log/slog", "Any").Call(jen.Lit("error"), jen.Id("flushErr"))),
+				jen.If(jen.Id("abortErr").Op(":=").Id("kafkaClient").Dot("AbortBufferedRecords").Call(jen.Id("flushCtx")), jen.Id("abortErr").Op("!=").Nil()).Block(
+					jen.Id("client").Dot("log").Dot("Error").Call(jen.Lit("kafka publisher Close: abort buffered records failed"), jen.Qual("log/slog", "Any").Call(jen.Lit("error"), jen.Id("abortErr"))),
+				),
+			),
+			jen.Id("flushCancel").Call(),
 			jen.Id("kafkaClient").Dot("Close").Call(),
 		),
 	)
@@ -107,13 +147,20 @@ func (r *Renderer) addKafkaClientGetter(source *GoFile, acks []string) {
 
 	cases := make([]jen.Code, 0, len(acks)+1)
 	for _, ack := range acks {
-		cases = append(cases, jen.Case(jen.Lit(ack)).Block(jen.Return(jen.Id("client").Dot(ackField(ack)), jen.Nil())))
+		cases = append(cases, jen.Case(jen.Lit(ack)).Block(jen.Return(jen.Id("client").Dot(ackField(ack)), jen.Id("release"), jen.Nil())))
 	}
-	cases = append(cases, jen.Default().Block(jen.Return(jen.Nil(), jen.Qual("fmt", "Errorf").Call(jen.Lit("unknown kafka acks %q"), jen.Id("acks")))))
-	source.Func().Params(jen.Id("client").Op("*").Id("Client")).Id("kafkaClient").Params(jen.Id("acks").String()).Params(jen.Id("result").Op("*").Qual(kgoPath, "Client"), jen.Id("err").Error()).Block(
+	cases = append(cases, jen.Default().Block(
+		jen.Id("client").Dot("inflight").Dot("Done").Call(),
+		jen.Id("release").Op("=").Func().Params().Block(),
+		jen.Return(jen.Nil(), jen.Id("release"), jen.Qual("fmt", "Errorf").Call(jen.Lit("unknown kafka acks %q"), jen.Id("acks"))),
+	))
+	source.Func().Params(jen.Id("client").Op("*").Id("Client")).Id("kafkaClient").Params(jen.Id("acks").String()).Params(jen.Id("result").Op("*").Qual(kgoPath, "Client"), jen.Id("release").Func().Params(), jen.Id("err").Error()).Block(
+		jen.Id("release").Op("=").Func().Params().Block(),
 		jen.Id("client").Dot("mu").Dot("RLock").Call(),
 		jen.Defer().Id("client").Dot("mu").Dot("RUnlock").Call(),
-		jen.If(jen.Id("client").Dot("closed")).Block(jen.Return(jen.Nil(), jen.Qual("errors", "New").Call(jen.Lit("kafka publisher is closed")))),
+		jen.If(jen.Id("client").Dot("closed")).Block(jen.Return(jen.Nil(), jen.Id("release"), jen.Qual("errors", "New").Call(jen.Lit("kafka publisher is closed")))),
+		jen.Id("client").Dot("inflight").Dot("Add").Call(jen.Lit(1)),
+		jen.Id("release").Op("=").Id("client").Dot("inflight").Dot("Done"),
 		jen.Switch(jen.Id("acks")).Block(cases...),
 	)
 	source.Line()

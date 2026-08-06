@@ -12,14 +12,14 @@ import (
 )
 
 const (
-	TagServerJsonRPC = "jsonRPC-server"
+	TagServerJSONRPC = "jsonRPC-server"
 	TagServerHTTP    = "http-server"
 )
 
 type ClientStats struct {
 	ContractsToGenerate []*model.Contract
 	ContractNames       []string
-	JsonRPCCount        int
+	JSONRPCCount        int
 	HTTPCount           int
 	TotalMethods        int
 	TotalTypes          int
@@ -31,16 +31,16 @@ func CollectClientStats(project *model.Project) (stats ClientStats) {
 	stats.ContractNames = make([]string, 0)
 
 	for _, contract := range project.Contracts {
-		hasJsonRPC := model.IsAnnotationSet(project, contract, nil, nil, TagServerJsonRPC)
+		hasJSONRPC := model.IsAnnotationSet(project, contract, nil, nil, TagServerJSONRPC)
 		hasHTTP := model.IsAnnotationSet(project, contract, nil, nil, TagServerHTTP)
 
-		if hasJsonRPC || hasHTTP {
+		if hasJSONRPC || hasHTTP {
 			stats.ContractsToGenerate = append(stats.ContractsToGenerate, contract)
 			stats.ContractNames = append(stats.ContractNames, contract.Name)
 			stats.TotalMethods += len(contract.Methods)
 
-			if hasJsonRPC {
-				stats.JsonRPCCount++
+			if hasJSONRPC {
+				stats.JSONRPCCount++
 			}
 			if hasHTTP {
 				stats.HTTPCount++
@@ -51,7 +51,7 @@ func CollectClientStats(project *model.Project) (stats ClientStats) {
 	return
 }
 
-func (s ClientStats) ContractNamesString() (out string) {
+func (s *ClientStats) ContractNamesString() (out string) {
 
 	if len(s.ContractNames) == 0 {
 		return "нет контрактов"
@@ -72,8 +72,8 @@ func StartGenerationAttrs(stats ClientStats, outDir string, docOpts DocOptionsPr
 		slog.String(i18n.Msg("output directory"), outDir),
 	}
 
-	if stats.JsonRPCCount > 0 {
-		attrs = append(attrs, slog.Int(i18n.Msg("jsonrpc contracts"), stats.JsonRPCCount))
+	if stats.JSONRPCCount > 0 {
+		attrs = append(attrs, slog.Int(i18n.Msg("jsonrpc contracts"), stats.JSONRPCCount))
 	}
 	if stats.HTTPCount > 0 {
 		attrs = append(attrs, slog.Int(i18n.Msg("http contracts"), stats.HTTPCount))
@@ -105,8 +105,8 @@ func CompleteGenerationAttrs(stats ClientStats, outDir string, docOpts DocOption
 		slog.String(i18n.Msg("output directory"), outDir),
 	}
 
-	if stats.JsonRPCCount > 0 {
-		attrs = append(attrs, slog.Int(i18n.Msg("jsonrpc contracts"), stats.JsonRPCCount))
+	if stats.JSONRPCCount > 0 {
+		attrs = append(attrs, slog.Int(i18n.Msg("jsonrpc contracts"), stats.JSONRPCCount))
 	}
 	if stats.HTTPCount > 0 {
 		attrs = append(attrs, slog.Int(i18n.Msg("http contracts"), stats.HTTPCount))
@@ -160,7 +160,7 @@ func CollectSwaggerStats(project *model.Project, filteredContracts []string) (st
 	return
 }
 
-func (s SwaggerStats) ContractNamesString() (out string) {
+func (s *SwaggerStats) ContractNamesString() (out string) {
 
 	if len(s.ContractNames) == 0 {
 		return "нет контрактов"

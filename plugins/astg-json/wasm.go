@@ -6,7 +6,7 @@ import (
 
 func init() {
 
-	core.InitPlugin(&AstgJsonPlugin{})
+	core.InitPlugin(&AstgJSONPlugin{})
 }
 
 func main() {

@@ -29,22 +29,22 @@ func NewChart(w io.Writer, opts ...Option) (ch *Chart) {
 
 	lines := []string{"gantt"}
 	if c.title != noTitle {
-		lines = append(lines, fmt.Sprintf("    title %s", c.title))
+		lines = append(lines, "    title "+c.title)
 	}
 	if c.dateFormat != "" {
-		lines = append(lines, fmt.Sprintf("    dateFormat %s", c.dateFormat))
+		lines = append(lines, "    dateFormat "+c.dateFormat)
 	}
 	if c.axisFormat != "" {
-		lines = append(lines, fmt.Sprintf("    axisFormat %s", c.axisFormat))
+		lines = append(lines, "    axisFormat "+c.axisFormat)
 	}
 	if c.tickInterval != "" {
-		lines = append(lines, fmt.Sprintf("    tickInterval %s", c.tickInterval))
+		lines = append(lines, "    tickInterval "+c.tickInterval)
 	}
 	if c.todayMarker != "" {
-		lines = append(lines, fmt.Sprintf("    todayMarker %s", c.todayMarker))
+		lines = append(lines, "    todayMarker "+c.todayMarker)
 	}
 	for _, exclude := range c.excludes {
-		lines = append(lines, fmt.Sprintf("    excludes %s", exclude))
+		lines = append(lines, "    excludes "+exclude)
 	}
 
 	return &Chart{
@@ -75,7 +75,7 @@ func (c *Chart) Build() (err error) {
 
 func (c *Chart) Section(name string) (out *Chart) {
 
-	c.body = append(c.body, fmt.Sprintf("    section %s", name))
+	c.body = append(c.body, "    section "+name)
 	return c
 }
 

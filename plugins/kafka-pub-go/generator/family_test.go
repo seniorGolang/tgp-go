@@ -39,9 +39,9 @@ func TestMethodKafkaExtraArgsIgnoredForHTTPFamily(t *testing.T) {
 		Methods: []*model.Method{{
 			Name: "Get",
 			Args: []*model.Variable{
-				{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-				{Name: "id", TypeRef: model.TypeRef{TypeID: "string"}},
-				{Name: "q", TypeRef: model.TypeRef{TypeID: "string"}},
+				{Name: "ctx", TypeID: "context:Context"},
+				{Name: "id", TypeID: "string"},
+				{Name: "q", TypeID: "string"},
 			},
 		}},
 	}

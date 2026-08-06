@@ -27,7 +27,7 @@ func isBuiltinTypeName(typeName string) (isBuiltin bool) {
 	return
 }
 
-func GoProjectPath(from string) (projectPath string) {
+func GoProjectPath(_from string) (projectPath string) {
 
 	var modPath string
 	modPath, _ = findGoModPath()
@@ -55,20 +55,21 @@ func PkgModPath(pkgName string) (modPathResult string) {
 	}
 	modInfo := parseMod(modPath)
 	pkgTokens := strings.Split(pkgName, "/")
-	for i := 0; i < len(pkgTokens); i++ {
+	for i := range pkgTokens {
 		pathTry := strings.Join(pkgTokens[:len(pkgTokens)-i], "/")
 		for modPkg, modPathVal := range modInfo {
-			if pathTry == modPkg {
-				var esc string
-				esc, _ = module.EscapePath(modPkg)
-				modPathVal = strings.Replace(modPathVal, modPkg, esc, 1)
-				if len(strings.Split(modPkg, "/")) == 1 {
-					modPathResult = path.Join(modPathVal, strings.Join(pkgTokens, "/"))
-					return
-				}
-				modPathResult = path.Join(modPathVal, strings.Join(pkgTokens[len(pkgTokens)-i:], "/"))
+			if pathTry != modPkg {
+				continue
+			}
+			var esc string
+			esc, _ = module.EscapePath(modPkg)
+			modPathVal = strings.Replace(modPathVal, modPkg, esc, 1)
+			if len(strings.Split(modPkg, "/")) == 1 {
+				modPathResult = path.Join(modPathVal, strings.Join(pkgTokens, "/"))
 				return
 			}
+			modPathResult = path.Join(modPathVal, strings.Join(pkgTokens[len(pkgTokens)-i:], "/"))
+			return
 		}
 	}
 	return

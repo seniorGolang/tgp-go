@@ -5,7 +5,6 @@ package renderer
 import (
 	"path"
 
-	"tgp/internal/generated"
 	"tgp/plugins/client-ts/tsg"
 )
 
@@ -13,10 +12,8 @@ func (r *ClientRenderer) RenderClientOptions() (err error) {
 
 	outDir := r.outDir
 	file := tsg.NewFile()
-	file.Comment(generated.ByToolGatewayComment)
-
 	stmt := tsg.NewStatement()
-	if r.HasJsonRPC() {
+	if r.HasJSONRPC() {
 		file.ImportType("./error", "ErrorDecoder")
 	}
 	if r.HasHTTP() {
@@ -25,31 +22,31 @@ func (r *ClientRenderer) RenderClientOptions() (err error) {
 	stmt.Export().Type("ClientOptions")
 	stmt.Op("=")
 	stmt.Block(func(grp *tsg.Group) {
-		grp.Add(tsg.NewStatement().Id("url").Colon().Id("string").Semicolon())
+		grp.Add(tsg.NewStatement().ID("url").Colon().ID(typeString).Semicolon())
 		if r.clientIdentity {
-			grp.Add(tsg.NewStatement().Id("clientName").Colon().Id("string").Semicolon())
+			grp.Add(tsg.NewStatement().ID("clientName").Colon().ID(typeString).Semicolon())
 		}
-		if r.HasJsonRPC() {
-			grp.Add(tsg.NewStatement().Id("errorDecoder").Optional().Colon().Id("ErrorDecoder").Semicolon())
+		if r.HasJSONRPC() {
+			grp.Add(tsg.NewStatement().ID("errorDecoder").Optional().Colon().ID("ErrorDecoder").Semicolon())
 		}
 		if r.HasHTTP() {
-			grp.Add(tsg.NewStatement().Id("httpErrorDecoder").Optional().Colon().Id("HTTPErrorDecoder").Semicolon())
+			grp.Add(tsg.NewStatement().ID("httpErrorDecoder").Optional().Colon().ID("HTTPErrorDecoder").Semicolon())
 		}
 		// Поддержка статичных заголовков и функции для динамических заголовков
-		recordType := tsg.NewStatement().Id("Record").Generic("string", "string")
+		recordType := tsg.NewStatement().ID("Record").Generic(typeString, typeString)
 		headersType := tsg.NewStatement()
 		headersType.Add(recordType)
 		headersType.Op("|")
 		// Функция должна быть в скобках в union типе
 		headersFnType := tsg.NewStatement()
-		promiseRecordType := tsg.NewStatement().Id("Promise").Generic("Record<string, string>")
+		promiseRecordType := tsg.NewStatement().ID("Promise").Generic("Record<string, string>")
 		// Создаем функцию в скобках: (() => Record<string, string> | Promise<Record<string, string>>)
-		headersFnType.Op("(").Params(func(fg *tsg.Group) {}).Op("=>").Add(recordType).Op("|").Add(promiseRecordType).Op(")")
+		headersFnType.Op("(").Params(func(_fg *tsg.Group) {}).Op("=>").Add(recordType).Op("|").Add(promiseRecordType).Op(")")
 		headersType.Add(headersFnType)
-		grp.Add(tsg.NewStatement().Id("headers").Optional().Colon().Add(headersType).Semicolon())
+		grp.Add(tsg.NewStatement().ID("headers").Optional().Colon().Add(headersType).Semicolon())
 		fnType := tsg.NewStatement()
-		fnType.Params(func(fg *tsg.Group) {}).Op("=>").Id("string")
-		grp.Add(tsg.NewStatement().Id("idGeneratorFn").Optional().Colon().Add(fnType).Semicolon())
+		fnType.Params(func(_fg *tsg.Group) {}).Op("=>").ID(typeString)
+		grp.Add(tsg.NewStatement().ID("idGeneratorFn").Optional().Colon().Add(fnType).Semicolon())
 	})
 	file.Add(stmt)
 	file.Line()

@@ -8,6 +8,9 @@ import (
 )
 
 type ClientID string
+{{- if .HasBearer}}
+type Subject string
+{{- end}}
 type contextKey string
 
 func keyFor[T any]() (s string) {
@@ -42,3 +45,13 @@ func GetClientID(ctx context.Context) (s string) {
 	}
 	return "unknown"
 }
+{{- if .HasBearer}}
+
+func GetSubject(ctx context.Context) (s string) {
+
+	if id := FromCtx[Subject](ctx); id != "" {
+		return string(id)
+	}
+	return ""
+}
+{{- end}}

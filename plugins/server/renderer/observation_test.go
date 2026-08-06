@@ -30,10 +30,10 @@ func TestRenderTransportServer_IgnoresKafkaTraceAndMetrics(t *testing.T) {
 					Name: "Ping",
 					Annotations: tags.DocTags{
 						model.TagHTTPMethod: "GET",
-						model.TagHttpPath:   "/ping",
+						model.TagHTTPPath:   "/ping",
 					},
-					Args:    []*model.Variable{{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}}},
-					Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}},
+					Args:    []*model.Variable{{Name: "ctx", TypeID: "context:Context"}},
+					Results: []*model.Variable{{Name: "err", TypeID: "error"}},
 				}},
 			},
 			{
@@ -50,10 +50,10 @@ func TestRenderTransportServer_IgnoresKafkaTraceAndMetrics(t *testing.T) {
 					Name:        "Publish",
 					Annotations: tags.DocTags{model.TagKafkaTopic: "demo.orders"},
 					Args: []*model.Variable{
-						{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}},
-						{Name: "event", TypeRef: model.TypeRef{TypeID: "string"}},
+						{Name: "ctx", TypeID: "context:Context"},
+						{Name: "event", TypeID: "string"},
 					},
-					Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}},
+					Results: []*model.Variable{{Name: "err", TypeID: "error"}},
 				}},
 			},
 		},
@@ -63,6 +63,9 @@ func TestRenderTransportServer_IgnoresKafkaTraceAndMetrics(t *testing.T) {
 	renderer := NewTransportRenderer(project, dir)
 	if err := renderer.RenderTransportServer(); err != nil {
 		t.Fatalf("RenderTransportServer: %v", err)
+	}
+	if err := renderer.RenderTransportOptions(); err != nil {
+		t.Fatalf("RenderTransportOptions: %v", err)
 	}
 	if err := renderer.RenderTransportMetrics(); err != nil {
 		t.Fatalf("RenderTransportMetrics: %v", err)
@@ -111,10 +114,10 @@ func TestRenderTransportServer_HTTPTraceAndMetricsStillWork(t *testing.T) {
 					Name: "Ping",
 					Annotations: tags.DocTags{
 						model.TagHTTPMethod: "GET",
-						model.TagHttpPath:   "/ping",
+						model.TagHTTPPath:   "/ping",
 					},
-					Args:    []*model.Variable{{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}}},
-					Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}},
+					Args:    []*model.Variable{{Name: "ctx", TypeID: "context:Context"}},
+					Results: []*model.Variable{{Name: "err", TypeID: "error"}},
 				}},
 			},
 		},
@@ -124,6 +127,9 @@ func TestRenderTransportServer_HTTPTraceAndMetricsStillWork(t *testing.T) {
 	renderer := NewTransportRenderer(project, dir)
 	if err := renderer.RenderTransportServer(); err != nil {
 		t.Fatalf("RenderTransportServer: %v", err)
+	}
+	if err := renderer.RenderTransportOptions(); err != nil {
+		t.Fatalf("RenderTransportOptions: %v", err)
 	}
 	if err := renderer.RenderTransportMetrics(); err != nil {
 		t.Fatalf("RenderTransportMetrics: %v", err)
@@ -141,11 +147,42 @@ func TestRenderTransportServer_HTTPTraceAndMetricsStillWork(t *testing.T) {
 	if !strings.Contains(source, "func (srv *Server) WithTrace") {
 		t.Fatalf("expected WithTrace for HTTP @tg trace, got:\n%s", source)
 	}
+	if !strings.Contains(source, "srv.tracerProvider = tracer.Init(ctx, appName, endpoint, srv.traceSampler, srv.traceInsecure, attributes...)") {
+		t.Fatalf("WithTrace must retain tracer provider and pass configured sampler, got:\n%s", source)
+	}
 	if !strings.Contains(source, "inFlightMiddleware") {
 		t.Fatalf("expected metrics middleware for HTTP @tg metrics, got:\n%s", source)
 	}
 	if _, err = os.Stat(filepath.Join(dir, "tracer")); err != nil {
 		t.Fatalf("expected tracer package for HTTP @tg trace: %v", err)
+	}
+	optionsContent, err := os.ReadFile(filepath.Join(dir, "options.go"))
+	if err != nil {
+		t.Fatalf("read generated options.go: %v", err)
+	}
+	if !strings.Contains(string(optionsContent), "func TraceSampler(sampler trace.Sampler) Option") {
+		t.Fatalf("expected TraceSampler option, got:\n%s", optionsContent)
+	}
+	if !strings.Contains(string(optionsContent), "func TraceInsecure()") {
+		t.Fatalf("expected TraceInsecure option, got:\n%s", optionsContent)
+	}
+	semconvContent, err := os.ReadFile(filepath.Join(dir, "tracer", "semconv.go"))
+	if err != nil {
+		t.Fatalf("read tracer/semconv.go: %v", err)
+	}
+	semconvSource := string(semconvContent)
+	if strings.Contains(semconvSource, "utils.CopyString") || strings.Contains(semconvSource, "utils.CopyBytes") {
+		t.Fatalf("tracer must not CopyString/CopyBytes under Immutable, got:\n%s", semconvSource)
+	}
+	if !strings.Contains(semconvSource, `c.Get(fiber.HeaderUserAgent)`) {
+		t.Fatalf("tracer User-Agent must use fiber.Get, got:\n%s", semconvSource)
+	}
+	fiberContent, err := os.ReadFile(filepath.Join(dir, "tracer", "fiber.go"))
+	if err != nil {
+		t.Fatalf("read tracer/fiber.go: %v", err)
+	}
+	if strings.Contains(string(fiberContent), "utils.CopyString") {
+		t.Fatalf("tracer/fiber.go must not CopyString under Immutable, got:\n%s", fiberContent)
 	}
 	if _, err = os.Stat(filepath.Join(dir, "metrics.go")); err != nil {
 		t.Fatalf("expected metrics.go for HTTP @tg metrics: %v", err)

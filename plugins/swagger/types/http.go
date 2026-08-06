@@ -85,48 +85,48 @@ var statusText = map[int]string{
 
 func JSONRPCSchemaPerPath(key string, schema Schema) (result Schema) {
 	return Schema{
-		Type: "object",
+		Type: typeObject,
 		Properties: Properties{
-			"jsonrpc": Schema{
-				Type:    "string",
+			nameJSONRPC: Schema{
+				Type:    typeString,
 				Example: "2.0",
 			},
 			"id": Schema{
-				Type: "number",
+				Type: typeNumber,
 			},
 			key: schema,
 		},
-		Required: []string{"jsonrpc", key},
+		Required: []string{nameJSONRPC, key},
 	}
 }
 
 func JSONRPCErrorSchema() (result Schema) {
 	return Schema{
-		Type: "object",
+		Type: typeObject,
 		Properties: Properties{
-			"jsonrpc": Schema{
-				Type:    "string",
+			nameJSONRPC: Schema{
+				Type:    typeString,
 				Example: "2.0",
 			},
-			"error": Schema{
-				Type: "object",
+			typeError: Schema{
+				Type: typeObject,
 				Properties: Properties{
 					"code": Schema{
-						Type: "number",
+						Type: typeNumber,
 					},
 					"message": Schema{
-						Type: "string",
+						Type: typeString,
 					},
 					"data": Schema{
-						Type: "object",
+						Type: typeObject,
 					},
 				},
 				Required: []string{"code", "message"},
 			},
 			"id": Schema{
-				Type: "number",
+				Type: typeNumber,
 			},
 		},
-		Required: []string{"jsonrpc", "error", "id"},
+		Required: []string{nameJSONRPC, typeError, "id"},
 	}
 }

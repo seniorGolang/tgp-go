@@ -67,11 +67,11 @@ func TestMethodKafkaMessageArgExplicitAndHeuristic(t *testing.T) {
 		Name:        "Publish",
 		Annotations: map[string]string{"kafka-topic": "t", "kafka-key": "id", "kafka-headers": "traceID|x-trace-id"},
 		Args: []*Variable{
-			{Name: "ctx", TypeRef: TypeRef{TypeID: "context:Context"}},
-			{Name: "id", TypeRef: TypeRef{TypeID: "string"}},
-			{Name: "traceID", TypeRef: TypeRef{TypeID: "string"}},
-			{Name: "event", TypeRef: TypeRef{TypeID: "Order"}},
-			{Name: "extra", TypeRef: TypeRef{TypeID: "string"}},
+			{Name: "ctx", TypeID: "context:Context"},
+			{Name: "id", TypeID: "string"},
+			{Name: "traceID", TypeID: "string"},
+			{Name: "event", TypeID: "Order"},
+			{Name: "extra", TypeID: "string"},
 		},
 	}
 	arg, ok := MethodKafkaMessageArg(project, contract, method)
@@ -87,9 +87,9 @@ func TestMethodKafkaMessageArgExplicitAndHeuristic(t *testing.T) {
 		Name:        "Publish2",
 		Annotations: map[string]string{"kafka-topic": "t2", "kafka-key": "id"},
 		Args: []*Variable{
-			{Name: "ctx", TypeRef: TypeRef{TypeID: "context:Context"}},
-			{Name: "id", TypeRef: TypeRef{TypeID: "string"}},
-			{Name: "payload", TypeRef: TypeRef{TypeID: "Order"}},
+			{Name: "ctx", TypeID: "context:Context"},
+			{Name: "id", TypeID: "string"},
+			{Name: "payload", TypeID: "Order"},
 		},
 	}
 	arg, ok = MethodKafkaMessageArg(project, &Contract{Name: "E"}, heuristic)

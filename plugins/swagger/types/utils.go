@@ -3,6 +3,7 @@
 package types
 
 import (
+	"slices"
 	"strings"
 
 	"tgp/internal/model"
@@ -59,7 +60,7 @@ func IsExcludedTypeID(typeID string, project *model.Project) (excluded bool) {
 		return true
 	}
 
-	if strings.HasSuffix(typeName, "UUID") || typeName == "UUID" {
+	if strings.HasSuffix(typeName, nameUUID) || typeName == nameUUID {
 		if importPkgPath == "" {
 			return true
 		}
@@ -99,10 +100,10 @@ func IsExcludedTypeID(typeID string, project *model.Project) (excluded bool) {
 func IsBuiltinTypeID(typeID string) (isBuiltin bool) {
 
 	switch typeID {
-	case "string", "int", "int8", "int16", "int32", "int64",
+	case typeString, "int", "int8", "int16", "int32", "int64",
 		"uint", "uint8", "uint16", "uint32", "uint64", "uintptr",
 		"float32", "float64", "complex64", "complex128",
-		"bool", "byte", "rune", "error", "any":
+		"bool", typeByte, "rune", typeError, "any":
 		return true
 	}
 	return
@@ -125,7 +126,7 @@ func IsExplicitlyExcludedType(typ *model.Type) (excluded bool) {
 		return true
 	}
 
-	if strings.HasSuffix(typ.TypeName, "UUID") || typ.TypeName == "UUID" {
+	if strings.HasSuffix(typ.TypeName, nameUUID) || typ.TypeName == nameUUID {
 		if typ.ImportPkgPath == "" {
 			return true
 		}
@@ -166,21 +167,21 @@ func GetSerializationFormatForTypeID(typeID string, project *model.Project) (ope
 
 	if IsBuiltinTypeID(typeID) {
 		switch typeID {
-		case "string":
-			return "string", ""
+		case typeString:
+			return typeString, ""
 		case "int", "int8", "int16", "int32", "int64",
 			"uint", "uint8", "uint16", "uint32", "uint64", "uintptr":
 			return "integer", ""
 		case "float32", "float64":
-			return "number", ""
+			return typeNumber, ""
 		case "bool":
 			return "boolean", ""
-		case "byte":
-			return "string", "byte"
+		case typeByte:
+			return typeString, typeByte
 		case "rune":
-			return "string", ""
-		case "error", "any":
-			return "object", ""
+			return typeString, ""
+		case typeError, "any":
+			return typeObject, ""
 		}
 	}
 
@@ -196,37 +197,37 @@ func GetSerializationFormatForTypeID(typeID string, project *model.Project) (ope
 		typeName := parts[1]
 
 		if importPkgPath == pkgTime && typeName == typeTime {
-			return "string", "date-time"
+			return typeString, "date-time"
 		}
 
 		if importPkgPath == pkgTime && typeName == typeDuration {
-			return "string", "duration"
+			return typeString, "duration"
 		}
 
-		if strings.HasSuffix(typeName, "UUID") || typeName == "UUID" {
-			return "string", "uuid"
+		if strings.HasSuffix(typeName, nameUUID) || typeName == nameUUID {
+			return typeString, "uuid"
 		}
 	}
 
 	return
 }
 
-func GetSerializationFormat(typ *model.Type, project *model.Project) (openAPIType string, format string) {
+func GetSerializationFormat(typ *model.Type, _project *model.Project) (openAPIType string, format string) {
 
 	if typ.ImportPkgPath == pkgTime && typ.TypeName == typeTime {
-		return "string", "date-time"
+		return typeString, "date-time"
 	}
 
 	if typ.ImportPkgPath == pkgTime && typ.TypeName == typeDuration {
-		return "string", "duration"
+		return typeString, "duration"
 	}
 
-	if strings.Contains(typ.TypeName, "UUID") || strings.Contains(typ.ImportPkgPath, "uuid") {
-		return "string", "uuid"
+	if strings.Contains(typ.TypeName, nameUUID) || strings.Contains(typ.ImportPkgPath, "uuid") {
+		return typeString, "uuid"
 	}
 
 	if containsString(typ.ImplementsInterfaces, interfaceMarshaler) {
-		return "string", ""
+		return typeString, ""
 	}
 
 	return
@@ -234,10 +235,8 @@ func GetSerializationFormat(typ *model.Type, project *model.Project) (openAPITyp
 
 func containsString(slice []string, str string) (found bool) {
 
-	for _, s := range slice {
-		if s == str {
-			return true
-		}
+	if slices.Contains(slice, str) {
+		return true
 	}
 	return
 }
@@ -259,11 +258,13 @@ func ToCamel(s string) (result string) {
 	})
 	if len(parts) > 1 {
 		result = ""
+		var resultSb262 strings.Builder
 		for _, part := range parts {
 			if part != "" {
-				result += strings.ToUpper(string(part[0])) + part[1:]
+				resultSb262.WriteString(strings.ToUpper(string(part[0])) + part[1:])
 			}
 		}
+		result += resultSb262.String()
 	}
 
 	return
@@ -286,11 +287,13 @@ func ToLowerCamel(s string) (result string) {
 	})
 	if len(parts) > 1 {
 		result = parts[0]
+		var resultSb289 strings.Builder
 		for i := 1; i < len(parts); i++ {
 			if parts[i] != "" {
-				result += strings.ToUpper(string(parts[i][0])) + parts[i][1:]
+				resultSb289.WriteString(strings.ToUpper(string(parts[i][0])) + parts[i][1:])
 			}
 		}
+		result += resultSb289.String()
 	}
 
 	return

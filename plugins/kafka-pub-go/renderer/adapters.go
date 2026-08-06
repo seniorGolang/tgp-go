@@ -65,7 +65,9 @@ func (r *Renderer) batchAdapterBody(contract *model.Contract, method *model.Meth
 			group.Id("records").Op("=").Append(jen.Id("records"), jen.Id("record"))
 		}),
 		jen.Var().Id("client").Op("*").Qual(kgoPath, "Client"),
-		jen.If(jen.List(jen.Id("client"), jen.Id("err")).Op("=").Id("adapter").Dot("client").Dot("kafkaClient").Call(jen.Lit(model.MethodKafkaAcks(r.project, contract, method))), jen.Id("err").Op("!=").Nil()).Block(jen.Return()),
+		jen.Var().Id("release").Func().Params(),
+		jen.If(jen.List(jen.Id("client"), jen.Id("release"), jen.Id("err")).Op("=").Id("adapter").Dot("client").Dot("kafkaClient").Call(jen.Lit(model.MethodKafkaAcks(r.project, contract, method))), jen.Id("err").Op("!=").Nil()).Block(jen.Return()),
+		jen.Defer().Id("release").Call(),
 	)
 	r.addTrace(&body, contract, method, records)
 	body = append(body,
@@ -84,7 +86,9 @@ func (r *Renderer) singleAdapterBody(contract *model.Contract, method *model.Met
 	body = append(body, r.recordBuildCodes(contract, method, jen.Id(messageName), jen.Lit(0), jen.Lit(1))...)
 	body = append(body,
 		jen.Var().Id("client").Op("*").Qual(kgoPath, "Client"),
-		jen.If(jen.List(jen.Id("client"), jen.Id("err")).Op("=").Id("adapter").Dot("client").Dot("kafkaClient").Call(jen.Lit(model.MethodKafkaAcks(r.project, contract, method))), jen.Id("err").Op("!=").Nil()).Block(jen.Return()),
+		jen.Var().Id("release").Func().Params(),
+		jen.If(jen.List(jen.Id("client"), jen.Id("release"), jen.Id("err")).Op("=").Id("adapter").Dot("client").Dot("kafkaClient").Call(jen.Lit(model.MethodKafkaAcks(r.project, contract, method))), jen.Id("err").Op("!=").Nil()).Block(jen.Return()),
+		jen.Defer().Id("release").Call(),
 	)
 	r.addTrace(&body, contract, method, jen.Lit(1))
 	body = append(body,
@@ -117,10 +121,11 @@ func (r *Renderer) recordBuildCodes(contract *model.Contract, method *model.Meth
 	if len(headers) == 0 {
 		codes = append(codes, jen.Var().Id("headers").Index().Qual(kgoPath, "RecordHeader"))
 	} else {
-		codes = append(codes, jen.Id("headers").Op(":=").Make(jen.Index().Qual(kgoPath, "RecordHeader"), jen.Lit(0), jen.Lit(len(headers))))
-		codes = append(codes, jen.Var().Id("header").Index().Byte())
+		codes = append(codes,
+			jen.Id("headers").Op(":=").Make(jen.Index().Qual(kgoPath, "RecordHeader"), jen.Lit(0), jen.Lit(len(headers))),
+			jen.Var().Id("header").Index().Byte(),
+		)
 		for _, item := range headers {
-			item := item
 			codes = append(codes,
 				jen.If(jen.List(jen.Id("header"), jen.Id("err")).Op("=").Id("headerBytes").Call(r.indexedCode(method, item.Arg, index)), jen.Id("err").Op("!=").Nil()).BlockFunc(func(block *jen.Group) {
 					r.addEncodeFailure(block, contract, method, records)
@@ -181,14 +186,15 @@ func (r *Renderer) indexedCode(method *model.Method, name string, index jen.Code
 func (r *Renderer) typeCode(reference *model.TypeRef, ellipsis bool) (result jen.Code) {
 
 	prefix := new(jen.Statement)
-	for pointer := 0; pointer < reference.NumberOfPointers; pointer++ {
+	for range reference.NumberOfPointers {
 		prefix.Op("*")
 	}
-	if reference.IsEllipsis && ellipsis {
+	switch {
+	case reference.IsEllipsis && ellipsis:
 		prefix.Op("...")
-	} else if reference.IsSlice {
+	case reference.IsSlice:
 		prefix.Index()
-	} else if reference.ArrayLen > 0 {
+	case reference.ArrayLen > 0:
 		prefix.Index(jen.Lit(reference.ArrayLen))
 	}
 	if reference.MapKey != nil && reference.MapValue != nil {

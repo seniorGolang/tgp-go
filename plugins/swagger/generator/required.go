@@ -110,7 +110,7 @@ func hasJSONOmitemptyTag(jsonTag string) (hasOmitempty bool) {
 	if jsonTag == "" {
 		return
 	}
-	for _, part := range strings.Split(jsonTag, ",") {
+	for part := range strings.SplitSeq(jsonTag, ",") {
 		if strings.TrimSpace(part) == "omitempty" {
 			return true
 		}

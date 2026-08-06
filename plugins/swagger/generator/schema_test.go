@@ -16,22 +16,22 @@ func TestRegisterStructKeepsPointerFieldsOptional(t *testing.T) {
 
 	gen.registerStruct("requestSample", "example/service", nil, []*model.Variable{
 		{
-			TypeRef: model.TypeRef{TypeID: "string"},
-			Name:    "Required",
+			TypeID: "string",
+			Name:   "Required",
 			Annotations: tags.DocTags{
 				"json": "required",
 			},
 		},
 		{
-			TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1},
-			Name:    "OptionalPointer",
+			TypeID: "string", NumberOfPointers: 1,
+			Name: "OptionalPointer",
 			Annotations: tags.DocTags{
 				"json": "optionalPointer",
 			},
 		},
 		{
-			TypeRef: model.TypeRef{TypeID: "string"},
-			Name:    "OptionalByOmitEmpty",
+			TypeID: "string",
+			Name:   "OptionalByOmitEmpty",
 			Annotations: tags.DocTags{
 				"json": "optionalByOmitEmpty,omitempty",
 			},
@@ -53,15 +53,15 @@ func TestRegisterStructMarksResponsePointerFieldsRequired(t *testing.T) {
 
 	gen.registerStruct("responseSample", "example/service", nil, []*model.Variable{
 		{
-			TypeRef: model.TypeRef{TypeID: "int"},
-			Name:    "TotalCount",
+			TypeID: "int",
+			Name:   "TotalCount",
 			Annotations: tags.DocTags{
 				"json": "totalCount",
 			},
 		},
 		{
-			TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1},
-			Name:    "Response",
+			TypeID: "string", NumberOfPointers: 1,
+			Name: "Response",
 			Annotations: tags.DocTags{
 				"json": "response",
 			},
@@ -81,34 +81,34 @@ func TestStructTypeToSchemaMarksFieldsRequiredByJSONPresence(t *testing.T) {
 		TypeName: "Sample",
 		StructFields: []*model.StructField{
 			{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "Required",
-				Tags:    map[string][]string{"json": {"required"}},
+				TypeID: "string",
+				Name:   "Required",
+				Tags:   map[string][]string{"json": {"required"}},
 			},
 			{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "RequiredWithoutJSONTag",
+				TypeID: "string",
+				Name:   "RequiredWithoutJSONTag",
 			},
 			{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "OptionalByOmitEmpty",
-				Tags:    map[string][]string{"json": {"optionalByOmitEmpty", "omitempty"}},
+				TypeID: "string",
+				Name:   "OptionalByOmitEmpty",
+				Tags:   map[string][]string{"json": {"optionalByOmitEmpty", "omitempty"}},
 			},
 			{
-				TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1},
-				Name:    "OptionalPointer",
-				Tags:    map[string][]string{"json": {"optionalPointer"}},
+				TypeID: "string", NumberOfPointers: 1,
+				Name: "OptionalPointer",
+				Tags: map[string][]string{"json": {"optionalPointer"}},
 			},
 			{
-				TypeRef:     model.TypeRef{TypeID: "string", NumberOfPointers: 1},
+				TypeID: "string", NumberOfPointers: 1,
 				Name:        "ForcedPointer",
 				Tags:        map[string][]string{"json": {"forcedPointer"}},
 				Annotations: tags.DocTags{"required": ""},
 			},
 			{
-				TypeRef: model.TypeRef{TypeID: "string"},
-				Name:    "Ignored",
-				Tags:    map[string][]string{"json": {"-"}},
+				TypeID: "string",
+				Name:   "Ignored",
+				Tags:   map[string][]string{"json": {"-"}},
 			},
 		},
 	}
@@ -144,8 +144,8 @@ func TestRegisterStructMarksMethodSubAnnotationsRequired(t *testing.T) {
 
 	gen.registerStruct("requestSample", "example/service", method, []*model.Variable{
 		{
-			TypeRef: model.TypeRef{TypeID: "string", NumberOfPointers: 1},
-			Name:    "Forced",
+			TypeID: "string", NumberOfPointers: 1,
+			Name: "Forced",
 			Annotations: tags.DocTags{
 				"json": "forced",
 			},
@@ -164,8 +164,8 @@ func TestRegisterStructRequestMarksUnannotatedExportedFieldRequired(t *testing.T
 
 	gen.registerStruct("requestSample", "example/service", nil, []*model.Variable{
 		{
-			TypeRef: model.TypeRef{TypeID: "string"},
-			Name:    "UserID",
+			TypeID: "string",
+			Name:   "UserID",
 		},
 	}, contentJSON, true)
 
@@ -194,8 +194,8 @@ func TestNamedEnumTypeUsesRefAndSchemaEnum(t *testing.T) {
 	}})
 
 	schema := gen.variableToSchema(&model.Variable{
-		TypeRef: model.TypeRef{TypeID: roleID},
-		Name:    "Role",
+		TypeID: roleID,
+		Name:   "Role",
 	}, "example/service", true)
 
 	if schema == nil || schema.Ref != "#/components/schemas/dto.Role" {
@@ -231,7 +231,7 @@ func TestNamedEnumTypeFieldAnnotationOverridesInline(t *testing.T) {
 	}})
 
 	schema := gen.variableToSchema(&model.Variable{
-		TypeRef:     model.TypeRef{TypeID: roleID},
+		TypeID:      roleID,
 		Name:        "Role",
 		Annotations: tags.DocTags{"enums": "admin"},
 	}, "example/service", true)
@@ -248,7 +248,7 @@ func TestAnnotationEnumsOnBareString(t *testing.T) {
 
 	gen := newGenerator(&model.Project{Types: map[string]*model.Type{"string": {Kind: model.TypeKindString}}})
 	schema := gen.variableToSchema(&model.Variable{
-		TypeRef:     model.TypeRef{TypeID: "string"},
+		TypeID:      "string",
 		Name:        "Status",
 		Annotations: tags.DocTags{"enums": "a,b,c"},
 	}, "example/service", true)
@@ -274,8 +274,8 @@ func TestNamedIntEnumSchema(t *testing.T) {
 	}})
 
 	schema := gen.variableToSchema(&model.Variable{
-		TypeRef: model.TypeRef{TypeID: statusID},
-		Name:    "Status",
+		TypeID: statusID,
+		Name:   "Status",
 	}, "example/service", true)
 	if schema == nil || schema.Ref != "#/components/schemas/dto.Status" {
 		t.Fatalf("expected Status ref, got %#v", schema)

@@ -15,7 +15,7 @@ const (
 	tagServers               = "servers"
 	tagSwaggerTags           = "swaggerTags"
 	tagDeprecated            = "deprecated"
-	tagHttpResponse          = "http-response"
+	tagHTTPResponse          = "http-response"
 	typeIDIOReader           = "io:Reader"
 	typeIDIOReadCloser       = "io:ReadCloser"
 	contentMultipartFormData = "multipart/form-data"
@@ -24,4 +24,18 @@ const (
 	defaultVersion           = "1.0.0"
 	componentsSchemasPrefix  = "#/components/schemas/"
 	responseKeyDefault       = "default"
+)
+
+const (
+	familyHTTP    = "http"
+	formatBinary  = "binary"
+	paramPath     = "path"
+	typeError     = "error"
+	typeIDContext = "context:Context"
+	typeObject    = "object"
+	typeString    = "string"
+)
+
+const (
+	schemeOAuth2 = "oauth2"
 )

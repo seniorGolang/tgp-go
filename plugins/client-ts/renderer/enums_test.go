@@ -42,9 +42,9 @@ func TestRenderExchange_namedStringEnum(t *testing.T) {
 				PkgName:       "dto",
 				StructFields: []*model.StructField{
 					{
-						Name:    "Role",
-						TypeRef: model.TypeRef{TypeID: roleID},
-						Tags:    map[string][]string{"json": {"role"}},
+						Name:   "Role",
+						TypeID: roleID,
+						Tags:   map[string][]string{"json": {"role"}},
 					},
 				},
 			},
@@ -53,15 +53,15 @@ func TestRenderExchange_namedStringEnum(t *testing.T) {
 			Name:    "Users",
 			PkgPath: modulePath + "/contracts",
 			Annotations: tags.DocTags{
-				model.TagServerJsonRPC: "",
+				model.TagServerJSONRPC: "",
 			},
 			Methods: []*model.Method{{
 				Name: "Get",
 				Args: []*model.Variable{
-					{Name: "id", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "id", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "user", TypeRef: model.TypeRef{TypeID: userID}},
+					{Name: "user", TypeID: userID},
 				},
 			}},
 		}},
@@ -117,12 +117,12 @@ func TestRenderExchange_namedIntEnum(t *testing.T) {
 			Name:    "Jobs",
 			PkgPath: modulePath + "/contracts",
 			Annotations: tags.DocTags{
-				model.TagServerJsonRPC: "",
+				model.TagServerJSONRPC: "",
 			},
 			Methods: []*model.Method{{
 				Name: "GetStatus",
 				Results: []*model.Variable{
-					{Name: "status", TypeRef: model.TypeRef{TypeID: statusID}},
+					{Name: "status", TypeID: statusID},
 				},
 			}},
 		}},

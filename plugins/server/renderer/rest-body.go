@@ -1,9 +1,7 @@
 package renderer
 
 import (
-	"fmt"
-
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/content"
 	"tgp/internal/model"
@@ -15,6 +13,14 @@ func (r *contractRenderer) httpServeRequestBodyDecode(bg *Group, jsonPkg string,
 
 	writeBadRequest := func(ig *Group) {
 
+		ig.If(Qual(PackageErrors, "Is").Call(Err(), Id("errBodyTooLarge"))).Block(
+			If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).Block(
+				Id("server").Dot("metrics").Dot("ErrorResponsesTotal").Dot("WithLabelValues").Call(Lit("rest"), Lit("413"), Id("clientID")).Dot("Inc").Call(),
+			),
+			Id(VarNameFtx).Dot("Response").Call().Dot("SetStatusCode").Call(Qual(PackageFiber, "StatusRequestEntityTooLarge")),
+			List(Id("_"), Err()).Op("=").Id(VarNameFtx).Dot("WriteString").Call(Lit("request body too large")),
+			Return(),
+		)
 		ig.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok").Op("&&").Id("server").Dot("metrics").Op("!=").Nil()).Block(
 			Id("server").Dot("metrics").Dot("ErrorResponsesTotal").Dot("WithLabelValues").Call(Lit("rest"), Lit("400"), Id("clientID")).Dot("Inc").Call(),
 		)
@@ -25,21 +31,24 @@ func (r *contractRenderer) httpServeRequestBodyDecode(bg *Group, jsonPkg string,
 
 	switch reqKind {
 	case content.KindForm:
-		bg.If(Err().Op("=").Id(VarNameFtx).Dot("BodyParser").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
+		bg.If(Id("cl").Op(":=").Int64().Call(Id(VarNameFtx).Dot("Request").Call().Dot("Header").Dot("ContentLength").Call()).Op(";").Id("cl").Op(">").Id("bodyLimit").Call(Id(VarNameFtx))).Block(
+			Err().Op("=").Id("errBodyTooLarge"),
+		).Else().If(Err().Op("=").Id(VarNameFtx).Dot("BodyParser").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).Block()
+		bg.If(Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindXML:
-		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.Id("bodyStream").Op(":=").Id("decodeBodyReader").Call(Id(VarNameFtx))
 		bg.If(Err().Op("=").Qual(PackageXML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindMsgpack:
-		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.Id("bodyStream").Op(":=").Id("decodeBodyReader").Call(Id(VarNameFtx))
 		bg.If(Err().Op("=").Qual(PackageMsgpack, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindCBOR:
-		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.Id("bodyStream").Op(":=").Id("decodeBodyReader").Call(Id(VarNameFtx))
 		bg.If(Err().Op("=").Qual(PackageCBOR, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	case content.KindYAML:
-		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.Id("bodyStream").Op(":=").Id("decodeBodyReader").Call(Id(VarNameFtx))
 		bg.If(Err().Op("=").Qual(PackageYAML, "NewDecoder").Call(Id("bodyStream")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(writeBadRequest)
 	default:
-		bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
+		bg.Id("bodyStream").Op(":=").Id("decodeBodyReader").Call(Id(VarNameFtx))
 		decodeErr := Err().Op("!=").Nil()
 		if allowEmpty {
 			decodeErr = Err().Op("!=").Nil().Op("&&").Op("!").Qual(PackageErrors, "Is").Call(Err(), Qual("io", "EOF"))
@@ -50,7 +59,7 @@ func (r *contractRenderer) httpServeRequestBodyDecode(bg *Group, jsonPkg string,
 
 func (r *contractRenderer) httpServeResponseEncode(method *model.Method, resKind string, responseVar string, inlineValue bool) Code {
 
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
 	writeErr := func() *Statement {
 		return If(Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
 			ig.If(Id("logger").Op(":=").Qual(srvctxPkgPath, "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id(VarNameFtx).Dot("UserContext").Call()).Op(";").Id("logger").Op("!=").Nil()).Block(
@@ -121,7 +130,7 @@ func (r *contractRenderer) httpServeResponseEncodeForm(method *model.Method, bod
 
 	return BlockFunc(func(bg *Group) {
 		bg.Id(VarNameFtx).Dot("Response").Call().Dot("Header").Dot("SetContentType").Call(Lit(content.CanonicalMIME(content.KindForm)))
-		bg.Id("v").Op(":=").Qual(PackageURL, "Values").Call(Dict{})
+		bg.Id("v").Op(":=").Make(Qual(PackageURL, "Values"))
 		for _, f := range fields {
 			key := formKey(f)
 			var value Code

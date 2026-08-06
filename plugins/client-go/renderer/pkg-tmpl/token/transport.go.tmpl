@@ -1,0 +1,255 @@
+{{.DoNotEditComment}}
+package token
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"golang.org/x/oauth2"
+)
+
+type ObtainFunc func(ctx context.Context, meta Metadata) (src oauth2.TokenSource, err error)
+
+func Resource(base http.RoundTripper, obtain ObtainFunc, opts ...RetryOption) (tripper http.RoundTripper) {
+
+	if obtain == nil {
+		return base
+	}
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return &resourceTransport{
+		base:   base,
+		obtain: obtain,
+		retry:  applyRetryOptions(opts),
+		metaHTTP: &http.Client{
+			Transport: base,
+			Timeout:   10 * time.Second,
+		},
+	}
+}
+
+// SetAuthorization ставит Bearer в header тем же obtain/reuse, что Resource RoundTrip.
+// Если Authorization уже задан — no-op. Если Resource не навешан на rt — no-op.
+func SetAuthorization(ctx context.Context, rt http.RoundTripper, header http.Header, resourceURL string) (err error) {
+
+	if header == nil || header.Get("Authorization") != "" {
+		return
+	}
+	transport := findResourceTransport(rt)
+	if transport == nil {
+		return
+	}
+	parsed, parseErr := url.Parse(resourceURL)
+	if parseErr != nil || parsed == nil || parsed.Host == "" {
+		parsed = &url.URL{Scheme: "https", Host: "localhost", Path: "/"}
+	}
+	req := (&http.Request{
+		Method: http.MethodGet,
+		URL:    parsed,
+		Header: header,
+	}).WithContext(ctx)
+	var src oauth2.TokenSource
+	if src, err = transport.ensureSource(req); err != nil {
+		return
+	}
+	return transport.setBearer(ctx, req, src)
+}
+
+type unwrapRoundTripper interface {
+	Unwrap() http.RoundTripper
+}
+
+func findResourceTransport(rt http.RoundTripper) (transport *resourceTransport) {
+
+	for rt != nil {
+		if typed, ok := rt.(*resourceTransport); ok {
+			return typed
+		}
+		unwrapper, ok := rt.(unwrapRoundTripper)
+		if !ok {
+			return
+		}
+		rt = unwrapper.Unwrap()
+	}
+	return
+}
+
+type obtainGate struct {
+	done    chan struct{}
+	started atomic.Bool
+	src     oauth2.TokenSource
+	meta    Metadata
+	err     error
+}
+
+type resourceTransport struct {
+	base     http.RoundTripper
+	obtain   ObtainFunc
+	retry    retryConfig
+	metaHTTP *http.Client
+	gate     atomic.Pointer[obtainGate]
+}
+
+func (t *resourceTransport) Unwrap() (base http.RoundTripper) {
+
+	return t.base
+}
+
+func (t *resourceTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+
+	if err = req.Context().Err(); err != nil {
+		return
+	}
+	var src oauth2.TokenSource
+	if src, err = t.ensureSource(req); err != nil {
+		return
+	}
+	var attempt *http.Request
+	var rewindable bool
+	if attempt, rewindable, err = prepareAttempt(req); err != nil {
+		return
+	}
+	if err = t.setBearer(req.Context(), attempt, src); err != nil {
+		return
+	}
+	if resp, err = t.base.RoundTrip(attempt); err != nil {
+		return
+	}
+	if classifyStatus(resp.StatusCode) != outcomeAuthChallenge {
+		return
+	}
+	challenge := resp.Header.Get("WWW-Authenticate")
+	drainBody(resp)
+	t.invalidate()
+	if err = t.retry.do(req.Context(), func() (retryErr error) {
+		return t.refreshMeta(req, challenge)
+	}); err != nil {
+		return nil, err
+	}
+	if !rewindable {
+		err = ErrBodyNotRewindable
+		return nil, err
+	}
+	if src, err = t.ensureSource(req); err != nil {
+		return
+	}
+	if attempt, _, err = prepareAttempt(req); err != nil {
+		return
+	}
+	if err = t.setBearer(req.Context(), attempt, src); err != nil {
+		return
+	}
+	return t.base.RoundTrip(attempt)
+}
+
+func (t *resourceTransport) ensureSource(req *http.Request) (src oauth2.TokenSource, err error) {
+
+	for {
+		if err = req.Context().Err(); err != nil {
+			return
+		}
+		gate := t.gate.Load()
+		if gate == nil {
+			created := &obtainGate{done: make(chan struct{})}
+			if !t.gate.CompareAndSwap(nil, created) {
+				continue
+			}
+			gate = created
+		}
+
+		if gate.started.CompareAndSwap(false, true) {
+			var flightCtx context.Context
+			var cancel context.CancelFunc
+			flightCtx, cancel = context.WithTimeout(context.WithoutCancel(req.Context()), t.retry.flightTimeout)
+			localMeta := gate.meta
+			var obtained oauth2.TokenSource
+			gate.err = t.retry.do(flightCtx, func() (retryErr error) {
+				if strings.TrimSpace(localMeta.Audience) == "" {
+					metaURL := WellKnownURL(req.URL)
+					if metaURL == "" {
+						return fmt.Errorf("token: cannot derive resource metadata URL")
+					}
+					if localMeta, retryErr = FetchMetadata(flightCtx, metaURL, t.metaHTTP); retryErr != nil {
+						return retryErr
+					}
+				}
+				if obtained, retryErr = t.obtain(flightCtx, localMeta); retryErr != nil {
+					return retryErr
+				}
+				if obtained == nil {
+					return fmt.Errorf("token: obtain returned nil source")
+				}
+				return nil
+			})
+			cancel()
+			if gate.err != nil {
+				t.gate.CompareAndSwap(gate, nil)
+			} else {
+				gate.meta = localMeta
+				gate.src = obtained
+			}
+			close(gate.done)
+		} else {
+			select {
+			case <-gate.done:
+			case <-req.Context().Done():
+				err = req.Context().Err()
+				return
+			}
+		}
+
+		if gate.err != nil {
+			err = gate.err
+			return
+		}
+		if gate.src != nil && t.gate.Load() == gate {
+			return gate.src, nil
+		}
+	}
+}
+
+func (t *resourceTransport) invalidate() {
+
+	t.gate.Store(nil)
+}
+
+func (t *resourceTransport) refreshMeta(req *http.Request, wwwAuthenticate string) (err error) {
+
+	metaURL := ResourceMetadataURL(wwwAuthenticate)
+	if metaURL == "" {
+		metaURL = WellKnownURL(req.URL)
+	}
+	if metaURL == "" {
+		err = fmt.Errorf("token: cannot derive resource metadata URL")
+		return
+	}
+	var meta Metadata
+	if meta, err = FetchMetadata(req.Context(), metaURL, t.metaHTTP); err != nil {
+		return
+	}
+	t.gate.Store(&obtainGate{done: make(chan struct{}), meta: meta})
+	return
+}
+
+func (t *resourceTransport) setBearer(ctx context.Context, req *http.Request, src oauth2.TokenSource) (err error) {
+
+	return t.retry.do(ctx, func() (retryErr error) {
+		var tok *oauth2.Token
+		if contextSource, ok := src.(contextTokenSource); ok {
+			tok, retryErr = contextSource.TokenContext(ctx)
+		} else {
+			tok, retryErr = src.Token()
+		}
+		if retryErr != nil {
+			return fmt.Errorf("token: resource source: %w", retryErr)
+		}
+		req.Header.Set("Authorization", "Bearer "+tok.AccessToken)
+		return nil
+	})
+}

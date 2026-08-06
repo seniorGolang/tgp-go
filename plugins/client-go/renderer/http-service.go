@@ -8,14 +8,14 @@ import (
 	"net/http"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/common"
 	"tgp/internal/content"
 	"tgp/internal/model"
 )
 
-func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *model.Contract, method *model.Method, outDir string) Code {
+func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *model.Contract, method *model.Method, _outDir string) Code {
 
 	c := Comment(fmt.Sprintf("%s performs the %s operation.", method.Name, method.Name))
 	c.Line()
@@ -28,33 +28,35 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 				bg.Add(r.httpMetricsDefer(contract, method))
 			}
 			httpMethod := model.GetHTTPMethod(r.project, contract, method)
-			successStatusCode := model.GetAnnotationValueInt(r.project, contract, method, nil, model.TagHttpSuccess, http.StatusOK)
+			successStatusCode := model.GetAnnotationValueInt(r.project, contract, method, nil, model.TagHTTPSuccess, http.StatusOK)
 			pathParams := r.argPathMap(contract, method)
 			argsMappings := model.HTTPArgQueryMapForRequest(r.project, contract, method)
 			cookieMappings := model.HTTPCookieArgMapForRequest(r.project, contract, method)
 			headerMappings := model.HTTPHeaderArgMapForRequest(r.project, contract, method)
 
 			fullURLPath := model.MethodHTTPFullPath(r.project, contract, method)
-			// Формирование URL через net/url: ведущий "/" гарантирует корректный путь при пустом baseURL.Path (url.JoinPath-подобное поведение).
+			// Join endpoint mount with declared route; overlapping leading segments collapse.
 			bg.Var().Id("baseURL").Op("*").Qual(PackageURL, "URL")
 			bg.If(List(Id("baseURL"), Err()).Op("=").Qual(PackageURL, "Parse").Call(Id("cli").Dot("endpoint")).Op(";").Err().Op("!=").Nil()).Block(Return())
 			bg.Line()
 			pathSegments := strings.Split(fullURLPath, "/")
-			pathJoinArgs := make([]Code, 0, len(pathSegments)+2)
-			pathJoinArgs = append(pathJoinArgs, Lit("/"), Id("baseURL").Dot("Path"))
+			pathJoinArgs := make([]Code, 0, len(pathSegments)+1)
+			pathJoinArgs = append(pathJoinArgs, Lit("/"))
 			for _, seg := range pathSegments {
 				if seg == "" {
 					continue
 				}
-				if strings.HasPrefix(seg, ":") {
-					paramName := strings.TrimPrefix(seg, ":")
+				if after, ok := strings.CutPrefix(seg, ":"); ok {
+					paramName := after
 					paramVar := r.argByPathParamName(contract, method, paramName)
 					pathJoinArgs = append(pathJoinArgs, Qual(PackageURL, "PathEscape").Call(r.varToString(ctx, paramVar)))
 				} else {
 					pathJoinArgs = append(pathJoinArgs, Lit(seg))
 				}
 			}
-			bg.Id("baseURL").Dot("Path").Op("=").Qual(PackagePath, "Join").Call(pathJoinArgs...)
+			bg.Id("routePath").Op(":=").Qual(PackagePath, "Join").Call(pathJoinArgs...)
+			bg.Id("baseURL").Dot("Path").Op("=").Id("joinEndpointPath").Call(Id("baseURL").Dot("Path"), Id("routePath"))
+			bg.Id("baseURL").Dot("RawQuery").Op("=").Lit("")
 			bg.Line()
 
 			argsForClientSet := make(map[string]struct{})
@@ -118,13 +120,13 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			case requestMultipart:
 				bg.Add(r.httpMultipartRequestBody(contract, method))
 			case bodyStreamArg != nil:
-				bg.Var().Id("httpReq").Op("*").Qual(PackageHttp, "Request")
-				bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(httpMethod), Id("baseURL").Dot("String").Call(), Qual(PackageIO, "NopCloser").Call(Id(ToLowerCamel(bodyStreamArg.Name)))).Op(";").Err().Op("!=").Nil()).Block(Return())
+				bg.Var().Id("httpReq").Op("*").Qual(PackageHTTP, "Request")
+				bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHTTP, "NewRequestWithContext").Call(Id(_ctx), Lit(httpMethod), Id("baseURL").Dot("String").Call(), Qual(PackageIO, "NopCloser").Call(Id(ToLowerCamel(bodyStreamArg.Name)))).Op(";").Err().Op("!=").Nil()).Block(Return())
 				requestContentType := model.GetAnnotationValue(r.project, contract, method, nil, model.TagRequestContentType, "application/octet-stream")
 				bg.Id("httpReq").Dot("Header").Dot("Set").Call(Lit("Content-Type"), Lit(requestContentType))
 				bg.Id("httpReq").Dot("Close").Op("=").True()
 			case hasBody:
-				bg.Var().Id("httpReq").Op("*").Qual(PackageHttp, "Request")
+				bg.Var().Id("httpReq").Op("*").Qual(PackageHTTP, "Request")
 				bg.Id("_request_").Op(":=").Id(r.requestBodyStructName(contract, method)).Values(DictFunc(func(dict Dict) {
 					for _, arg := range argsForBody {
 						dict[Id(ToCamel(arg.Name))] = Id(ToLowerCamel(arg.Name))
@@ -136,8 +138,8 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			}
 
 			if !requestMultipart && bodyStreamArg == nil && !hasBody {
-				bg.Var().Id("httpReq").Op("*").Qual(PackageHttp, "Request")
-				bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHttp, "NewRequestWithContext").Call(Id(_ctx_), Lit(httpMethod), Id("baseURL").Dot("String").Call(), Nil()).Op(";").Err().Op("!=").Nil()).Block(Return())
+				bg.Var().Id("httpReq").Op("*").Qual(PackageHTTP, "Request")
+				bg.If(List(Id("httpReq"), Err()).Op("=").Qual(PackageHTTP, "NewRequestWithContext").Call(Id(_ctx), Lit(httpMethod), Id("baseURL").Dot("String").Call(), Nil()).Op(";").Err().Op("!=").Nil()).Block(Return())
 			}
 
 			if !requestMultipart && bodyStreamArg == nil {
@@ -160,16 +162,16 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 			}
 			for _, arg := range r.argsForClient(contract, method) {
 				if cookieName, ok := cookieMappings[arg.Name]; ok {
-					bg.Id("httpReq").Dot("AddCookie").Call(Op("&").Qual(PackageHttp, "Cookie").Values(Dict{
+					bg.Id("httpReq").Dot("AddCookie").Call(Op("&").Qual(PackageHTTP, "Cookie").Values(Dict{
 						Id("Name"):  Lit(cookieName),
 						Id("Value"): r.varToString(ctx, arg),
 					}))
 				}
 			}
 
-			bg.Var().Id("httpResp").Op("*").Qual(PackageHttp, "Response")
+			bg.Var().Id("httpResp").Op("*").Qual(PackageHTTP, "Response")
 			bg.If(List(Id("httpResp"), Err()).Op("=").Id("cli").Dot("doRoundTrip").Call(
-				Id(_ctx_),
+				Id(_ctx),
 				Lit(r.methodNameToLowerCamel(method)),
 				Id("httpReq"),
 				Lit(successStatusCode),
@@ -189,16 +191,16 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 						bg.Id(ToLowerCamel(ret.Name)).Op("=").Id("httpResp").Dot("Body")
 					}
 				}
-				r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
+				r.httpResponseMergeHeadersAndCookies(ctx, bg, contract, method, true)
 				bg.Return()
-			case len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle):
+			case len(resultsWithoutErr) == 1 && model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPEnableInlineSingle):
 				ret := resultsWithoutErr[0]
 				jsonPkg := r.getPackageJSON(contract)
 				resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
 				if len(r.resultsForBody(contract, method)) == 1 {
 					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, ToLowerCamel(ret.Name))
 				}
-				r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
+				r.httpResponseMergeHeadersAndCookies(ctx, bg, contract, method, true)
 				bg.Return()
 			default:
 				bodyResults := r.resultsForBody(contract, method)
@@ -214,7 +216,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 						resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
 						r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
 					}
-					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, true)
+					r.httpResponseMergeHeadersAndCookies(ctx, bg, contract, method, true)
 					fieldsResultBody := r.fieldsResultBody(contract, method)
 					for _, ret := range resultsWithoutErr {
 						if _, excluded := excludeDefault[ret.Name]; excluded {
@@ -241,7 +243,7 @@ func (r *ClientRenderer) httpClientMethodFunc(ctx context.Context, contract *mod
 					jsonPkg := r.getPackageJSON(contract)
 					resKind := content.Kind(model.GetAnnotationValue(r.project, contract, method, nil, model.TagResponseContentType, "application/json"))
 					r.httpResponseDecode(bg, contract, method, jsonPkg, resKind, "_response_")
-					r.httpResponseMergeHeadersAndCookies(bg, ctx, contract, method, false)
+					r.httpResponseMergeHeadersAndCookies(ctx, bg, contract, method, false)
 					for i, ret := range resultsWithoutErr {
 						var field exchangeField
 						if i < len(fieldsResult) {

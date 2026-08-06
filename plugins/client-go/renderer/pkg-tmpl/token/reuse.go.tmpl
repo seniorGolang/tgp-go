@@ -1,0 +1,82 @@
+{{.DoNotEditComment}}
+package token
+
+import (
+	"context"
+	"sync"
+	"time"
+
+	"golang.org/x/oauth2"
+)
+
+type contextTokenSource interface {
+	TokenContext(ctx context.Context) (token *oauth2.Token, err error)
+}
+
+type reuseSource struct {
+	mu     sync.Mutex
+	cached *oauth2.Token
+	skew   time.Duration
+	neu    oauth2.TokenSource
+	cfg    sourceConfig
+}
+
+func wrapReuse(neu oauth2.TokenSource, cfg sourceConfig) (src oauth2.TokenSource) {
+
+	return &reuseSource{neu: neu, cfg: cfg}
+}
+
+func (s *reuseSource) Token() (token *oauth2.Token, err error) {
+
+	return s.TokenContext(context.Background())
+}
+
+func (s *reuseSource) TokenContext(ctx context.Context) (token *oauth2.Token, err error) {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cached != nil && !tokenExpired(s.cached, s.skew, time.Now()) {
+		return s.cached, nil
+	}
+	var fresh *oauth2.Token
+	if contextSource, ok := s.neu.(contextTokenSource); ok {
+		fresh, err = contextSource.TokenContext(ctx)
+	} else {
+		fresh, err = s.neu.Token()
+	}
+	if err != nil {
+		return
+	}
+	s.skew = skewFor(time.Until(fresh.Expiry), s.cfg)
+	s.cached = fresh
+	return fresh, nil
+}
+
+func skewFor(life time.Duration, cfg sourceConfig) (skew time.Duration) {
+
+	if cfg.absolute > 0 {
+		return cfg.absolute
+	}
+	if life <= 0 {
+		return 0
+	}
+	raw := time.Duration(float64(life) * cfg.fraction)
+	if raw < cfg.skewMin {
+		return cfg.skewMin
+	}
+	if raw > cfg.skewMax {
+		return cfg.skewMax
+	}
+	return raw
+}
+
+func tokenExpired(tok *oauth2.Token, skew time.Duration, now time.Time) (expired bool) {
+
+	if tok == nil {
+		return true
+	}
+	if tok.Expiry.IsZero() {
+		return false
+	}
+	return now.After(tok.Expiry.Add(-skew))
+}

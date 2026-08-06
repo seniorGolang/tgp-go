@@ -3,30 +3,29 @@
 package renderer
 
 import (
-	"fmt"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/common"
 	"tgp/internal/model"
 )
 
-func (r *transportRenderer) sendResponseJsonRPCFunc() (c Code) {
+func (r *transportRenderer) sendResponseJSONRPCFunc() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
 	return Func().Id("sendResponse").
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("resp").Any()).
 		Params(Err().Error()).
 		BlockFunc(func(bg *Group) {
-			bg.If(List(Id("responses"), Id("ok")).Op(":=").Id("resp").Op(".").Call(Index().Op("*").Id("baseJsonRPC")).Op(";").Id("ok").Op("&&").Len(Id("responses")).Op("==").Lit(0)).Block(
+			bg.If(List(Id("responses"), Id("ok")).Op(":=").Id("resp").Op(".").Call(Index().Op("*").Id("baseJSONRPC")).Op(";").Id("ok").Op("&&").Len(Id("responses")).Op("==").Lit(0)).Block(
 				Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusNoContent")),
 				Return(Nil()),
 			)
 			bg.Id("clientID").Op(":=").Qual(srvctxPkgPath, "GetClientID").Call(Id(VarNameFtx).Dot("UserContext").Call())
 			bg.If(List(Id("server"), Id("ok")).Op(":=").Id(VarNameFtx).Dot("Locals").Call(Lit("server")).Assert(Op("*").Id("Server")).Op(";").Id("ok")).BlockFunc(func(sg *Group) {
-				sg.If(List(Id("response"), Id("okResp")).Op(":=").Id("resp").Assert(Op("*").Id("baseJsonRPC")).Op(";").Id("okResp").Op("&&").Id("response").Dot("Error").Op("!=").Nil()).BlockFunc(func(eg *Group) {
+				sg.If(List(Id("response"), Id("okResp")).Op(":=").Id("resp").Assert(Op("*").Id("baseJSONRPC")).Op(";").Id("okResp").Op("&&").Id("response").Dot("Error").Op("!=").Nil()).BlockFunc(func(eg *Group) {
 					eg.If(Id("server").Dot("metrics").Op("!=").Nil()).Block(
 						Id("server").Dot("metrics").Dot("ErrorResponsesTotal").Dot("WithLabelValues").Call(
 							Lit("json-rpc"),
@@ -35,7 +34,7 @@ func (r *transportRenderer) sendResponseJsonRPCFunc() (c Code) {
 						).Dot("Inc").Call(),
 					)
 				})
-				sg.If(List(Id("responses"), Id("okBatch")).Op(":=").Id("resp").Assert(Index().Op("*").Id("baseJsonRPC")).Op(";").Id("okBatch")).BlockFunc(func(bg2 *Group) {
+				sg.If(List(Id("responses"), Id("okBatch")).Op(":=").Id("resp").Assert(Index().Op("*").Id("baseJSONRPC")).Op(";").Id("okBatch")).BlockFunc(func(bg2 *Group) {
 					bg2.For(List(Id("_"), Id("response")).Op(":=").Range().Id("responses")).BlockFunc(func(fg *Group) {
 						fg.If(Id("response").Op("!=").Nil().Op("&&").Id("response").Dot("Error").Op("!=").Nil()).BlockFunc(func(eg *Group) {
 							eg.If(Id("server").Dot("metrics").Op("!=").Nil()).Block(
@@ -61,10 +60,24 @@ func (r *transportRenderer) sendResponseJsonRPCFunc() (c Code) {
 		})
 }
 
-func (r *transportRenderer) initJsonRPCMethodMaps() (c Code) {
+func (r *transportRenderer) sendJSONRPCResponseFunc() (c Code) {
+
+	return Func().Id("sendJSONRPCResponse").
+		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requestID").Id("idJSONRPC"), Id("resp").Op("*").Id("baseJSONRPC")).
+		Params(Err().Error()).
+		Block(
+			If(Id("requestID").Op("==").Nil()).Block(
+				Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusNoContent")),
+				Return(Nil()),
+			),
+			Return(Id("sendResponse").Call(Id(VarNameFtx), Id("resp"))),
+		)
+}
+
+func (r *transportRenderer) initJSONRPCMethodMaps() (c Code) {
 
 	mounts := model.JSONRPCBatchMounts(r.project)
-	return Func().Id("initJsonRPCMethodMaps").
+	return Func().Id("initJSONRPCMethodMaps").
 		Params(Id("srv").Op("*").Id("Server")).
 		Params().
 		BlockFunc(func(bg *Group) {
@@ -73,7 +86,7 @@ func (r *transportRenderer) initJsonRPCMethodMaps() (c Code) {
 				bg.Id("srv").Dot("jsonRPCMethodMaps").Index(Lit(mount)).Op("=").Make(Map(String()).Id("methodJsonRPC"))
 			}
 			for _, contract := range r.contractsSorted() {
-				if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+				if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 					continue
 				}
 				servicePath := model.JSONRPCServiceBatchPath(r.project, contract)
@@ -82,14 +95,14 @@ func (r *transportRenderer) initJsonRPCMethodMaps() (c Code) {
 				)
 			}
 			for _, contract := range r.contractsSorted() {
-				if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+				if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 					continue
 				}
 				contractPrefix := model.JSONRPCContractPrefix(r.project, contract)
 				servicePath := model.JSONRPCServiceBatchPath(r.project, contract)
 				bg.If(Id("srv").Dot("http" + contract.Name).Op("!=").Nil()).BlockFunc(func(ib *Group) {
 					for _, method := range methodsSorted(contract.Methods) {
-						if !r.methodIsJsonRPCForContract(contract, method) {
+						if !r.methodIsJSONRPCForContract(contract, method) {
 							continue
 						}
 						contractLCName := strings.ToLower(contract.Name)
@@ -97,8 +110,8 @@ func (r *transportRenderer) initJsonRPCMethodMaps() (c Code) {
 						methodKey := contractLCName + "." + methodLCName
 						ib.BlockFunc(func(mb *Group) {
 							mb.Id("handler").Op(":=").Func().
-								Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("requestBase").Id("baseJsonRPC")).
-								Params(Id("responseBase").Op("*").Id("baseJsonRPC")).
+								Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("requestBase").Id("baseJSONRPC")).
+								Params(Id("responseBase").Op("*").Id("baseJSONRPC")).
 								Block(
 									Id(VarNameCtx).Op("=").Id("withMethodLogger").Call(Id(VarNameCtx), Lit(toLowerCamel(contract.Name)), Lit(toLowerCamel(method.Name))),
 									Return(Id("srv").Dot("http"+contract.Name).Dot(toLowerCamel(method.Name)+"WithContext").Call(Id(VarNameCtx), Id("requestBase"))),
@@ -138,8 +151,8 @@ func (r *transportRenderer) singleBatchFunc() (c Code) {
 
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("doSingleBatch").
-		Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("request").Id("baseJsonRPC"), Id("methods").Map(String()).Id("methodJsonRPC")).
-		Params(Id("response").Op("*").Id("baseJsonRPC")).
+		Params(Id(VarNameCtx).Qual(PackageContext, "Context"), Id("request").Id("baseJSONRPC"), Id("methods").Map(String()).Id("methodJsonRPC")).
+		Params(Id("response").Op("*").Id("baseJSONRPC")).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
 			bg.Var().Err().Error()
@@ -162,10 +175,11 @@ func (r *transportRenderer) singleBatchFunc() (c Code) {
 
 func (r *transportRenderer) batchFunc() (c Code) {
 
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("doBatch").
-		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requests").Op("[]").Id("baseJsonRPC"), Id("methods").Map(String()).Id("methodJsonRPC")).
-		Params(Id("responses").Op("[]").Op("*").Id("baseJsonRPC")).
+		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("requests").Op("[]").Id("baseJSONRPC"), Id("methods").Map(String()).Id("methodJsonRPC")).
+		Params(Id("responses").Op("[]").Op("*").Id("baseJSONRPC")).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
 			bg.Id("userCtx").Op(":=").Id(VarNameFtx).Dot("UserContext").Call()
@@ -179,7 +193,7 @@ func (r *transportRenderer) batchFunc() (c Code) {
 				Id("batchCtx").Op("=").Id("userCtx"),
 			)
 			bg.If(Qual(PackageStrings, "EqualFold").Call(Id(VarNameFtx).Dot("Get").Call(Id("syncHeader")), Lit("true"))).Block(
-				Id("syncResponses").Op(":=").Make(Index().Op("*").Id("baseJsonRPC"), Lit(0), Len(Id("requests"))),
+				Id("syncResponses").Op(":=").Make(Index().Op("*").Id("baseJSONRPC"), Lit(0), Len(Id("requests"))),
 				For(List(Id("_"), Id("request")).Op(":=").Range().Id("requests")).Block(
 					Id("response").Op(":=").Id("srv").Dot("doSingleBatch").Call(Id("batchCtx"), Id("request"), Id("methods")),
 					If(Id("request").Dot("ID").Op("!=").Nil()).Block(
@@ -194,7 +208,8 @@ func (r *transportRenderer) batchFunc() (c Code) {
 					Id("expectedCount").Op("++"),
 				),
 			)
-			bg.Id("results").Op(":=").Make(Index().Op("*").Id("baseJsonRPC"), Len(Id("requests")))
+			bg.Id("results").Op(":=").Make(Index().Op("*").Id("baseJSONRPC"), Len(Id("requests")))
+			bg.Id("resultsCh").Op(":=").Make(Chan().Id("batchResult"), Len(Id("requests")))
 			bg.Id("workerCount").Op(":=").Id("srv").Dot("maxParallelBatch")
 			bg.If(Len(Id("requests")).Op("<").Id("workerCount")).Block(
 				Id("workerCount").Op("=").Len(Id("requests")),
@@ -207,12 +222,35 @@ func (r *transportRenderer) batchFunc() (c Code) {
 				Go().Func().Params().Block(
 					Defer().Id("wg").Dot("Done").Call(),
 					For(Id("idx").Op(":=").Range().Id("workCh")).BlockFunc(func(fg *Group) {
-						fg.If(Id("batchCtx").Dot("Err").Call().Op("!=").Nil()).Block(Continue())
-						fg.Id("req").Op(":=").Id("requests").Index(Id("idx"))
-						fg.Id("resp").Op(":=").Id("srv").Dot("doSingleBatch").Call(Id("batchCtx"), Id("req"), Id("methods"))
-						fg.If(Id("req").Dot("ID").Op("!=").Nil()).Block(
-							Id("results").Index(Id("idx")).Op("=").Id("resp"),
-						)
+						fg.Func().Params(Id("idx").Int()).BlockFunc(func(ig *Group) {
+							ig.Defer().Func().Params().Block(
+								If(Id("r").Op(":=").Recover().Op(";").Id("r").Op("!=").Nil()).Block(
+									If(Id("logger").Op(":=").Qual(srvctxPkgPath, "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id("batchCtx")).Op(";").Id("logger").Op("!=").Nil()).Block(
+										Id("logger").Dot("Error").Call(Lit("JSON-RPC batch panic"), Qual(PackageSlog, "Any").Call(Lit("panic"), Id("r"))),
+									),
+									If(Id("requests").Index(Id("idx")).Dot("ID").Op("!=").Nil()).Block(
+										Id("resultsCh").Op("<-").Id("batchResult").Values(Dict{
+											Id("idx"): Id("idx"),
+											Id("response"): Id("makeErrorResponseJsonRPC").Call(
+												Id("requests").Index(Id("idx")).Dot("ID"),
+												Id("internalError"),
+												Lit("internal error"),
+												Nil(),
+											),
+										}),
+									),
+								),
+							).Call()
+							ig.If(Id("batchCtx").Dot("Err").Call().Op("!=").Nil()).Block(Return())
+							ig.Id("req").Op(":=").Id("requests").Index(Id("idx"))
+							ig.Id("resp").Op(":=").Id("srv").Dot("doSingleBatch").Call(Id("batchCtx"), Id("req"), Id("methods"))
+							ig.If(Id("req").Dot("ID").Op("!=").Nil()).Block(
+								Id("resultsCh").Op("<-").Id("batchResult").Values(Dict{
+									Id("idx"):      Id("idx"),
+									Id("response"): Id("resp"),
+								}),
+							)
+						}).Call(Id("idx"))
 					}),
 				).Call(),
 			)
@@ -225,12 +263,20 @@ func (r *transportRenderer) batchFunc() (c Code) {
 				),
 			)
 			bg.Close(Id("workCh"))
-			bg.Id("wg").Dot("Wait").Call()
+			bg.Go().Func().Params().Block(
+				Id("wg").Dot("Wait").Call(),
+				Close(Id("resultsCh")),
+			).Call()
+			bg.For(List(Id("result")).Op(":=").Range().Id("resultsCh")).Block(
+				Id("results").Index(Id("result").Dot("idx")).Op("=").Id("result").Dot("response"),
+			)
 			bg.Line()
-			bg.Id("responses").Op("=").Make(Index().Op("*").Id("baseJsonRPC"), Lit(0), Id("expectedCount"))
+			bg.Id("responses").Op("=").Make(Index().Op("*").Id("baseJSONRPC"), Lit(0), Id("expectedCount"))
 			bg.For(Id("i").Op(":=").Range().Id("results")).Block(
 				If(Id("results").Index(Id("i")).Op("!=").Nil()).Block(
 					Id("responses").Op("=").Append(Id("responses"), Id("results").Index(Id("i"))),
+				).Else().If(Id("requests").Index(Id("i")).Dot("ID").Op("!=").Nil()).Block(
+					Id("responses").Op("=").Append(Id("responses"), Id("makeErrorResponseJsonRPC").Call(Id("requests").Index(Id("i")).Dot("ID"), Id("invalidRequestError"), Lit("request context cancelled"), Nil())),
 				),
 			)
 			bg.Return()
@@ -239,16 +285,19 @@ func (r *transportRenderer) batchFunc() (c Code) {
 
 func (r *transportRenderer) serveBatchFunc() (c Code) {
 
-	jsonPkg := r.getPackageJSON()
-	srvctxPkgPath := fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir))
+	srvctxPkgPath := r.pkgPath(r.outDir) + "/srvctx"
+	streamPkg := r.pkgPath(r.outDir) + "/stream"
 	return Func().Params(Id("srv").Op("*").Id("Server")).
 		Id("serveBatch").
 		Params(Id(VarNameFtx).Op("*").Qual(PackageFiber, "Ctx"), Id("batchPath").String()).
 		Params(Id("err").Error()).
 		BlockFunc(func(bg *Group) {
 			bg.Line()
+			if r.jsonRPCNeedsOverlay(nil) {
+				bg.Add(setRequestOverlayContext())
+			}
 			bg.Var().Id("single").Bool()
-			bg.Var().Id("requests").Op("[]").Id("baseJsonRPC")
+			bg.Var().Id("requests").Op("[]").Id("baseJSONRPC")
 			bg.Id("methods").Op(":=").Id("srv").Dot("jsonRPCMethodMaps").Index(Id("batchPath"))
 			bg.Id("clientID").Op(":=").Qual(srvctxPkgPath, "GetClientID").Call(Id(VarNameFtx).Dot("UserContext").Call())
 			bg.Id("methodHTTP").Op(":=").Id(VarNameFtx).Dot("Method").Call()
@@ -262,65 +311,20 @@ func (r *transportRenderer) serveBatchFunc() (c Code) {
 				)
 				ig.Return()
 			})
-			bg.Id("bodyStream").Op(":=").Id("ensureBodyReader").Call(Id(VarNameFtx).Dot("Context").Call().Dot("RequestBodyStream").Call())
-			bg.List(Id("firstByte"), Err()).Op(":=").Id("readUntilFirstNonWhitespace").Call(Id("bodyStream"))
-			bg.If(Err().Op("!=").Nil().Op("&&").Op("!").Qual("errors", "Is").Call(Err(), Qual("io", "EOF"))).BlockFunc(func(ig *Group) {
-				ig.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-					Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
-				)
-				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())))
-			})
-			bg.If(Id("firstByte").Op("==").Lit(0)).BlockFunc(func(ig *Group) {
-				ig.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-					Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("empty_body"), Id("clientID")).Dot("Inc").Call(),
-				)
-				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: empty body"), Nil())))
-			})
-			bg.Id("r").Op(":=").Qual("io", "MultiReader").Call(Qual(PackageBytes, "NewReader").Call(Index().Byte().Values(Id("firstByte"))), Id("bodyStream"))
-			bg.Switch(Id("firstByte")).BlockFunc(func(sg *Group) {
-				sg.Case(Lit(123)).BlockFunc(func(cg *Group) {
-					cg.Var().Id("request").Id("baseJsonRPC")
-					cg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("r")).Dot("Decode").Call(Op("&").Id("request")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(dg *Group) {
-						dg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-							Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
-						)
-						dg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())))
-					})
-					cg.Id("single").Op("=").True()
-					cg.Id("requests").Op("=").Append(Id("requests"), Id("request"))
-				})
-				sg.Case(Lit(91)).BlockFunc(func(cg *Group) {
-					cg.If(Err().Op("=").Qual(jsonPkg, "NewDecoder").Call(Id("r")).Dot("Decode").Call(Op("&").Id("requests")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(dg *Group) {
-						dg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-							Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
-						)
-						dg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())))
-					})
-					cg.If(Len(Id("requests")).Op("==").Lit(0)).BlockFunc(func(eg *Group) {
-						eg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-							Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("invalid_request"), Id("clientID")).Dot("Inc").Call(),
-						)
-						eg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("invalidRequestError"), Lit("empty batch request"), Nil())))
-					})
-				})
-				sg.Default().BlockFunc(func(dg *Group) {
-					dg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-						Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("parse_error"), Id("clientID")).Dot("Inc").Call(),
-					)
-					dg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: expected { or ["), Nil())))
-				})
-			})
-			bg.If(Len(Id("requests")).Op(">").Id("srv").Dot("maxBatchSize")).BlockFunc(func(ig *Group) {
-				ig.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
-					Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("batch_size_exceeded"), Id("clientID")).Dot("Inc").Call(),
-				)
-				ig.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded")))
+			writeJSONRPCEnvelopeDecode(bg, streamPkg, Id("srv").Dot("maxBatchSize"), func(g *Group, stmt Code) {
+				g.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(stmt)
+			}, func(reason string) Code {
+				return Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit(reason), Id("clientID")).Dot("Inc").Call()
 			})
 			bg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
 				Id("srv").Dot("metrics").Dot("BatchSize").Dot("WithLabelValues").Call(Lit("json-rpc"), Id("batchPath"), Id("clientID")).Dot("Observe").Call(Id("float64").Call(Len(Id("requests")))),
 			)
 			bg.If(Id("single")).BlockFunc(func(ig *Group) {
 				ig.If(Err().Op("=").Id("validateJsonRPCRequest").Call(Id("requests").Op("[").Lit(0).Op("]")).Op(";").Err().Op("!=").Nil()).BlockFunc(func(vg *Group) {
+					vg.If(Id("requests").Op("[").Lit(0).Op("]").Dot("ID").Op("==").Nil()).Block(
+						Id(VarNameFtx).Dot("Status").Call(Qual(PackageFiber, "StatusNoContent")),
+						Return(Nil()),
+					)
 					vg.If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
 						Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("invalid_request"), Id("clientID")).Dot("Inc").Call(),
 					)
@@ -331,7 +335,7 @@ func (r *transportRenderer) serveBatchFunc() (c Code) {
 						Id("srv").Dot("metrics").Dot("EntryRequestsTotal").Dot("WithLabelValues").Call(Lit("json-rpc"), Lit("ok"), Id("clientID")).Dot("Inc").Call(),
 					),
 				).Call()
-				ig.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("srv").Dot("doSingleBatch").Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("requests").Op("[").Lit(0).Op("]"), Id("methods"))))
+				ig.Return(Id("sendJSONRPCResponse").Call(Id(VarNameFtx), Id("requests").Op("[").Lit(0).Op("]").Dot("ID"), Id("srv").Dot("doSingleBatch").Call(Id(VarNameFtx).Dot("UserContext").Call(), Id("requests").Op("[").Lit(0).Op("]"), Id("methods"))))
 			})
 			bg.Defer().Func().Params().Block(
 				If(Id("srv").Dot("metrics").Op("!=").Nil()).Block(
@@ -352,10 +356,10 @@ func (r *transportRenderer) toLowercaseMethodFunc() (c Code) {
 		)
 }
 
-func (r *transportRenderer) validateJsonRPCRequestFunc() (c Code) {
+func (r *transportRenderer) validateJSONRPCRequestFunc() (c Code) {
 
 	return Func().Id("validateJsonRPCRequest").
-		Params(Id("requestBase").Id("baseJsonRPC")).
+		Params(Id("requestBase").Id("baseJSONRPC")).
 		Params(Err().Error()).
 		BlockFunc(func(bg *Group) {
 			bg.If(Id("requestBase").Dot("Version").Op("!=").Id("Version")).Block(
@@ -365,21 +369,24 @@ func (r *transportRenderer) validateJsonRPCRequestFunc() (c Code) {
 		})
 }
 
-func (r *transportRenderer) makeErrorResponseJsonRPCFunc() (c Code) {
+func (r *transportRenderer) makeErrorResponseJSONRPCFunc() (c Code) {
 
 	jsonPkg := r.getPackageJSON()
 	return Func().Id("makeErrorResponseJsonRPC").
-		Params(Id("id").Id("idJsonRPC"), Id("code").Int(), Id("msg").String(), Id("data").Any()).
-		Params(Op("*").Id("baseJsonRPC")).
+		Params(Id("id").Id("idJSONRPC"), Id("code").Int(), Id("msg").String(), Id("data").Any()).
+		Params(Op("*").Id("baseJSONRPC")).
 		BlockFunc(func(bg *Group) {
 			bg.Id("responseID").Op(":=").Id("id")
+			bg.If(Id("code").Op("==").Id("internalError")).Block(
+				Id("msg").Op("=").Lit("internal error"),
+			)
 			bg.If(Id("responseID").Op("==").Nil()).Block(
 				Id("responseID").Op("=").Qual(jsonPkg, "RawMessage").Call(Lit("null")),
 			)
-			bg.Return(Op("&").Id("baseJsonRPC").Values(Dict{
+			bg.Return(Op("&").Id("baseJSONRPC").Values(Dict{
 				Id("ID"):      Id("responseID"),
 				Id("Version"): Id("Version"),
-				Id("Error"): Op("&").Id("errorJsonRPC").Values(Dict{
+				Id("Error"): Op("&").Id("errorJSONRPC").Values(Dict{
 					Id("Code"):    Id("code"),
 					Id("Message"): Id("msg"),
 					Id("Data"):    Id("data"),
@@ -388,42 +395,56 @@ func (r *transportRenderer) makeErrorResponseJsonRPCFunc() (c Code) {
 		})
 }
 
-func (r *transportRenderer) methodIsJsonRPCForContract(contract *model.Contract, method *model.Method) (ok bool) {
+func (r *transportRenderer) methodIsJSONRPCForContract(contract *model.Contract, method *model.Method) (ok bool) {
 
-	if method == nil {
-		return false
-	}
-	return contract != nil && model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && !model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPMethod)
+	return model.MethodIsJSONRPC(r.project, contract, method)
 }
 
-func (r *transportRenderer) jsonRPCUsedOverlayKeys() (headerNames []string, cookieNames []string) {
+// jsonRPCOverlayKeys — header/cookie keys для requestOverlay.
+// contract == nil → все JSON-RPC контракты проекта; иначе только указанный.
+func (r *baseRenderer) jsonRPCOverlayKeys(contract *model.Contract) (headerNames []string, cookieNames []string) {
 
 	headers := make(map[string]struct{})
 	cookies := make(map[string]struct{})
-	for _, contract := range r.contractsSorted() {
-		if !model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+	contracts := r.contractsSorted()
+	if contract != nil {
+		contracts = []*model.Contract{contract}
+	}
+	for _, c := range contracts {
+		if !model.IsAnnotationSet(r.project, c, nil, nil, model.TagServerJSONRPC) {
 			continue
 		}
-		for _, method := range methodsSorted(contract.Methods) {
-			if !r.methodIsJsonRPCForContract(contract, method) {
+		for _, method := range methodsSorted(c.Methods) {
+			if !model.MethodIsJSONRPC(r.project, c, method) {
 				continue
 			}
-			for _, h := range usedHeaderNamesForRequestOverlay(r.project, contract, method) {
+			for _, h := range usedHeaderNamesForRequestOverlay(r.project, c, method) {
 				headers[h] = struct{}{}
 			}
-			for _, c := range usedCookieNamesForRequestOverlay(r.project, contract, method) {
-				cookies[c] = struct{}{}
+			for _, name := range usedCookieNamesForRequestOverlay(r.project, c, method) {
+				cookies[name] = struct{}{}
 			}
 		}
 	}
 	return common.SortedKeys(headers), common.SortedKeys(cookies)
 }
 
+func (r *baseRenderer) jsonRPCNeedsOverlay(contract *model.Contract) (ok bool) {
+
+	headerNames, cookieNames := r.jsonRPCOverlayKeys(contract)
+	return len(headerNames)+len(cookieNames) > 0
+}
+
+func (r *transportRenderer) jsonRPCUsedOverlayKeys() (headerNames []string, cookieNames []string) {
+
+	return r.jsonRPCOverlayKeys(nil)
+}
+
 func overlayKeyToFieldName(key string) (s string) {
 
 	parts := strings.Split(key, "-")
 	for i, p := range parts {
-		if len(p) == 0 {
+		if p == "" {
 			continue
 		}
 		parts[i] = strings.ToUpper(p[:1]) + strings.ToLower(p[1:])
@@ -431,24 +452,35 @@ func overlayKeyToFieldName(key string) (s string) {
 	return strings.Join(parts, "")
 }
 
-func (r *transportRenderer) readUntilFirstNonWhitespaceFunc() (c Code) {
+func writeJSONRPCEnvelopeDecode(bg *Group, streamPkg string, maxBatch Code, ifMetrics func(g *Group, stmt Code), metricInc func(reason string) Code) {
 
-	return Func().Id("readUntilFirstNonWhitespace").
-		Params(Id("r").Qual("io", "Reader")).
-		Params(Id("firstByte").Byte(), Err().Error()).
-		BlockFunc(func(bg *Group) {
-			bg.Var().Id("buf").Index(Lit(1)).Byte()
-			bg.For(Id("i").Op(":=").Lit(0).Op(";").Id("i").Op("<").Id("maxPeekBytes").Op(";").Id("i").Op("++")).BlockFunc(func(fg *Group) {
-				fg.Var().Id("n").Int()
-				fg.List(Id("n"), Err()).Op("=").Id("r").Dot("Read").Call(Id("buf").Op("[:]"))
-				fg.If(Id("n").Op("==").Lit(0)).Block(
-					Return(Lit(0), Err()),
-				)
-				fg.Id("b").Op(":=").Id("buf").Index(Lit(0))
-				fg.If(Id("b").Op("!=").Lit(32).Op("&&").Id("b").Op("!=").Lit(9).Op("&&").Id("b").Op("!=").Lit(10).Op("&&").Id("b").Op("!=").Lit(13)).Block(
-					Return(Id("b"), Nil()),
-				)
-			})
-			bg.Return(Lit(0), Qual(PackageErrors, "New").Call(Lit("leading whitespace exceeds limit")))
-		})
+	bg.Id("bodyStream").Op(":=").Id("decodeBodyReader").Call(Id(VarNameFtx))
+	bg.If(List(Id("requests"), Id("single"), Err()).Op("=").Qual(streamPkg, "DecodeEnvelope").Types(Id("baseJSONRPC")).Call(Id("bodyStream"), maxBatch).Op(";").Err().Op("!=").Nil()).BlockFunc(func(ig *Group) {
+		ig.Switch().Block(
+			Case(Qual(PackageErrors, "Is").Call(Err(), Id("errBodyTooLarge"))).BlockFunc(func(cg *Group) {
+				ifMetrics(cg, metricInc("body_too_large"))
+				cg.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusRequestEntityTooLarge"), Lit("request body too large")))
+			}),
+			Case(Qual(PackageErrors, "Is").Call(Err(), Qual(streamPkg, "ErrBatchTooLarge"))).BlockFunc(func(cg *Group) {
+				ifMetrics(cg, metricInc("batch_size_exceeded"))
+				cg.Return(Id("sendHTTPError").Call(Id(VarNameFtx), Qual(PackageFiber, "StatusBadRequest"), Lit("batch size exceeded")))
+			}),
+			Case(Qual(PackageErrors, "Is").Call(Err(), Qual(streamPkg, "ErrEmptyBatch"))).BlockFunc(func(cg *Group) {
+				ifMetrics(cg, metricInc("invalid_request"))
+				cg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("invalidRequestError"), Lit("empty batch request"), Nil())))
+			}),
+			Case(Qual(PackageErrors, "Is").Call(Err(), Qual(streamPkg, "ErrEmptyBody"))).BlockFunc(func(cg *Group) {
+				ifMetrics(cg, metricInc("empty_body"))
+				cg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: empty body"), Nil())))
+			}),
+			Case(Qual(PackageErrors, "Is").Call(Err(), Qual(streamPkg, "ErrBadEnvelope"))).BlockFunc(func(cg *Group) {
+				ifMetrics(cg, metricInc("parse_error"))
+				cg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: expected { or ["), Nil())))
+			}),
+			Default().BlockFunc(func(cg *Group) {
+				ifMetrics(cg, metricInc("parse_error"))
+				cg.Return(Id("sendResponse").Call(Id(VarNameFtx), Id("makeErrorResponseJsonRPC").Call(Nil(), Id("parseError"), Lit("request body could not be decoded: ").Op("+").Err().Dot("Error").Call(), Nil())))
+			}),
+		)
+	})
 }

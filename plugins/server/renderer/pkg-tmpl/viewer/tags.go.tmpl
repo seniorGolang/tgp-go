@@ -12,9 +12,20 @@ const (
 
 func tagToOption(tag string) (opt option) {
 
-	parsed := strings.Split(tag, ",")
-	if len(parsed) == 2 && parsed[0] == tagHide {
-		return hide(parsed[1])
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return
 	}
-	return
+	parsed := strings.SplitN(tag, ",", 2)
+	if strings.TrimSpace(parsed[0]) != tagHide {
+		return
+	}
+	if len(parsed) == 1 {
+		return hide("-")
+	}
+	formula := strings.TrimSpace(parsed[1])
+	if formula == "" || formula == "-" {
+		return hide("-")
+	}
+	return hide(formula)
 }

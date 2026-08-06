@@ -3,12 +3,12 @@
 package renderer
 
 import (
-	"fmt"
+	"errors"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/kafka"
 	"tgp/internal/model"
@@ -22,7 +22,7 @@ type Renderer struct {
 }
 
 // NewRenderer создаёт генератор исходных файлов.
-func NewRenderer(project *model.Project, outDir string, targetModulePath string, outputRelPath string) (renderer *Renderer) {
+func NewRenderer(project *model.Project, outDir string, _targetModulePath string, _outputRelPath string) (renderer *Renderer) {
 
 	return &Renderer{project: project, outDir: outDir, pkgName: filepath.Base(outDir)}
 }
@@ -47,7 +47,7 @@ func (r *Renderer) contracts() (contracts []*model.Contract) {
 func (r *Renderer) RenderAll() (err error) {
 
 	if !r.HasKafka() {
-		return fmt.Errorf("kafka contracts are required")
+		return errors.New("kafka contracts are required")
 	}
 	if err = r.renderRuntime(); err != nil {
 		return

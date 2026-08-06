@@ -18,15 +18,16 @@ description: >-
 tg astg json -o .tg/project.json
 ```
 
-3. Generate:
+3. Generate (from repo root):
 
 ```bash
 tg server -o transport
 # optional: --contracts-dir=contracts --contracts=UserService,OrderService
+# pinned model (requires astg-db): --from-db name@version
 ```
 
-4. Implement exported contract interfaces outside `transport/`.
-5. Wire implementations directly:
+4. Implement exported contract interfaces **outside** `transport/`.
+5. Wire implementations:
 
 ```go
 srv := transport.New(log, transport.UserService(impl))
@@ -39,41 +40,33 @@ if err := srv.Fiber().Listen(":8080"); err != nil {
 
 There is no generated `contracts.NewUserService` wrapper; the option accepts the interface implementation.
 
-6. Compile the whole module and smoke-test the selected transports.
+6. Compile the module and smoke-test the selected transports.
 
 ## Choose generated surface
 
 | Contract annotations | Generated behavior |
 |----------------------|--------------------|
 | `http-server` | REST handlers and routes |
-| `jsonRPC-server` | JSON-RPC endpoint and batch support |
-| both | shared implementation exposed over REST and RPC |
+| `jsonRPC-server` | JSON-RPC endpoint and batch (`POST /` + prefix mounts) |
+| both | shared implementation over REST and RPC |
 | `ws-server` + `stream` | WebSocket stream endpoint |
 | `sse-server` + `stream=server` | SSE endpoint |
 | `kafka` | nothing; use Kafka generator skills |
 
 If a contract produces no handlers, inspect its resolved annotations before changing generator code.
 
-## Runtime integration
+## Gotchas
 
-- `SetFiberCfg`, `Use`, buffer/body/timeout options configure Fiber
-- `MaxBatchSize` / `MaxBatchWorkers` apply to JSON-RPC batch
-- `WithRequestID` / `WithHeader` integrate request metadata
-- `srv.<Contract>().WithErrorHandler(...)` customizes REST error handling
-- `ServeHealth` and `ServeMetrics` run separate endpoints
-- `Shutdown()` performs graceful shutdown
-- `WithTrace(...)` requires `@tg trace`
+- Own lifecycle/business code outside `--out`; never patch generated files
+- `SetFiberCfg` always forces `Immutable` (request strings safe past the handler)
+- Header/query parse is **lenient** (failed parse → zero); add `Parse(string)` for strict types
+- `implicit` args still need a wire source on the server (middleware/context)
+- Multipart / multiple `io.Reader`: consume parts **in order** to EOF
+- `WithLog` / `WithMetrics` / `WithTrace` follow HTTP/JSON-RPC observation annotations — not pure WS/SSE/Kafka alone
+- JSON-RPC batch: headers/cookies come from batch/method context overlay, not a foreign Fiber Ctx
+- `--from-db` skips `astg-hook` save in the same run
 
-`WithLog`, `WithMetrics`, and `WithTrace` are generated for observable HTTP/JSON-RPC contracts. Do not assume pure WS/SSE or Kafka annotations activate the same Fiber hooks.
-
-## Mapping and files
-
-- `explicit` values are transport-only; `implicit` values are commonly supplied by middleware/context; `body` remains in the payload
-- Header/cookie/query conversion is lenient; define a supported `Parse(string)` function when invalid values must fail explicitly
-- One `io.Reader` / `io.ReadCloser` uses a streaming body
-- Multiple streams or `http-multipart` use multipart; consume parts in order
-
-Details: [references/runtime.md](references/runtime.md).
+Full option catalog (Auth, limits, health, buckets, streams): [references/runtime.md](references/runtime.md) · `tg plugin doc server`.
 
 ## Verify
 
@@ -81,31 +74,29 @@ Details: [references/runtime.md](references/runtime.md).
 go test ./...
 ```
 
-Then verify:
-
-- expected contract option exists (`transport.UserService`)
-- expected REST path or JSON-RPC name (`userService.getUser`) is registered
-- implementation still satisfies the contract after regeneration
-- stream connection and cancellation close correctly
-- file responses are closed by callers
-- health/metrics servers stop during shutdown
+- [ ] Contract option exists (`transport.UserService`)
+- [ ] Expected REST path or JSON-RPC name (`userService.getUser`) is registered
+- [ ] Handwritten implementation still satisfies the contract
+- [ ] Stream cancel/close behaves correctly
+- [ ] Callers close file `io.ReadCloser` responses
+- [ ] Health/metrics stop during `Shutdown` / `ShutdownWithTimeout`
 
 ## Diagnose
 
-- Missing contract option/route — wrong family flag, filter, or stale model
+- Missing contract option/route — wrong family flag, filter, stale model, or missing `--from-db` pin
 - Interface mismatch — update handwritten implementation after contract change
-- Zero value from header/query — parsing failed under lenient conversion
-- Missing observability method — effective `log`/`metrics`/`trace` annotation or transport family is absent
-- Wrong body/header shape — inspect mapping mode in `tgp-astg-json`
+- Zero value from header/query — lenient conversion failed
+- Missing observability method — effective `log`/`metrics`/`trace` or transport family absent
+- Wrong body/header shape — mapping mode in `tgp-astg-json`
 
 ## Never
 
-- Hand-edit generated files under `-o`
+- Hand-edit generated files under `--out` / `-o`
 - Put handwritten implementations in the generated package
 - Patch transport instead of fixing contracts and regenerating
-- Expect Kafka contracts to appear in Fiber transport
+- Expect Kafka contracts in Fiber transport
 - Expect handlers without transport enable flags
 
 ## Dig deeper
 
-`tg plugin doc server` · skills `tgp-contracts`, `tgp-astg-json`
+`tg plugin doc server` · [references/runtime.md](references/runtime.md) · skills `tgp-contracts`, `tgp-astg-json`, `tgp-astg-db`, `tgp-pipeline`

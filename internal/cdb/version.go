@@ -10,7 +10,7 @@ const maxVersionNameLength = 255
 func NormalizeVersionName(version string) (s string) {
 
 	if version == "" {
-		return "default"
+		return versionDefault
 	}
 	invalid := regexp.MustCompile(`[/\\:*?"<>|\s]+`)
 	s = invalid.ReplaceAllString(version, "-")
@@ -18,7 +18,7 @@ func NormalizeVersionName(version string) (s string) {
 	s = multi.ReplaceAllString(s, "-")
 	s = strings.Trim(s, "-.")
 	if s == "" {
-		return "default"
+		return versionDefault
 	}
 	if len(s) > maxVersionNameLength {
 		s = strings.TrimSuffix(s[:maxVersionNameLength], "-")

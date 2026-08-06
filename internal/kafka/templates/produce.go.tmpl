@@ -19,7 +19,7 @@ type produceHooks struct {
 	onFinished func()
 }
 
-// produceAndWait ставит Produce и ждёт completion с учётом ctx.
+// produceAndWait ставит Produce и ждёт completion; cancel не маскирует успешную запись.
 func produceAndWait(ctx context.Context, client *kgo.Client, record *kgo.Record, hooks *produceHooks) (outcome produceOutcome) {
 
 	if outcome.err = ctx.Err(); outcome.err != nil {
@@ -38,18 +38,13 @@ func produceAndWait(ctx context.Context, client *kgo.Client, record *kgo.Record,
 	})
 	select {
 	case outcome.err = <-completion:
-		if ctx.Err() != nil {
-			outcome.err = ctx.Err()
-			return outcome
-		}
-		if outcome.err == nil {
-			outcome.bytes = len(record.Value)
-		}
-		return outcome
 	case <-ctx.Done():
-		outcome.err = ctx.Err()
-		return outcome
+		outcome.err = <-completion
 	}
+	if outcome.err == nil {
+		outcome.bytes = len(record.Value)
+	}
+	return outcome
 }
 
 // produceAllAndWait ставит все готовые records и ждёт completion каждой записи.
@@ -88,13 +83,10 @@ func produceAllAndWait(ctx context.Context, client *kgo.Client, records []*kgo.R
 	}()
 	select {
 	case <-done:
-		if ctx.Err() != nil {
-			return outcomes, ctx.Err()
-		}
-		return outcomes, joinOutcomes(outcomes)
 	case <-ctx.Done():
-		return outcomes, ctx.Err()
+		<-done
 	}
+	return outcomes, joinOutcomes(outcomes)
 }
 
 func joinOutcomes(outcomes []produceOutcome) (err error) {

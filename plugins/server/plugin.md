@@ -1,266 +1,307 @@
-# Плагин server — генератор серверного кода по контрактам
+# Плагин server — HTTP/JSON-RPC/WS/SSE транспорт на Fiber
 
 ## Назначение
 
-Плагин генерирует готовый HTTP/JSON-RPC сервер по вашим контрактам: вы описываете интерфейсы с аннотациями `@tg`, запускаете генерацию — получаете код на [Fiber](https://github.com/gofiber/fiber), в котором остаётся только передать реализацию сервисов и вызвать запуск.
+Плагин генерирует Go-пакет HTTP-сервера по контрактам `@tg`: REST, JSON-RPC 2.0 (включая batch), WebSocket и SSE. Вы реализуете интерфейсы контрактов, регистрируете их в `transport.New` и запускаете Fiber.
 
-Список аннотаций и их смысл: `tg plugin doc astg`.
+Полный синтаксис аннотаций: `tg plugin doc astg`.
 
-## Запуск
+## Когда использовать
+
+- Нужен серверный transport из тех же контрактов, что и клиенты/Swagger.
+- Контракты помечены `http-server`, `jsonRPC-server`, `ws-server` и/или `sse-server`.
+- Не используйте для `@tg kafka` — это `kafka-pub-go` / `kafka-sub-go`.
+- Не правьте сгенерированный пакет вручную: меняйте контракты и перегенерируйте.
+
+## Команда и параметры
 
 ```bash
-tg server -o <каталог>
+tg server -o transport
+# или
+tg server --out transport --contracts-dir=contracts --contracts=UserService,OrderService
 ```
 
-| Параметр | Обязательный | Описание |
-|----------|--------------|----------|
-| **out**, **-o** | да | Каталог, в который записывается сгенерированный код (например, `transport`). |
-| **contracts-dir** | нет | Папка с контрактами относительно корня проекта. По умолчанию: `contracts`. |
-| **contracts** | нет | Список имён контрактов через запятую (например, `UserService,OrderService`). Генерируется код только для них. |
+| Параметр | Короткая форма | Обязательный | Описание |
+|----------|----------------|--------------|----------|
+| `out` | `-o` | да | Каталог сгенерированного пакета (например `transport`) |
+| `contracts-dir` | — | нет | Каталог контрактов относительно корня проекта (по умолчанию `contracts`) |
+| `contracts` | — | нет | Имена контрактов через запятую; без фильтра — все HTTP-семейства |
 
-## Что вы получаете
+Фильтр `--contracts` режет копию модели у генератора. Полный snapshot в локальной БД astg не урезается.
 
-В указанном каталоге появляется Go-пакет. Вы импортируете его и:
+## Что генерируется
 
-1. Создаёте сервер: `transport.New(log, options...)`.
-2. В опциях передаёте реализации контрактов (например, `transport.UserService(impl)`).
-3. При необходимости включаете логирование, метрики или трассировку: `srv.WithLog()`, `srv.WithMetrics()`, `srv.WithTrace(...)`.
-4. Запускаете: `srv.Fiber().Listen(":8080")`.
+### Матрица: аннотации → артефакты
 
-Детали API — в разделах ниже.
+| На контракте | Появится |
+|--------------|----------|
+| `http-server` | REST handlers и маршруты Fiber |
+| `jsonRPC-server` | RPC endpoint + batch (`POST /` и scoped mounts по `http-prefix`) |
+| оба | одна реализация сервиса на обоих транспортах |
+| `ws-server` + `stream=…` | WebSocket endpoint (multiplex JSON-RPC stream) |
+| `sse-server` + `stream=server` | SSE POST endpoint (`text/event-stream`) |
+| `kafka` | ничего (другой плагин) |
+| `log` / `metrics` / `trace` | методы `WithLog` / `WithMetrics` / `WithTrace` на сервере |
+| `security` с `http:bearer` | опция `Auth(...)`, subject в `srvctx.GetSubject` |
 
-## Аннотации, важные для сервера
+### Ключевые файлы и API
 
-Имеют смысл только аннотации, уже описанные в плагине `astg`. Для сервера важны в частности:
+В `--out` появляется Go-пакет (имена зависят от проекта), которым вы пользуетесь:
 
-- **`@tg http-server`** — по контракту генерируются HTTP (REST) обработчики.
-- **`@tg jsonRPC-server`** — по контракту генерируются JSON-RPC 2.0 обработчики (в том числе batch).
-- **`@tg ws-server`** — для методов с `@tg stream=server|client|bidi` создаётся WebSocket endpoint; обмен использует JSON-RPC 2.0 notifications `$/stream`, `$/stream.end` и `$/cancel`.
-- **`@tg sse-server`** — для `@tg stream=server` создаётся SSE POST endpoint с событиями `text/event-stream`.
-- На stream-методах работают те же `http-headers` / `http-cookies` / `http-args` (и `:param` в `ws-path`/`sse-path`): для **SSE** — из HTTP-запроса метода; для **WS** — из upgrade handshake (connection-scoped на весь multiplex).
-- **`@tg log`** — доступно логирование запросов/ответов через `srv.WithLog()`.
-- **`@tg metrics`** — доступны метрики Prometheus через `srv.WithMetrics()`.
-- **`@tg trace`** — доступна трассировка OpenTelemetry через `srv.WithTrace(...)`.
+| Поверхность | Назначение |
+|-------------|------------|
+| `New(log, options...)` | конструктор `*Server` |
+| `{Contract}(impl)` | Option: регистрация реализации (имя = имя интерфейса) |
+| `Fiber()` | `*fiber.App` для `Listen` |
+| `WithLog` / `WithMetrics` / `WithTrace` | observability (если аннотации есть) |
+| `Shutdown()` / `ShutdownWithTimeout(timeout)` | graceful stop HTTP + metrics (`Shutdown` = default 30s) |
+| `ServeHealth` / `ServeMetrics` | отдельные HTTP-серверы |
+| `{Contract}().WithErrorHandler` | кастом ошибок REST (только при `http-server`) |
 
-Остальные аннотации (`http-method`, `http-path`, `http-prefix`, `http-headers`, `http-cookies`, `log-skip` и т.д.) задают маршруты, заголовки и поведение. Их описание см. в документации плагина `astg`.
+Перед генерацией старые сгенерированные файлы в каталоге очищаются по маркеру Tool Gateway.
 
-### Режимы маппинга `http-headers` / `http-cookies` / `http-args`
+## Аннотации и их влияние
 
-Для аннотаций `http-headers`, `http-cookies` и `http-args` используется формат `arg|key` или `arg|key|mode`, где `mode` — один из `explicit`, `implicit`, `body`. Если режим не указан, по умолчанию используется `body`.
+Полный синтаксис: `tg plugin doc astg`. Ниже — эффект **на этот плагин**.
 
-- **`explicit`**: значение аргумента/результата читается или записывается через указанный HTTP-элемент (заголовок, cookie, query или параметр пути) и не дублируется в теле.
-- **`implicit`**: как `explicit` на уровне HTTP, но аргумент может быть скрыт в клиентах; значение, как правило, приходит из контекста или инфраструктурных middleware.
-- **`body`**: основным источником остаётся тело запроса/ответа, а маппинг даёт серверу возможность читать или переопределять это значение из заголовка/cookie/query (например, через оверлей контекста в JSON‑RPC).
+### Транспорт и маршруты
 
-### Преобразование типов для header/cookie/query
+| Аннотация | Уровень | Эффект на server |
+|-----------|---------|------------------|
+| `http-server` | iface | REST handlers; нужны `http-method` / `http-path` на методах |
+| `jsonRPC-server` | iface | JSON-RPC: метод `{contract}.{method}` (camelCase); batch |
+| `http-prefix` | пакет / iface | префикс путей REST и mount JSON-RPC; batch ещё на `POST /` |
+| `http-method`, `http-path` | method | маршрут Fiber; `:param` → path args |
+| `ws-server` | iface | WS upgrade endpoint |
+| `sse-server` | iface | SSE endpoint |
+| `stream=server\|client\|bidi` | method | направление потока; для SSE обычно `server` |
+| `ws-path` / `sse-path` | method | путь stream-endpoint (с `:param`) |
+| `http-success` | method | HTTP-код успешного REST-ответа |
+| `requestContentType` / `responseContentType` | method | Content-Type тела |
+| `http-multipart`, `http-part-name`, `http-part-content` | method / arg | multipart вместо одного raw body |
+| `enableInlineSingle` | method | одно возвращаемое значение без обёртки-объекта в wire |
+| `log` / `metrics` / `trace` | пакет / iface | доступны `WithLog` / `WithMetrics` / `WithTrace` |
+| `log-skip` | arg / result / sub | поле не пишется в viewer-логи |
+| `security` (`http:bearer…`) | пакет | включает runtime `Auth`; JWKS через RFC 8414 или `\|jwks=` |
 
-Для `http-headers`, `http-cookies` и `http-args` сервер использует единый конвейер преобразования строк в типы аргументов:
+### Режимы `http-headers` / `http-cookies` / `http-args`
 
-- Встроенные скалярные типы (`string`, `bool`, `int*`, `uint*`, `float*`) парсятся стандартно (`strconv`).
-- Если у типа есть явный парсер, используется он.
-- Именованные типы и alias-типов на базе встроенных скаляров (например, `type UserID uint64` и `type UserID = uint64`) парсятся по базовому скалярному типу.
-- Для остальных типов используется JSON-совместимое преобразование из строки.
+Формат: `arg|key` или `arg|key|mode`. Mode: `explicit` | `implicit` | `body` (default `body`).
 
-Это правило одинаково действует для HTTP и JSON-RPC: меняется только источник строкового значения (прямо из HTTP-запроса или из request overlay в контексте).
+| Mode | На сервере |
+|------|------------|
+| `explicit` | значение читается/пишется только через header/cookie/query/path, в тело не дублируется |
+| `implicit` | как explicit на wire; значение часто из middleware/контекста (клиенты могут скрыть аргумент) |
+| `body` | основное значение в теле; mapping — overlay/override (в JSON-RPC batch — через snapshot overlay в context) |
 
-По умолчанию поведение lenient: если преобразование не удалось, значение остаётся zero-value. Если для конкретного сценария нужна строгая валидация, задавайте явный `Parse(string)` у доменного типа.
+Для **SSE** headers/cookies/args берутся из HTTP-запроса метода. Для **WS** — из upgrade (connection-scoped на весь multiplex). Браузерный клиент может дублировать headers в query — сервер читает query как fallback.
 
-Что считается явным парсером:
+### Преобразование header/cookie/query
 
-- Экспортируемая функция в том же пакете, что и тип, с именем `Parse` или `Parse{TypeName}`.
-- Ровно один параметр: `string`.
-- Возвраты: `(T)` или `(T, error)`, а также `(*T)` или `(*T, error)`, где `T` — целевой тип.
-- Если подходят обе функции (`Parse` и `Parse{TypeName}`), используется первая найденная генератором при анализе пакета.
+Единый конвейер для HTTP и JSON-RPC (меняется только источник строки):
 
-## Создание и запуск сервера
+- встроенные скаляры — `strconv`;
+- именованные alias на скаляр — по базовому типу;
+- слайсы в header/query — **CSV** (`join(",")` + поэлементный parse);
+- иначе — JSON-совместимое преобразование из строки.
 
-### Базовый пример
+По умолчанию **lenient**: неудачный parse → zero-value. Для строгой валидации задайте у доменного типа `Parse(string)` / `Parse{TypeName}(string)` с возвратом `(T)` / `(T, error)` (или указатель).
 
-```go
-package main
+### Файлы и multipart
 
-import (
-    "context"
-    "log"
-    "log/slog"
+| Контракт | Поведение сервера |
+|----------|-------------------|
+| один `io.Reader` | тело запроса потоком |
+| один `io.ReadCloser` | тело ответа потоком |
+| несколько reader/closer или `http-multipart` | `multipart/form-data` |
+| несколько `io.Reader` в multipart | **строго по порядку** частей до EOF; параллель/чтение «вперёд» — ошибка |
 
-    "your-module/contracts"
-    "your-module/transport"
-)
+`io.Reader` / `io.ReadCloser` допустимы только при `http-server`.
 
-type userService struct{}
+## Использование
 
-func (s *userService) GetUser(ctx context.Context, id string) (user contracts.User, err error) {
-    return contracts.User{ID: id, Name: "John"}, nil
-}
-
-func main() {
-    svc := &userService{}
-srv := transport.New(slog.Default(), transport.UserService(svc))
-
-    srv.WithLog()
-    srv.WithMetrics() // при первом вызове метрики создаются внутри
-    srv.WithTrace(context.Background(), "myapp", "http://localhost:4318" /* при необходимости: attributes */)
-
-    if err := srv.Fiber().Listen(":8080"); err != nil {
-        log.Fatal(err)
-    }
-}
-```
-
-- **`New(log *slog.Logger, options ...Option) *Server`** — создаёт сервер. В `options` передаёте реализации контрактов и при необходимости конфигурацию.
-- **`srv.Fiber()`** — возвращает `*fiber.App`; запуск через `srv.Fiber().Listen(addr)`.
-- **`srv.WithLog()`** — включает логирование запросов и ответов (нужна аннотация `@tg log` у контракта).
-- **`srv.WithMetrics()`** — включает метрики Prometheus (нужна аннотация `@tg metrics`). При первом вызове объект метрик создаётся внутри.
-- **`srv.WithTrace(ctx, appName, endpoint, attributes...)`** — включает трассировку OpenTelemetry (нужна аннотация `@tg trace`).
-
-## Опции при создании сервера (Option)
-
-В `New(log, options...)` можно передать:
-
-| Опция | Назначение |
-|-------|------------|
-| **`{ContractName}(impl)`** | Регистрация реализации контракта и маршрутов (например, `UserService(impl)`). Имя совпадает с именем интерфейса. |
-| **`Service(svc ServiceRoute)`** | Регистрация произвольного маршрутизатора (реализация задаёт маршруты через `SetRoutes(route)`). |
-| **`SetFiberCfg(cfg fiber.Config)`** | Полная конфигурация Fiber. |
-| **`SetReadBufferSize(size int)`**, **`SetWriteBufferSize(size int)`** | Размеры буферов чтения/записи. |
-| **`MaxBodySize(size int)`** | Лимит размера тела запроса. |
-| **`ReadTimeout(timeout time.Duration)`**, **`WriteTimeout(timeout time.Duration)`** | Таймауты чтения/записи. |
-| **`MaxBatchSize(size int)`**, **`MaxBatchWorkers(size int)`** | Только при наличии контракта с `@tg jsonRPC-server`: макс. размер batch и число воркеров. По умолчанию 100 и 10. |
-| **`WithRequestID(headerName string)`** | Обработка заголовка Request ID: если значение пустое, подставляется UUID. |
-| **`WithHeader(headerName string, handler HeaderHandler)`** | Свой обработчик заголовка. |
-| **`Use(args ...any)`** | Добавление произвольных Fiber middleware. |
-
-## Остановка и health-check
-
-- **`srv.Shutdown() error`** — корректная остановка сервера (таймаут по умолчанию 30 секунд). Останавливается основной HTTP-сервер и при наличии — сервер метрик.
-
-- **`transport.ServeHealth(log, path, address, response)`** — отдельный HTTP-сервер для health-check (не встроен в основной `Server`). Возвращает `*HealthServer` с методом **`Stop()`** для остановки.  
-  Пример: поднять health на другом порту, в ответ отдать JSON.
+### Базовый запуск
 
 ```go
-hs := transport.ServeHealth(slog.Default(), "/health", ":8081", map[string]string{"status": "ok"})
-defer hs.Stop()
-// GET /health на :8081 вернёт указанный response; при response == nil в ответ уходит "ok"
-```
-
-Основной API-сервер по-прежнему запускается через `srv.Fiber().Listen(":8080")`.
-
-## Кастомная обработка ошибок
-
-Для контрактов с **`@tg http-server`** у сервера есть метод по имени контракта, возвращающий HTTP-обработчик этого контракта. Через него можно задать свой обработчик ошибок:
-
-- **`srv.UserService().WithErrorHandler(handler)`** — пример для контракта `UserService`.  
-  `handler` имеет тип **`func(err error) error`**: вы можете обернуть или подменить ошибку перед отправкой клиенту.
-
-Вызов делается после создания сервера, до запуска (до `Listen`). Для контрактов только с JSON-RPC (без `http-server`) такого доступа к обработчику нет.
-
-## Маршруты HTTP и JSON-RPC
-
-- **HTTP**: маршруты строятся по аннотациям `http-method`, `http-path`, `http-prefix`. Параметры пути (`:id` и т.п.), query и тело запроса маппятся на аргументы методов. Для POST/PUT/PATCH тело по умолчанию парсится как JSON.
-- **JSON-RPC**: имя метода в запросе — `{contractName}.{methodName}` в camelCase (например, `userService.getUser`). Параметры передаются в поле `params`, результат — в `result`. Поддерживаются batch-запросы.
-
-Если у контракта указаны и `http-server`, и `jsonRPC-server`, один и тот же контракт обслуживает и HTTP, и JSON-RPC методы.
-
-Важно: правила маппинга `http-headers`/`http-cookies`/`http-args` и правила преобразования типов для них общие между HTTP и JSON-RPC. Различаются только формат ответа при ошибках транспорта (HTTP-коды для REST и JSON-RPC error-объект для RPC).
-
-## Загрузка и выгрузка файлов (потоковое тело)
-
-- Один аргумент **`io.Reader`** — тело запроса передаётся потоком в этот аргумент.
-- Один результат **`io.ReadCloser`** — тело ответа отдаётся потоком из этого результата.
-- Несколько таких аргументов/результатов или аннотация **`http-multipart`** — обмен идёт в формате **multipart/form-data**. Имена и Content-Type частей задаются аннотациями **`http-part-name`** и **`http-part-content`**.
-- Несколько **`io.Reader`** на одном multipart-запросе читаются **строго по порядку** частей (как в wire). Параллельное чтение или чтение следующей части до EOF предыдущей возвращает ошибку. Это сохраняет настоящий stream без буфера в RAM и без временных файлов.
-
-Типы `io.Reader` и `io.ReadCloser` в контракте допускаются только при аннотации **`@tg http-server`**.
-
-## Метрики (Prometheus)
-
-При аннотации **`@tg metrics`** и вызове **`srv.WithMetrics()`** в метриках появляются счётчики и гистограммы в пространстве имён `service_*`. Чтобы отдать метрики по HTTP (например, для сбора Prometheus), вызовите **`srv.ServeMetrics(log, path, address, regs...)`** — будет поднят отдельный HTTP-сервер на указанном адресе (как и для health-check). При **`Shutdown()`** этот сервер тоже останавливается.
-
-- входящие запросы, паники, ответы с ошибкой;
-- число запросов в обработке, длительность запроса и длительность вызова метода;
-- для JSON-RPC — размер batch;
-- версия компонента и хост.
-
-Во все метрики, где это предусмотрено, добавляется лейбл **`client_id`**: он берётся из заголовка **`X-Client-Id`**; если заголовка нет или он пустой — используется значение `unknown`.
-
-Заголовок **`X-Client-Id`** извлекается для каждого HTTP-запроса независимо от метрик и логирования. Request-scoped логгер всегда содержит поле **`clientId`** (camelCase); при отсутствии заголовка — значение `unknown`.
-
-Точный список имён метрик и лейблов задаётся сгенерированным кодом (файл `metrics.go` в сгенерированном пакете).
-
-## Трассировка и логирование
-
-- **Трассировка** (**`@tg trace`**): вызов **`srv.WithTrace(ctx, appName, endpoint, attributes...)`** инициализирует провайдер OpenTelemetry и подключает трассировку к обработчикам.
-- **Логирование** (**`@tg log`**): вызов **`srv.WithLog()`** включает структурированное логирование запросов и ответов через `log/slog`. В каждой записи присутствует **`clientID`** из заголовка **`X-Client-Id`**. Чувствительные поля можно исключить аннотацией **`log-skip`** (см. astg).
-
-## Примеры
-
-### Только HTTP
-
-```go
-// Контракт с @tg http-server, @tg http-prefix=api/v1 и методами с http-method, http-path
-
-srv := transport.New(slog.Default(), transport.UserService(&userService{}))
-srv.WithLog()
-_ = srv.Fiber().Listen(":8080")
-// Например: GET /api/v1/users/:id
-```
-
-### Только JSON-RPC
-
-```go
-// Контракт с @tg jsonRPC-server
-
-srv := transport.New(slog.Default(), transport.UserService(&userService{}))
-srv.WithLog()
-_ = srv.Fiber().Listen(":8080")
-// POST /userService, метод в запросе: userService.getUser
-```
-
-### HTTP и JSON-RPC вместе
-
-```go
-// Контракт с @tg jsonRPC-server и @tg http-server, у части методов — http-method и http-path
-
-srv := transport.New(slog.Default(), transport.UserService(&userService{}))
+srv := transport.New(slog.Default(), transport.UserService(impl))
 srv.WithLog()
 srv.WithMetrics()
-_ = srv.Fiber().Listen(":8080")
-```
-
-### Graceful shutdown
-
-```go
-srv := transport.New(slog.Default(), transport.UserService(&userService{}))
-srv.WithLog()
-
-go func() {
-    if err := srv.Fiber().Listen(":8080"); err != nil {
-        log.Fatal(err)
-    }
-}()
-
-quit := make(chan os.Signal, 1)
-signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-<-quit
-
-if err := srv.Shutdown(); err != nil {
+if err := srv.Fiber().Listen(":8080"); err != nil {
     log.Fatal(err)
 }
 ```
 
+### Опции `New`
+
+| Option | Когда / что |
+|--------|-------------|
+| `{Contract}(impl)` | регистрация реализации |
+| `Service(svc)` | произвольный `ServiceRoute` |
+| `SetFiberCfg` | конфиг Fiber (`Immutable`, `StreamRequestBody` и др. форсируются) |
+| `SetReadBufferSize` / `SetWriteBufferSize` / `MaxBodySize` | буферы и лимит тела |
+| `ReadTimeout` / `WriteTimeout` | таймауты |
+| `MaxBatchSize` / `MaxBatchWorkers` | JSON-RPC batch (default 100 / 10) |
+| `MaxOpenStreams(n)` | WS: лимит multiplex stream на соединение (default 64) |
+| `MaxWSConnections(n)` | WS: лимит соединений (default **512**; `0` = без лимита); при насыщении `503` до upgrade |
+| `MaxSSEConnections(n)` | SSE: лимит соединений (default **512**; `0` = off); `503` до parse/stream |
+| `MaxWSMessageSize` | лимит размера WS-кадра |
+| `StreamWriteTimeout` | write deadline для stream |
+| `SetSSEHeartbeat` | heartbeat SSE |
+| `MaxClientIDs(n)` | cardinality `client_id` после normalize (default 64; `0` = off → overflow `other`) |
+| `DurationBuckets` / `LatencyBuckets` | бакеты гистограмм **до** `WithMetrics()` |
+| `WithRequestID` / `WithHeader` | request metadata |
+| `Auth(opts...)` | bearer JWT fail-closed |
+| `Use(...)` | Fiber middleware |
+
+### Auth
+
+При `@tg security` с `http:bearer`:
+
+```go
+transport.Auth(
+    transport.AuthorizationServer(asURL),
+    transport.Resource(resourceURL),
+    transport.Audience(aud...),
+    // опционально: ClientHTTP, ConfigTLS, Bind, Allow, Verify
+)
+```
+
+- Subject после Verify: `srvctx.GetSubject`.
+- `missing`/`invalid` → 401 + `WWW-Authenticate`; отказ `Allow` → 403 без challenge.
+- Неполная AS/Audience отклоняет на `Verify`, не на `New`.
+- При одновременном `ClientHTTP` и `ConfigTLS` побеждает `ClientHTTP` (TLS на custom client).
+- JWKS: RFC 8414 от AS или `|jwks=` в аннотации.
+
+### Health и shutdown
+
+```go
+hs := transport.ServeHealth(log, "/health", ":8081",
+    transport.WithResponse(map[string]string{"status": "ok"}),
+)
+defer hs.Stop()
+
+ready := transport.ServeHealth(log, "/ready", ":8082",
+    transport.WithCheck(func(ctx context.Context) (err error) {
+        return db.PingContext(ctx)
+    }),
+)
+defer ready.Stop()
+
+// остановка API+metrics:
+_ = srv.ShutdownWithTimeout(10 * time.Second)
+// или с дефолтным budget 30s:
+_ = srv.Shutdown()
+```
+
+- **`ServeHealth(log, path, address, opts...)`** — отдельный сервер; опции `WithResponse` / `WithCheck` (probe timeout 5s → `503`). Без `WithResponse` тело успеха — `"ok"`.
+- **`Shutdown` / `ShutdownWithTimeout`** — graceful stop; `Shutdown()` делегирует в `ShutdownWithTimeout(defaultShutdownTimeout)` (30s); HTTP и metrics гасятся параллельно (`errors.Join`).
+
+### JSON-RPC batch и prefix
+
+- Общий batch: **`POST /`**.
+- Дополнительно — mount’ы по `http-prefix` (и предкам) со scoped картой методов.
+- Headers/cookies в batch берутся из overlay контекста на входе batch/method (не из «чужого» Fiber Ctx).
+
+### Метрики и identity
+
+`X-Client-Id` нормализуется (trim, max 64, charset); пустой → `unknown`, мусор → `invalid`. Лейбл `path` — шаблон маршрута Fiber (`unmatched` при промахе). Смена `DurationBuckets`/`LatencyBuckets` ломает дашборды, завязанные на `le`.
+
+Экспорт метрик — отдельный сервер:
+
+```go
+srv.WithMetrics()
+_ = srv.ServeMetrics(log, "/metrics", ":9090")
+// ServeMetrics тоже останавливается в ShutdownWithTimeout
+```
+
+### Streams (WS / SSE)
+
+| Аспект | WS | SSE |
+|--------|----|-----|
+| Контракт | `ws-server` + `stream=…` | `sse-server` + `stream=server` |
+| Соединение | одно upgrade, multiplex RPC-stream | один HTTP-запрос на server-stream |
+| Лимит соединений | `MaxWSConnections` (512 / `0`) | `MaxSSEConnections` (512 / `0`) |
+| Лимит stream | `MaxOpenStreams` (64 на соединение) | — |
+| Размер / deadline | `MaxWSMessageSize`, `StreamWriteTimeout` | `StreamWriteTimeout`, `SetSSEHeartbeat` |
+| Headers/args | из upgrade, connection-scoped | из HTTP-запроса метода |
+| Wire | JSON-RPC notifications `$/stream`, `$/stream.end`, `$/cancel` | `text/event-stream` |
+
+Повторный JSON-RPC `id` среди открытых stream → ошибка duplicate stream id. Переполнение per-stream incoming buffer закрывает этот stream, сессия остальных продолжается.
+
+### Ошибки REST
+
+Для контрактов с `http-server`:
+
+```go
+srv.UserService().WithErrorHandler(func(err error) error {
+    // обернуть/подменить до кодирования ответа
+    return err
+})
+```
+
+Только до `Listen`. У контрактов «только JSON-RPC» такого accessor нет — RPC errors идут в JSON-RPC error object.
+
+### Типичные сценарии запуска
+
+**Только REST** (`http-server` + `http-prefix` + method/path):
+
+```go
+srv := transport.New(log, transport.UserService(impl))
+_ = srv.Fiber().Listen(":8080") // GET /api/v1/users/:id
+```
+
+**Только JSON-RPC** (`jsonRPC-server`):
+
+```go
+// POST /userService  method=userService.getUser
+// batch: POST /  и scoped mounts по prefix
+```
+
+**HTTP + RPC** на одном iface — одна реализация, два wire.
+
+**Graceful stop:**
+
+```go
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+go func() { _ = srv.Fiber().Listen(":8080") }()
+<-ctx.Done()
+_ = srv.ShutdownWithTimeout(10 * time.Second)
+```
+
+### Enums и CSV
+
+- Именованный скаляр с typed `const` (≥2) попадает в модель enums без обязательного `@tg enums` на поле.
+- Слайсы в header/query на wire — CSV; сервер парсит поэлементно.
+
+## На что обратить внимание
+
+1. **Владение кодом**: правьте `contracts/` и реализации сервисов; `transport/` только регенерируйте.
+2. **`--contracts`** фильтрует генерацию, но не «половину проекта» в БД.
+3. **Kafka** в этом плагине не появляется.
+4. **`implicit` args** на клиентах могут исчезнуть из сигнатуры — на сервере wire всё равно нужен.
+5. **Lenient parse** header/query: «тихий» zero-value → задайте `Parse(string)`.
+6. **CSV slices** в header/query — не Go `fmt` slice; клиенты должны слать CSV.
+7. **Multipart** — только последовательное чтение частей.
+8. **Лимиты WS/SSE** по умолчанию 512 соединений; `0` — явно без лимита.
+9. **Observability** на чистом WS/SSE без HTTP/JSON-RPC флагов не ждите тех же Fiber-хуков.
+10. После смены контракта пересоберите модуль и smoke-test маршрутов/stream/cancel.
+
 ## Ограничения
 
-1. Методы контракта должны принимать **`context.Context`** первым аргументом и возвращать **`error`** последним значением.
-2. Все параметры и возвращаемые значения (кроме `error`) должны быть именованными.
-3. Поддерживаются только публичные интерфейсы (имя с заглавной буквы).
-4. Для HTTP-методов нужны аннотации **`http-method`** и **`http-path`**; при использовании **`http-prefix`** в **`http-path`** указывайте путь с ведущим `/`.
-5. В JSON-RPC параметры передаются только в теле запроса (параметры пути не используются).
-6. Типы **`io.Reader`** и **`io.ReadCloser`** в контракте допустимы только при аннотации **`@tg http-server`**.
+1. Первый аргумент метода — `context.Context`, последний результат — `error`; остальные имена обязательны.
+2. Только экспортируемые интерфейсы.
+3. REST требует `http-method` + `http-path`; при `http-prefix` в path указывайте ведущий `/`.
+4. JSON-RPC params только в теле (path params не используются как RPC-параметры).
+5. `io.Reader` / `io.ReadCloser` — только с `http-server`.
+6. OpenAPI/клиенты — отдельные плагины; server не пишет Swagger-файл.
 
-## Зависимости и совместимость
+## Связь с другими плагинами
 
-- Плагин зависит от **astg** (парсинг контрактов и аннотаций).
-- Сгенерированный код использует: **github.com/gofiber/fiber/v2**, **log/slog**, при включённых метриках — **github.com/prometheus/client_golang**, при трассировке — **go.opentelemetry.io/otel**.
-
-Сервер совместим с клиентами, сгенерированными плагинами **client-go** и **client-ts**: аннотации из astg согласованы между сервером и клиентами.
+| Плагин | Связь |
+|--------|-------|
+| `astg` / `astg-json` | модель контрактов; проверка resolved annotations |
+| `init-go` | scaffold с первым `transport/` |
+| `client-go` / `client-ts` | совместимые клиенты по тем же аннотациям |
+| `swagger` | OpenAPI по HTTP-семейству |
+| `kafka-pub-go` / `kafka-sub-go` | события Kafka (не Fiber) |

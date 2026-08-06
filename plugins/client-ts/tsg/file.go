@@ -5,8 +5,11 @@ package tsg
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
+
+	"tgp/internal/generated"
 )
 
 type File struct {
@@ -24,10 +27,12 @@ type importInfo struct {
 	defaulted string
 }
 
-func NewFile() (f *File) {
+func NewFile() (file *File) {
+
 	return &File{
 		imports:     make(map[string]importInfo),
 		statements:  make([]*Statement, 0),
+		comment:     generated.ByToolGatewayComment,
 		indentLevel: 0,
 	}
 }
@@ -68,10 +73,8 @@ func (f *File) ImportAll(path string, alias string) *File {
 
 	info := f.imports[path]
 	info.path = path
-	for _, a := range info.aliases {
-		if a == alias {
-			return f
-		}
+	if slices.Contains(info.aliases, alias) {
+		return f
 	}
 	info.aliases = append(info.aliases, alias)
 	f.imports[path] = info
@@ -147,10 +150,10 @@ func (f *File) Line() *File {
 
 func (f *File) Save(filename string) (err error) {
 
-	if err = os.MkdirAll(filepath.Dir(filename), 0777); err != nil {
+	if err = os.MkdirAll(filepath.Dir(filename), 0o777); err != nil {
 		return
 	}
-	err = os.WriteFile(filename, []byte(f.String()), 0600)
+	err = os.WriteFile(filename, []byte(f.String()), 0o600)
 	return
 }
 

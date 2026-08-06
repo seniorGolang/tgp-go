@@ -46,11 +46,11 @@ type OrderEvents interface {
 			Name: "OrderEvents", PkgPath: "example.com/app/contracts", Annotations: tags.DocTags{"kafka": "", "metrics": "", "trace": ""},
 			Methods: []*model.Method{
 				{Name: "OrderCreated", Annotations: tags.DocTags{"kafka-topic": "orders.created", "kafka-key": "orderID", "kafka-headers": "traceID|x-trace-id", "kafka-message": "event"}, Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}}, {Name: "orderID", TypeRef: model.TypeRef{TypeID: "string"}}, {Name: "traceID", TypeRef: model.TypeRef{TypeID: "string"}}, {Name: "event", TypeRef: model.TypeRef{TypeID: "example.com/app/contracts:Order"}},
-				}, Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}}},
+					{Name: "ctx", TypeID: "context:Context"}, {Name: "orderID", TypeID: "string"}, {Name: "traceID", TypeID: "string"}, {Name: "event", TypeID: "example.com/app/contracts:Order"},
+				}, Results: []*model.Variable{{Name: "err", TypeID: "error"}}},
 				{Name: "OrderBulk", Annotations: tags.DocTags{"kafka-topic": "orders.bulk", "kafka-acks": "noAck", "kafka-key": "tenantID", "kafka-message": "events"}, Args: []*model.Variable{
-					{Name: "ctx", TypeRef: model.TypeRef{TypeID: "context:Context"}}, {Name: "tenantID", TypeRef: model.TypeRef{TypeID: "string"}}, {Name: "events", TypeRef: model.TypeRef{TypeID: "example.com/app/contracts:Order", IsEllipsis: true}},
-				}, Results: []*model.Variable{{Name: "err", TypeRef: model.TypeRef{TypeID: "error"}}}},
+					{Name: "ctx", TypeID: "context:Context"}, {Name: "tenantID", TypeID: "string"}, {Name: "events", TypeID: "example.com/app/contracts:Order", IsEllipsis: true},
+				}, Results: []*model.Variable{{Name: "err", TypeID: "error"}}},
 			},
 		}},
 	}
@@ -127,8 +127,20 @@ type OrderEvents interface {
 	if strings.Contains(string(body), "kgo.LeaderAck()") {
 		t.Fatal("client.go must not create unused leaderAck client")
 	}
-	if !strings.Contains(string(body), "_ = kafkaClient.Flush(context.Background())") {
-		t.Fatal("client.go must check Flush error via blank assign")
+	if !strings.Contains(string(body), "Flush(flushCtx)") {
+		t.Fatal("client.go must Flush with timeout context")
+	}
+	if !strings.Contains(string(body), "AbortBufferedRecords") {
+		t.Fatal("client.go must AbortBufferedRecords when Flush fails")
+	}
+	if strings.Contains(string(body), "Flush(context.Background())") {
+		t.Fatal("client.go must not Flush with context.Background()")
+	}
+	if strings.Contains(string(body), "10 * time.Second") {
+		t.Fatal("client.go must not use a hardcoded Flush timeout")
+	}
+	if !strings.Contains(string(body), "deadline := time.Now().Add(client.shutdownTimeout)") {
+		t.Fatal("client.go must use the configured shutdown deadline")
 	}
 	adaptersBody, err := os.ReadFile(filepath.Join(outDir, "adapters.go"))
 	if err != nil {
@@ -150,6 +162,27 @@ type OrderEvents interface {
 	metrics, err := os.ReadFile(filepath.Join(outDir, "metrics.go"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	clientSrc, err := os.ReadFile(filepath.Join(outDir, "client.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"inflightDone := make(chan struct{})", "inflight.Wait()", "case <-inflightDone:", "release func()"} {
+		if !strings.Contains(string(clientSrc), expected) {
+			t.Fatalf("client.go does not contain %q", expected)
+		}
+	}
+	options, err := os.ReadFile(filepath.Join(outDir, "options.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"func ShutdownTimeout(duration time.Duration) (option Option)", "shutdownTimeout:", "30 * time.Second"} {
+		if !strings.Contains(string(options), expected) {
+			t.Fatalf("options.go does not contain %q", expected)
+		}
+	}
+	if !strings.Contains(string(adaptersBody), "defer release()") {
+		t.Fatal("adapters.go must defer release()")
 	}
 	for _, expected := range []string{"produce_inflight", "prometheus.DefBuckets", "VersionASTg"} {
 		if !strings.Contains(string(metrics), expected) {

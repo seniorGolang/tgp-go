@@ -43,16 +43,19 @@ func TestNewParts_SequentialRead(t *testing.T) {
 	reader := multipart.NewReader(raw, boundary)
 	parts := NewParts(reader, []string{"partA", "partB"}, nil)
 
-	a, err := io.ReadAll(parts[0])
+	a, err := io.ReadAll(parts.Reader(0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := io.ReadAll(parts[1])
+	b, err := io.ReadAll(parts.Reader(1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(a) != "AAA" || string(b) != "BBB" {
 		t.Fatalf("got %q %q", a, b)
+	}
+	if err = parts.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -62,7 +65,7 @@ func TestNewParts_OutOfOrder(t *testing.T) {
 	reader := multipart.NewReader(raw, boundary)
 	parts := NewParts(reader, []string{"partA", "partB"}, nil)
 
-	_, err := io.ReadAll(parts[1])
+	_, err := io.ReadAll(parts.Reader(1))
 	if err == nil || !strings.Contains(err.Error(), "out of order") {
 		t.Fatalf("expected out of order, got %v", err)
 	}
@@ -74,9 +77,12 @@ func TestNewParts_ContentTypeMismatch(t *testing.T) {
 	reader := multipart.NewReader(raw, boundary)
 	parts := NewParts(reader, []string{"partA"}, []string{"application/octet-stream"})
 
-	_, err := io.ReadAll(parts[0])
+	_, err := io.ReadAll(parts.Reader(0))
 	if err == nil || !strings.Contains(err.Error(), "invalid content-type") {
 		t.Fatalf("expected content-type error, got %v", err)
+	}
+	if err = parts.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -86,12 +92,90 @@ func TestNewParts_MissingPart(t *testing.T) {
 	reader := multipart.NewReader(raw, boundary)
 	parts := NewParts(reader, []string{"partA", "partB"}, nil)
 
-	_, err := io.ReadAll(parts[0])
+	_, err := io.ReadAll(parts.Reader(0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = io.ReadAll(parts[1])
+	_, err = io.ReadAll(parts.Reader(1))
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestNewParts_CloseDrainsPartialRead(t *testing.T) {
+
+	payload := strings.Repeat("X", 64*1024)
+	raw, boundary := buildBody(t, []string{"partA", "partB"}, map[string]string{"partA": payload, "partB": "BBB"}, nil)
+	reader := multipart.NewReader(raw, boundary)
+	parts := NewParts(reader, []string{"partA", "partB"}, nil)
+
+	buf := make([]byte, 16)
+	if _, err := parts.Reader(0).Read(buf); err != nil {
+		t.Fatal(err)
+	}
+	if err := parts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := io.ReadAll(parts.Reader(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "BBB" {
+		t.Fatalf("got %q", b)
+	}
+}
+
+func TestNewParts_CloseWithoutReadIsNoop(t *testing.T) {
+
+	raw, boundary := buildBody(t, []string{"partA"}, map[string]string{"partA": "AAA"}, nil)
+	reader := multipart.NewReader(raw, boundary)
+	parts := NewParts(reader, []string{"partA"}, nil)
+	if err := parts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a, err := io.ReadAll(parts.Reader(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != "AAA" {
+		t.Fatalf("got %q", a)
+	}
+}
+
+func TestNewParts_CloseIdempotentAfterEOF(t *testing.T) {
+
+	raw, boundary := buildBody(t, []string{"partA"}, map[string]string{"partA": "AAA"}, nil)
+	reader := multipart.NewReader(raw, boundary)
+	parts := NewParts(reader, []string{"partA"}, nil)
+	if _, err := io.ReadAll(parts.Reader(0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := parts.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := parts.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNewParts_CloseNilParts(t *testing.T) {
+
+	var parts *Parts
+	if err := parts.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNewParts_SkipsUnknownParts(t *testing.T) {
+
+	raw, boundary := buildBody(t, []string{"noise", "partA"}, map[string]string{"noise": "skip", "partA": "AAA"}, nil)
+	reader := multipart.NewReader(raw, boundary)
+	parts := NewParts(reader, []string{"partA"}, nil)
+	a, err := io.ReadAll(parts.Reader(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(a) != "AAA" {
+		t.Fatalf("got %q", a)
 	}
 }

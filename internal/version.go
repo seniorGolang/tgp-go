@@ -1,3 +1,3 @@
 package internal
 
-var Version = "1.0.9"
+var Version = "1.1.0"

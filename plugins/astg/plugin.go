@@ -16,7 +16,6 @@ import (
 	"tgp/core/i18n"
 	"tgp/core/plugin"
 	"tgp/internal"
-	"tgp/internal/helper"
 	"tgp/internal/model"
 	"tgp/plugins/astg/cache"
 	"tgp/plugins/astg/descref"
@@ -48,23 +47,11 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 		contractsDir = contractsDirStr
 	}
 
-	var contractsFilter []string
-	if contractsFilter, err = helper.ParseStringList(request, "contracts"); err != nil {
-		err = fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
-		return
-	}
-
-	contractsDisplay := "all"
-	if len(contractsFilter) > 0 {
-		contractsDisplay = strings.Join(contractsFilter, ", ")
-	}
-
 	var excludeDirs []string
 	noCache, _ := data.Get[bool](request, "no-cache")
 
 	slog.Info(i18n.Msg("analyzing project"),
 		slog.String("contractsDir", contractsDir),
-		slog.String("contracts", contractsDisplay),
 		slog.Bool("no-cache", noCache),
 	)
 
@@ -99,17 +86,6 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 		if projectID != "" {
 			cache.SaveProject(projectID, project, internal.ProjectRoot, contractsDir, excludeDirs)
 		}
-	}
-
-	if len(contractsFilter) > 0 {
-		var filteredContracts []*model.Contract
-		if filteredContracts, err = helper.FilterContractsByInterfaces(project, contractsFilter); err != nil {
-			err = fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts"), err)
-			return
-		}
-		filteredProject := *project
-		filteredProject.Contracts = filteredContracts
-		project = &filteredProject
 	}
 
 	for _, contract := range project.Contracts {
@@ -148,7 +124,7 @@ func (p *AstgPlugin) Execute(request data.Storage) (response data.Storage, err e
 func saveProjectJSON(project *model.Project) (err error) {
 
 	dir := filepath.Join(internal.ProjectRoot, ".tg")
-	if err = os.MkdirAll(dir, 0700); err != nil {
+	if err = os.MkdirAll(dir, 0o700); err != nil {
 		return
 	}
 
@@ -158,7 +134,7 @@ func saveProjectJSON(project *model.Project) (err error) {
 	}
 
 	path := filepath.Join(dir, "project.json")
-	return os.WriteFile(path, jsonData, 0600)
+	return os.WriteFile(path, jsonData, 0o600)
 }
 
 func (p *AstgPlugin) Info() (info plugin.Info, err error) {

@@ -8,16 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
-	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/plugins/server/renderer/types"
 )
 
 func (r *contractRenderer) RenderLogger() (err error) {
 
-	if err = r.pkgRenderTo("srvctx", r.outDir, newPkgTemplateData()); err != nil {
+	if err = r.pkgRenderTo("srvctx", r.outDir, r.srvctxTemplateData()); err != nil {
 		return fmt.Errorf("render srvctx package: %w", err)
 	}
 	if err = r.pkgRenderTo("viewer", r.outDir, newPkgTemplateData()); err != nil {
@@ -25,12 +24,10 @@ func (r *contractRenderer) RenderLogger() (err error) {
 	}
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	srcFile.ImportName(PackageSlog, "slog")
-	srcFile.ImportName(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "srvctx")
+	srcFile.ImportName(r.pkgPath(r.outDir)+"/srvctx", "srvctx")
 	srcFile.ImportName(PackageTime, "time")
-	srcFile.ImportName(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "viewer")
+	srcFile.ImportName(r.pkgPath(r.outDir)+"/viewer", "viewer")
 	srcFile.ImportName(r.contract.PkgPath, filepath.Base(r.contract.PkgPath))
 
 	typeGen := types.NewGenerator(r.project, &srcFile)
@@ -69,36 +66,28 @@ func (r *contractRenderer) loggerMiddleware() (c Code) {
 
 func (r *contractRenderer) loggerFuncBody(method *model.Method) func(bg *Group) {
 
-	skipFields := strings.Split(model.GetAnnotationValue(r.project, r.contract, method, nil, TagLogSkip, ""), ",")
-	skipRequest := false
-	skipResponse := false
-	for _, field := range skipFields {
-		field = strings.TrimSpace(field)
-		if field == "request" {
-			skipRequest = true
-		}
-		if field == "response" {
-			skipResponse = true
-		}
-	}
+	sides, names := model.MethodLogSkip(r.project, r.contract, method)
+	reqValue := r.requestLogValue(method, names)
+	respValue := r.responseLogValues(method, names)
+	skipRequest := sides.Request || reqValue == nil
+	skipResponse := sides.Response || respValue == nil
 
-	capSuccess := 1
+	capacity := 1
 	if !skipRequest {
-		capSuccess++
+		capacity++
 	}
 	if !skipResponse {
-		capSuccess++
+		capacity++
 	}
-	capError := capSuccess + 1
+	capacity++
 
 	return func(bg *Group) {
-		bg.Id("sLogger").Op(":=").Qual(fmt.Sprintf("%s/srvctx", r.pkgPath(r.outDir)), "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id(VarNameCtx))
+		bg.Id("sLogger").Op(":=").Qual(r.pkgPath(r.outDir)+"/srvctx", "FromCtx").Types(Op("*").Qual(PackageSlog, "Logger")).Call(Id(VarNameCtx))
 		bg.If(Id("sLogger").Op("==").Nil()).Block(
 			Id("sLogger").Op("=").Qual(PackageSlog, "Default").Call(),
 		)
 		bg.Id("_begin_").Op(":=").Qual(PackageTime, "Now").Call()
 		bg.Defer().Func().Params().BlockFunc(func(bg *Group) {
-			// При панике не выполняем логирование ниже — только пробрасываем (обработка в recoverHandler)
 			bg.Id("r").Op(":=").Id("recover").Call()
 			bg.If(Id("r").Op("!=").Nil()).Block(
 				Id("panic").Call(Id("r")),
@@ -110,37 +99,71 @@ func (r *contractRenderer) loggerFuncBody(method *model.Method) func(bg *Group) 
 					Op("!").Id("sLogger").Dot("Enabled").Call(Id(VarNameCtx), Qual(PackageSlog, "LevelError")).Op("&&").Id("err").Op("!=").Nil(),
 			).Block(Return())
 
-			r.loggerDeferAttrsBlock(bg, method, skipRequest, skipResponse, skipFields, capError)
+			r.loggerDeferAttrsBlock(bg, skipRequest, skipResponse, reqValue, respValue, capacity)
 			bg.If(Id("err").Op("!=").Nil()).Block(
 				Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(PackageSlog, "Any").Call(Lit("error"), Err())),
 			)
 			bg.If(Id("err").Op("!=").Nil()).Block(
-				Id("sLogger").Dot("Error").Call(Lit(fmt.Sprintf("call %s", toLowerCamel(method.Name))), Id("_attrs_").Op("...")),
+				Id("sLogger").Dot("Error").Call(Lit("call "+toLowerCamel(method.Name)), Id("_attrs_").Op("...")),
 				Return(),
 			)
-			bg.Id("sLogger").Dot("Info").Call(Lit(fmt.Sprintf("call %s", toLowerCamel(method.Name))), Id("_attrs_").Op("..."))
+			bg.Id("sLogger").Dot("Info").Call(Lit("call "+toLowerCamel(method.Name)), Id("_attrs_").Op("..."))
 		}).Call()
 		bg.Return().Id("m").Dot(VarNameNext).Dot(method.Name).Call(r.paramNames(method.Args))
 	}
 }
 
-func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, method *model.Method, skipRequest bool, skipResponse bool, skipFields []string, capacity int) {
+func (r *contractRenderer) loggerDeferAttrsBlock(bg *Group, skipRequest bool, skipResponse bool, reqValue Code, respValue Code, capacity int) {
 
 	bg.Id("_attrs_").Op(":=").Make(Index().Any(), Lit(0), Lit(capacity))
 	bg.Id("_attrs_").Op("=").Append(Id("_attrs_"),
 		Qual(PackageSlog, "String").Call(Lit("took"), Qual(PackageTime, "Since").Call(Id("_begin_")).Dot("String").Call()),
 	)
-	if !skipRequest {
-		reqValue := Id(requestStructName(r.contract.Name, method.Name)).Values(DictFunc(func(d Dict) {
-			for _, arg := range streamVariables(r.project, argsWithoutContext(method), false) {
-				d[Id(r.requestStructFieldName(method, arg))] = Id(arg.Name)
+	if !skipRequest && reqValue != nil {
+		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(r.pkgPath(r.outDir)+"/viewer", "Any").Call(Lit("request"), reqValue))
+	}
+	if !skipResponse && respValue != nil {
+		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(r.pkgPath(r.outDir)+"/viewer", "Any").Call(Lit("response"), respValue))
+	}
+}
+
+func (r *contractRenderer) requestLogValue(method *model.Method, names map[string]struct{}) (value Code) {
+
+	logged := r.loggerLoggedArgs(method, names)
+	if len(logged) == 0 {
+		return nil
+	}
+	if r.varsNeedLogProjection(logged) {
+		return Map(String()).Any().Values(DictFunc(func(d Dict) {
+			for _, arg := range logged {
+				d[Lit(r.requestStructFieldName(method, arg))] = r.logViewExpr(&arg.TypeRef, Id(arg.Name))
 			}
 		}))
-		bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("request"), reqValue))
 	}
-	if !skipResponse {
-		if respValues := r.responseLogValues(method); respValues != nil {
-			bg.Id("_attrs_").Op("=").Append(Id("_attrs_"), Qual(fmt.Sprintf("%s/viewer", r.pkgPath(r.outDir)), "Any").Call(Lit("response"), respValues))
+	return Id(requestStructName(r.contract.Name, method.Name)).Values(DictFunc(func(d Dict) {
+		for _, arg := range logged {
+			d[Id(r.requestStructFieldName(method, arg))] = Id(arg.Name)
+		}
+	}))
+}
+
+func (r *contractRenderer) loggerLoggedArgs(method *model.Method, names map[string]struct{}) (logged []*model.Variable) {
+
+	for _, arg := range streamVariables(r.project, argsWithoutContext(method), false) {
+		if model.VariableLogSkipped(method, arg, names) {
+			continue
+		}
+		logged = append(logged, arg)
+	}
+	return
+}
+
+func (r *contractRenderer) varsNeedLogProjection(vars []*model.Variable) (needed bool) {
+
+	for _, v := range vars {
+		if model.TypeRefNeedsLogProjection(r.project, &v.TypeRef) {
+			return true
 		}
 	}
+	return false
 }

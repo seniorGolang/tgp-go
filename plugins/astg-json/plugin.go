@@ -18,10 +18,10 @@ const (
 	optionAllContracts = "all-contracts"
 )
 
-// AstgJsonPlugin реализует command-плагин: выводит модель проекта astg в формате JSON.
-type AstgJsonPlugin struct{}
+// AstgJSONPlugin реализует command-плагин: выводит модель проекта astg в формате JSON.
+type AstgJSONPlugin struct{}
 
-func (p *AstgJsonPlugin) Execute(request data.Storage) (response data.Storage, err error) {
+func (p *AstgJSONPlugin) Execute(request data.Storage) (response data.Storage, err error) {
 
 	response = request
 
@@ -39,7 +39,7 @@ func (p *AstgJsonPlugin) Execute(request data.Storage) (response data.Storage, e
 	return
 }
 
-func (p *AstgJsonPlugin) Info() (info plugin.Info, err error) {
+func (p *AstgJSONPlugin) Info() (info plugin.Info, err error) {
 
 	info = plugin.Info{
 		Name:          "astg-json",

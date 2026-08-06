@@ -1,0 +1,223 @@
+{{.DoNotEditComment}}
+package bearer
+
+import (
+	"context"
+	"crypto/tls"
+	"fmt"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
+)
+
+const jwksNegativeTTL = 30 * time.Second
+
+var validJWTMethods = []string{
+	"EdDSA",
+	"RS256", "RS384", "RS512",
+	"ES256", "ES384", "ES512",
+	"PS256", "PS384", "PS512",
+}
+
+type Config struct {
+	AuthorizationServer string
+	Audience            string
+	Client              *http.Client
+	TLS                 *tls.Config
+}
+
+type Verifier struct {
+	cfg Config
+
+	mu       sync.Mutex
+	cache    map[string]subjectKeys
+	inflight map[string]*jwksLoad
+}
+
+type subjectKeys struct {
+	issuer    string
+	keys      map[string]any
+	negative  bool
+	expiresAt time.Time
+}
+
+type jwksLoad struct {
+	done chan struct{}
+	keys subjectKeys
+	err  error
+}
+
+func NewVerifier(cfg Config) (verifier *Verifier) {
+
+	cfg.AuthorizationServer = strings.TrimRight(strings.TrimSpace(cfg.AuthorizationServer), "/")
+	cfg.Audience = strings.TrimSpace(cfg.Audience)
+	if cfg.Client == nil {
+		cfg.Client = defaultClient(cfg.TLS)
+	}
+
+	verifier = &Verifier{
+		cfg:      cfg,
+		cache:    make(map[string]subjectKeys),
+		inflight: make(map[string]*jwksLoad),
+	}
+	return
+}
+
+func defaultClient(tlsCfg *tls.Config) (client *http.Client) {
+
+	return &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			ForceAttemptHTTP2:     true,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   10,
+			IdleConnTimeout:       60 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: time.Second,
+			TLSClientConfig:       tlsCfg,
+		},
+	}
+}
+
+func (verifier *Verifier) Verify(ctx context.Context, rawToken string) (subject string, claims map[string]any, err error) {
+
+	if verifier.cfg.AuthorizationServer == "" || verifier.cfg.Audience == "" {
+		err = fmt.Errorf("bearer: verifier is not configured")
+		return
+	}
+	rawToken = strings.TrimSpace(rawToken)
+	if rawToken == "" {
+		err = fmt.Errorf("bearer: token is empty")
+		return
+	}
+
+	var unverified jwt.MapClaims
+	var parsed *jwt.Token
+	if parsed, _, err = jwt.NewParser().ParseUnverified(rawToken, &unverified); err != nil {
+		err = fmt.Errorf("bearer: invalid token: %w", err)
+		return
+	}
+
+	var ok bool
+	if subject, ok = unverified["sub"].(string); !ok || subject == "" {
+		err = fmt.Errorf("bearer: subject is missing")
+		return
+	}
+
+	kid, _ := parsed.Header["kid"].(string)
+	if kid == "" {
+		kid, _ = unverified["kid"].(string)
+	}
+	if kid == "" {
+		err = fmt.Errorf("bearer: kid is missing")
+		return
+	}
+
+	var publicKey any
+	var issuer string
+	if publicKey, issuer, err = verifier.keyFor(ctx, unverified, kid); err != nil {
+		return
+	}
+
+	verified := jwt.MapClaims{}
+	parserOpts := []jwt.ParserOption{
+		jwt.WithAudience(verifier.cfg.Audience),
+		jwt.WithExpirationRequired(),
+		jwt.WithValidMethods(validJWTMethods),
+	}
+	if issuer != "" {
+		parserOpts = append(parserOpts, jwt.WithIssuer(issuer))
+	}
+	parser := jwt.NewParser(parserOpts...)
+	if _, err = parser.ParseWithClaims(rawToken, verified, func(token *jwt.Token) (key any, keyErr error) {
+		return publicKey, nil
+	}); err != nil {
+		err = fmt.Errorf("bearer: validate: %w", err)
+		return
+	}
+
+	claims = map[string]any(verified)
+	if subject, ok = claims["sub"].(string); !ok || subject == "" {
+		err = fmt.Errorf("bearer: subject is missing")
+		return
+	}
+	return
+}
+
+func (verifier *Verifier) keyFor(ctx context.Context, claims jwt.MapClaims, kid string) (publicKey any, issuer string, err error) {
+
+	var path string
+	var cacheKey string
+	if path, cacheKey, err = buildJWKSPath(claims, kid); err != nil {
+		return
+	}
+
+	now := time.Now()
+	verifier.mu.Lock()
+	if cached, ok := verifier.cache[cacheKey]; ok {
+		if cached.negative {
+			if now.Before(cached.expiresAt) {
+				verifier.mu.Unlock()
+				err = fmt.Errorf("bearer: jwks temporarily unavailable")
+				return
+			}
+		} else if key, found := cached.keys[kid]; found {
+			verifier.mu.Unlock()
+			return key, cached.issuer, nil
+		}
+	}
+	if load, ok := verifier.inflight[cacheKey]; ok {
+		verifier.mu.Unlock()
+		select {
+		case <-load.done:
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		}
+		if load.err != nil {
+			err = load.err
+			return
+		}
+		key, found := load.keys.keys[kid]
+		if !found {
+			err = fmt.Errorf("bearer: key %q not found", kid)
+			return
+		}
+		return key, load.keys.issuer, nil
+	}
+	load := &jwksLoad{done: make(chan struct{})}
+	verifier.inflight[cacheKey] = load
+	verifier.mu.Unlock()
+
+	var keys subjectKeys
+	keys, err = verifier.fetchKeysFor(ctx, path)
+
+	verifier.mu.Lock()
+	if err == nil {
+		verifier.cache[cacheKey] = keys
+	} else {
+		verifier.cache[cacheKey] = subjectKeys{
+			negative:  true,
+			expiresAt: now.Add(jwksNegativeTTL),
+		}
+	}
+	load.keys = keys
+	load.err = err
+	delete(verifier.inflight, cacheKey)
+	close(load.done)
+	verifier.mu.Unlock()
+	if err != nil {
+		return
+	}
+	key, found := keys.keys[kid]
+	if !found {
+		err = fmt.Errorf("bearer: key %q not found", kid)
+		return
+	}
+	return key, keys.issuer, nil
+}

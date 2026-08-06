@@ -17,7 +17,7 @@ jobs:
       plugins: ${{ steps.set_plugins.outputs.plugins }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Extract version from tag
@@ -49,13 +49,12 @@ jobs:
       matrix:
         plugin: ${{ fromJSON(needs.detect_plugins.outputs.plugins) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          cache: true
 
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -99,7 +98,7 @@ jobs:
           gzip -9 -c "$PLUGIN_DIR_PATH/$PLUGIN_NAME.tgp" > "$PLUGIN_DIR_PATH/$PLUGIN_NAME.tgp.tmp" && mv "$PLUGIN_DIR_PATH/$PLUGIN_NAME.tgp.tmp" "$PLUGIN_DIR_PATH/$PLUGIN_NAME.tgp"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.plugin }}-artifacts
           path: |
@@ -111,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y jq wget
@@ -123,7 +122,7 @@ jobs:
           yq --version
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts/
 
@@ -255,7 +254,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: ${{ steps.prepare.outputs.files }}

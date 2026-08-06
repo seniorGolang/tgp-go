@@ -210,6 +210,7 @@ type ParseFromStringInfo struct {
 type StructField struct {
 	TypeRef     `json:",inline"`
 	Name        string              `json:"name"`
+	Anonymous   bool                `json:"anonymous,omitempty"`
 	Tags        map[string][]string `json:"tags,omitempty"`
 	Docs        []string            `json:"docs,omitempty"`
 	Directives  []string            `json:"directives,omitempty"`

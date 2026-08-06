@@ -29,7 +29,7 @@ func NewChart(w io.Writer, opts ...Option) (ch *Chart) {
 
 	lines := []string{"quadrantChart"}
 	if c.title != noTitle {
-		lines = append(lines, fmt.Sprintf("    title %s", c.title))
+		lines = append(lines, "    title "+c.title)
 	}
 
 	return &Chart{
@@ -63,7 +63,7 @@ func (ch *Chart) XAxis(leftLabel string, rightLabel ...string) *Chart {
 	if len(rightLabel) > 0 && rightLabel[0] != "" {
 		ch.body = append(ch.body, fmt.Sprintf("    x-axis %s --> %s", leftLabel, rightLabel[0]))
 	} else {
-		ch.body = append(ch.body, fmt.Sprintf("    x-axis %s", leftLabel))
+		ch.body = append(ch.body, "    x-axis "+leftLabel)
 	}
 	return ch
 }
@@ -73,32 +73,32 @@ func (ch *Chart) YAxis(bottomLabel string, topLabel ...string) *Chart {
 	if len(topLabel) > 0 && topLabel[0] != "" {
 		ch.body = append(ch.body, fmt.Sprintf("    y-axis %s --> %s", bottomLabel, topLabel[0]))
 	} else {
-		ch.body = append(ch.body, fmt.Sprintf("    y-axis %s", bottomLabel))
+		ch.body = append(ch.body, "    y-axis "+bottomLabel)
 	}
 	return ch
 }
 
 func (ch *Chart) Quadrant1(label string) *Chart {
 
-	ch.body = append(ch.body, fmt.Sprintf("    quadrant-1 %s", label))
+	ch.body = append(ch.body, "    quadrant-1 "+label)
 	return ch
 }
 
 func (ch *Chart) Quadrant2(label string) *Chart {
 
-	ch.body = append(ch.body, fmt.Sprintf("    quadrant-2 %s", label))
+	ch.body = append(ch.body, "    quadrant-2 "+label)
 	return ch
 }
 
 func (ch *Chart) Quadrant3(label string) *Chart {
 
-	ch.body = append(ch.body, fmt.Sprintf("    quadrant-3 %s", label))
+	ch.body = append(ch.body, "    quadrant-3 "+label)
 	return ch
 }
 
 func (ch *Chart) Quadrant4(label string) *Chart {
 
-	ch.body = append(ch.body, fmt.Sprintf("    quadrant-4 %s", label))
+	ch.body = append(ch.body, "    quadrant-4 "+label)
 	return ch
 }
 
@@ -119,16 +119,16 @@ func (ps PointStyle) String() string {
 
 	var parts []string
 	if ps.Color != "" {
-		parts = append(parts, fmt.Sprintf("color: %s", ps.Color))
+		parts = append(parts, "color: "+ps.Color)
 	}
 	if ps.Radius > 0 {
 		parts = append(parts, fmt.Sprintf("radius: %d", ps.Radius))
 	}
 	if ps.StrokeWidth != "" {
-		parts = append(parts, fmt.Sprintf("stroke-width: %s", ps.StrokeWidth))
+		parts = append(parts, "stroke-width: "+ps.StrokeWidth)
 	}
 	if ps.StrokeColor != "" {
-		parts = append(parts, fmt.Sprintf("stroke-color: %s", ps.StrokeColor))
+		parts = append(parts, "stroke-color: "+ps.StrokeColor)
 	}
 	return strings.Join(parts, ", ")
 }
@@ -173,16 +173,16 @@ func (cs ClassStyle) String() string {
 
 	var parts []string
 	if cs.Color != "" {
-		parts = append(parts, fmt.Sprintf("color: %s", cs.Color))
+		parts = append(parts, "color: "+cs.Color)
 	}
 	if cs.Radius > 0 {
 		parts = append(parts, fmt.Sprintf("radius: %d", cs.Radius))
 	}
 	if cs.StrokeWidth != "" {
-		parts = append(parts, fmt.Sprintf("stroke-width: %s", cs.StrokeWidth))
+		parts = append(parts, "stroke-width: "+cs.StrokeWidth)
 	}
 	if cs.StrokeColor != "" {
-		parts = append(parts, fmt.Sprintf("stroke-color: %s", cs.StrokeColor))
+		parts = append(parts, "stroke-color: "+cs.StrokeColor)
 	}
 	return strings.Join(parts, ", ")
 }

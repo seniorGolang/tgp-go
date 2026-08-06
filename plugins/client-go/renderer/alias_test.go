@@ -29,7 +29,7 @@ func TestRenderClientTypes_NamedSlice(t *testing.T) {
 				ImportPkgPath: dtoPkg,
 				PkgName:       "dto",
 				StructFields: []*model.StructField{
-					{Name: "scope", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "scope", TypeID: "string"},
 				},
 			},
 			detailsID: {

@@ -1,0 +1,85 @@
+{{.DoNotEditComment}}
+package token
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+)
+
+type Metadata struct {
+	Resource               string   `json:"resource"`
+	AuthorizationServers   []string `json:"authorization_servers,omitempty"`
+	BearerMethodsSupported []string `json:"bearer_methods_supported,omitempty"`
+	Audience               string   `json:"audience,omitempty"`
+}
+
+const wellKnownPath = "/.well-known/oauth-protected-resource"
+
+func WellKnownURL(requestURL *url.URL) (metadataURL string) {
+
+	if requestURL == nil || requestURL.Scheme == "" || requestURL.Host == "" {
+		return ""
+	}
+	return requestURL.Scheme + "://" + requestURL.Host + wellKnownPath
+}
+
+func ResourceMetadataURL(wwwAuthenticate string) (metadataURL string) {
+
+	const key = `resource_metadata="`
+	index := strings.Index(wwwAuthenticate, key)
+	if index < 0 {
+		return ""
+	}
+	rest := wwwAuthenticate[index+len(key):]
+	end := strings.IndexByte(rest, '"')
+	if end < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:end])
+}
+
+func FetchMetadata(ctx context.Context, metadataURL string, client *http.Client) (meta Metadata, err error) {
+
+	metadataURL = strings.TrimSpace(metadataURL)
+	if metadataURL == "" {
+		err = fmt.Errorf("token: metadata URL is empty")
+		return
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	var req *http.Request
+	if req, err = http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil); err != nil {
+		return
+	}
+	var resp *http.Response
+	if resp, err = client.Do(req); err != nil {
+		err = fmt.Errorf("token: fetch metadata: %w", err)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var body []byte
+	if body, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20)); err != nil {
+		err = fmt.Errorf("token: read metadata: %w", err)
+		return
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		err = fmt.Errorf("token: metadata status %d", resp.StatusCode)
+		return
+	}
+	if err = json.Unmarshal(body, &meta); err != nil {
+		err = fmt.Errorf("token: decode metadata: %w", err)
+		return
+	}
+	if strings.TrimSpace(meta.Audience) == "" {
+		err = fmt.Errorf("token: metadata audience is empty")
+	}
+	return
+}

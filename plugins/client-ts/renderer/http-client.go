@@ -3,6 +3,7 @@
 package renderer
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"path"
@@ -12,7 +13,6 @@ import (
 	"tgp/core/i18n"
 	"tgp/internal/common"
 	"tgp/internal/content"
-	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
@@ -20,7 +20,7 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 
 	if contract == nil {
 		slog.Error(i18n.Msg("RenderHTTPClientClass: contract is nil"))
-		return fmt.Errorf("contract is nil")
+		return errors.New("contract is nil")
 	}
 	if contract.PkgPath == "" {
 		slog.Error(i18n.Msg("RenderHTTPClientClass: contract.PkgPath is empty"), slog.String("contract", contract.Name))
@@ -30,12 +30,11 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 	outDir := r.outDir
 	r.contract = contract
 	r.knownTypes = make(map[string]int)
-	r.typeDefTs = make(map[string]typeDefTs)
+	r.typeDefTS = make(map[string]typeDefTS)
 	r.needParseFormValueHelper = false
+	r.needParseCSVFormHelper = false
 
 	file := tsg.NewFile()
-	file.Comment(generated.ByToolGatewayComment)
-
 	file.ImportNamed("./client", "Client")
 
 	file.Line()
@@ -101,14 +100,14 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		}
 	}
 	hasDtoTypes := false
-	for _, def := range common.SortedPairs(r.typeDefTs) {
-		if def.importPkg == "dto" {
+	for _, def := range common.SortedPairs(r.typeDefTS) {
+		if def.importPkg == pkgDTO {
 			hasDtoTypes = true
 			break
 		}
 	}
 	if hasDtoTypes {
-		file.ImportAll(exchangePath, "dto")
+		file.ImportAll(exchangePath, pkgDTO)
 	}
 
 	importedTypes := make(map[string]bool)
@@ -116,10 +115,10 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		importedTypes[typeName] = true
 	}
 
-	typeByPackage := make(map[string][]typeDefTs)
-	var standaloneTypes []typeDefTs
+	typeByPackage := make(map[string][]typeDefTS)
+	var standaloneTypes []typeDefTS
 
-	for _, def := range common.SortedPairs(r.typeDefTs) {
+	for _, def := range common.SortedPairs(r.typeDefTS) {
 		typeName := def.importName
 		if typeName == "" {
 			typeName = def.name
@@ -127,7 +126,7 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 		if importedTypes[typeName] {
 			continue
 		}
-		if def.importPkg == "dto" {
+		if def.importPkg == pkgDTO {
 			continue
 		}
 
@@ -181,16 +180,20 @@ func (r *ClientRenderer) RenderHTTPClientClass(contract *model.Contract) (err er
 	}
 
 	clientClass := r.renderHTTPClientClass(contract)
-	if r.needParseFormValueHelper {
-		file.Add(r.renderFormParseHelper())
-		file.Line()
+	switch {
+	case r.needParseFormValueHelper && r.needParseCSVFormHelper:
+		file.ImportNamed("./form", "parseFormValue", "parseCSVFormValue")
+	case r.needParseCSVFormHelper:
+		file.ImportNamed("./form", "parseCSVFormValue")
+	case r.needParseFormValueHelper:
+		file.ImportNamed("./form", "parseFormValue")
 	}
 	file.Add(clientClass)
 	file.Line()
 
 	file.GenerateImports()
 
-	outFilename := path.Join(outDir, fmt.Sprintf("%s-http.ts", r.tsFileName(contract)))
+	outFilename := path.Join(outDir, r.tsFileName(contract)+"-http.ts")
 	return file.Save(outFilename)
 }
 
@@ -199,20 +202,20 @@ func (r *ClientRenderer) renderHTTPClientClass(contract *model.Contract) (st *ts
 	currentContract := contract
 
 	stmt := tsg.NewStatement()
-	stmt.Comment(fmt.Sprintf("HTTP клиент для сервиса %s", contract.Name))
+	stmt.Comment("HTTP клиент для сервиса " + contract.Name)
 	stmt.Export().Class(contract.Name+"HTTPClient", func(grp *tsg.Group) {
-		grp.Add(tsg.NewStatement().Private().Id("baseClient").Colon().Id("Client").Semicolon())
+		grp.Add(tsg.NewStatement().Private().ID("baseClient").Colon().ID("Client").Semicolon())
 		grp.Line()
 
 		constructor := tsg.NewStatement()
 		constructor.Comment(fmt.Sprintf("Creates a new HTTP client for %s service", contract.Name))
 		constructorStmt := tsg.NewStatement()
-		constructorStmt.Id("constructor")
+		constructorStmt.ID("constructor")
 		constructorStmt.Params(func(cg *tsg.Group) {
-			cg.Add(tsg.NewStatement().Id("_baseClient").Colon().Id("Client"))
+			cg.Add(tsg.NewStatement().ID("_baseClient").Colon().ID("Client"))
 		})
 		constructorStmt.Block(func(cg *tsg.Group) {
-			cg.Add(tsg.NewStatement().This().Dot("baseClient").Op("=").Id("_baseClient").Semicolon())
+			cg.Add(tsg.NewStatement().This().Dot("baseClient").Op("=").ID("_baseClient").Semicolon())
 		})
 		grp.Add(constructorStmt)
 		grp.Line()

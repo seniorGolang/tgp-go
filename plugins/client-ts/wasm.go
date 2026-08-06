@@ -9,7 +9,7 @@ import (
 
 func init() {
 
-	core.InitPlugin(&ClientTsPlugin{})
+	core.InitPlugin(&ClientTSPlugin{})
 }
 
 func main() {

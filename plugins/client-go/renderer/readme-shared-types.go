@@ -4,6 +4,7 @@ package renderer
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"tgp/internal/common"
@@ -15,7 +16,7 @@ import (
 func (r *ClientRenderer) renderAllTypes(md *markdown.Markdown, allTypes map[string]*typeUsage) {
 
 	sharedTypesAnchor := generateAnchor("Общие типы")
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", sharedTypesAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", sharedTypesAnchor))
 	md.LF()
 	md.H2("Общие типы")
 	md.PlainText("Типы данных, используемые в клиенте. Типы, используемые в нескольких методах, описаны здесь для избежания дублирования.")
@@ -40,14 +41,14 @@ func (r *ClientRenderer) renderAllTypes(md *markdown.Markdown, allTypes map[stri
 		} else {
 			// Если тип не найден, не структура или из внешней библиотеки, выводим только заголовок
 			typeAnchor := typeAnchorID(usage.fullTypeName)
-			md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", typeAnchor))
+			md.PlainText(fmt.Sprintf("<a id=%q></a>", typeAnchor))
 			md.LF()
 			md.H4(usage.fullTypeName)
 
 			// Если тип из внешней библиотеки, добавляем информацию о библиотеке
 			if isExternal {
 				importPath := typ.ImportPkgPath
-				libURL := fmt.Sprintf("https://pkg.go.dev/%s", importPath)
+				libURL := "https://pkg.go.dev/" + importPath
 				md.PlainText(fmt.Sprintf("Тип из внешней библиотеки: [%s](%s)", importPath, libURL))
 				md.LF()
 			}
@@ -57,6 +58,29 @@ func (r *ClientRenderer) renderAllTypes(md *markdown.Markdown, allTypes map[stri
 	}
 
 	md.HorizontalRule()
+}
+
+func (r *ClientRenderer) collectStructReadmeFields(structType *model.Type) (fields []*model.StructField) {
+
+	if structType == nil {
+		return nil
+	}
+
+	for _, field := range structType.StructFields {
+		_, inline := r.jsonName(field)
+		if inline && model.StructFieldEmbedded(r.project, field) {
+			embedded, ok := r.project.Types[field.TypeID]
+			if !ok || embedded.Kind != model.TypeKindStruct {
+				fields = append(fields, field)
+				continue
+			}
+			fields = append(fields, embedded.StructFields...)
+			continue
+		}
+		fields = append(fields, field)
+	}
+
+	return
 }
 
 func (r *ClientRenderer) getTypeLinkFromStructField(field *model.StructField, pkgPath string) string {
@@ -136,7 +160,7 @@ func (r *ClientRenderer) getTypeLink(typeID, pkgPath string) string {
 	typ, ok := r.project.Types[typeID]
 	if ok && typ.ImportPkgPath != "" && !r.isTypeFromCurrentProject(typ.ImportPkgPath) {
 		importPath := typ.ImportPkgPath
-		libURL := fmt.Sprintf("https://pkg.go.dev/%s", importPath)
+		libURL := "https://pkg.go.dev/" + importPath
 		typeStr := r.goTypeString(typeID, pkgPath)
 		return fmt.Sprintf("[%s](%s)", typeStr, libURL)
 	}
@@ -147,12 +171,12 @@ func (r *ClientRenderer) getTypeLink(typeID, pkgPath string) string {
 func (r *ClientRenderer) renderStructTypeTable(md *markdown.Markdown, structType *model.Type, typeName string, pkgPath string) {
 
 	typeAnchor := typeAnchorID(typeName)
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", typeAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", typeAnchor))
 	md.LF()
 	md.H4(typeName)
 
 	rows := make([][]string, 0)
-	for _, field := range structType.StructFields {
+	for _, field := range r.collectStructReadmeFields(structType) {
 		fieldName, _ := r.jsonName(field)
 		if fieldName == "-" {
 			continue
@@ -166,27 +190,24 @@ func (r *ClientRenderer) renderStructTypeTable(md *markdown.Markdown, structType
 		fieldDesc := fieldTags[tagDesc]
 
 		isRequired := fieldTags[model.TagRequired] != ""
-		requiredStr := "Нет"
+		requiredStr := labelNo
 		if isRequired {
 			requiredStr = "Да"
 		}
 
 		isNullable := field.NumberOfPointers > 0
-		nullableStr := "Нет"
+		nullableStr := labelNo
 		if isNullable {
 			nullableStr = "Да"
 		}
 
 		hasOmitempty := false
-		if tagValues, ok := field.Tags["json"]; ok {
-			for _, val := range tagValues {
-				if val == "omitempty" {
-					hasOmitempty = true
-					break
-				}
+		if tagValues, ok := field.Tags[keyJSON]; ok {
+			if slices.Contains(tagValues, "omitempty") {
+				hasOmitempty = true
 			}
 		}
-		omitemptyStr := "Нет"
+		omitemptyStr := labelNo
 		if hasOmitempty {
 			omitemptyStr = "Да"
 		}
@@ -217,7 +238,7 @@ func (r *ClientRenderer) renderStructTypeTable(md *markdown.Markdown, structType
 
 	var headers []string
 	hasDescriptions := false
-	for _, field := range structType.StructFields {
+	for _, field := range r.collectStructReadmeFields(structType) {
 		fieldTags := r.parseTagsFromDocs(strings.Join(field.Docs, "\n"))
 		fieldDesc := fieldTags[tagDesc]
 		if fieldDesc != "" {
@@ -227,9 +248,9 @@ func (r *ClientRenderer) renderStructTypeTable(md *markdown.Markdown, structType
 	}
 
 	if hasDescriptions {
-		headers = []string{"Поле", "Тип", "Описание", "Обязательное", "Nullable", "Omitempty", "Ссылка на тип"}
+		headers = []string{labelField, labelType, labelDescription, "Обязательное", "Nullable", "Omitempty", labelTypeRef}
 	} else {
-		headers = []string{"Поле", "Тип", "Обязательное", "Nullable", "Omitempty", "Ссылка на тип"}
+		headers = []string{labelField, labelType, "Обязательное", "Nullable", "Omitempty", labelTypeRef}
 	}
 
 	tableSet := markdown.TableSet{

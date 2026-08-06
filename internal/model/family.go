@@ -20,7 +20,7 @@ func ContractIsHTTPFamily(project *Project, contract *Contract) (ok bool) {
 		return false
 	}
 	return IsAnnotationSet(project, contract, nil, nil, TagServerHTTP) ||
-		IsAnnotationSet(project, contract, nil, nil, TagServerJsonRPC) ||
+		IsAnnotationSet(project, contract, nil, nil, TagServerJSONRPC) ||
 		ContractHasWS(project, contract) ||
 		ContractHasSSE(project, contract)
 }

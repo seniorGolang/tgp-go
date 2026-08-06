@@ -2,7 +2,7 @@
 
 Набор плагинов для системы [tg](https://github.com/seniorGolang/tg/v3) (Tool Gateway): генерация серверного и клиентского кода, документации API и заготовок проектов на основе Go-интерфейсов с аннотациями `@tg`.
 
-Все плагины работают с **единой моделью проекта** (контракты, типы, методы, аннотации). Модель строит плагин **astg**; остальные плагины либо подготавливают/сохраняют её, либо генерируют по ней код и документацию.
+Все плагины работают с **единой моделью проекта** (контракты, типы, методы, аннотации). Модель строит плагин **astg**; остальные либо подготавливают/сохраняют её, либо генерируют по ней код и документацию. Полные руководства — `tg plugin doc <имя>`.
 
 ---
 
@@ -22,6 +22,10 @@ flowchart LR
         hook[astg-hook]
     end
 
+    subgraph inspect["Инспекция модели"]
+        astg_json[astg-json]
+    end
+
     subgraph gen["Генерация по модели"]
         server[server]
         client_go[client-go]
@@ -37,6 +41,8 @@ flowchart LR
 
     astg_db --> astg
     astg --> hook
+    astg --> astg_json
+    astg_db --> astg_json
     astg --> server
     astg --> client_go
     astg --> client_ts
@@ -45,10 +51,11 @@ flowchart LR
     astg --> swagger
 ```
 
-- **astg** — единственный источник модели: разбирает Go-код и собирает контракты в единую структуру.
-- **astg-db** и **astg-hook** работают с локальной базой контрактов: загрузка по ссылке и сохранение после разбора.
-- **server**, **client-go**, **client-ts**, **kafka-pub-go**, **kafka-sub-go**, **swagger** используют уже собранную модель и генерируют код/документацию.
-- **init-go** не использует модель: создаёт новый Go-проект с контрактами и заглушками «с нуля».
+- **astg** — единственный источник модели из исходников: контракты `@tg`, типы, аннотации, кэш.
+- **astg-db** / **astg-hook** — загрузка и сохранение снимков в локальной базе контрактов (`from-db`).
+- **astg-json** — экспорт resolved-модели в JSON (`tg astg json`), локально или из БД.
+- **server**, **client-go**, **client-ts**, **kafka-pub-go**, **kafka-sub-go**, **swagger** — генерация по уже собранной модели.
+- **init-go** — bootstrap нового Go-проекта без существующей модели.
 
 ---
 
@@ -61,115 +68,93 @@ sequenceDiagram
     participant astg_db as astg-db
     participant astg as astg
     participant hook as astg-hook
-    participant Gen as server / client-* / swagger
+    participant Gen as server / client-* / swagger / kafka-*
+    participant JSON as astg-json
 
-    User->>Pipeline: запуск (опции: from-db, contracts-dir, contracts…)
+    User->>Pipeline: запуск (from-db, contracts-dir, contracts…)
     Pipeline->>astg_db: есть from-db и нет project?
     alt да
-        astg_db->>astg_db: загрузка из БД по ref или выбор из списка
-        astg_db->>Pipeline: project подставлен в запрос
+        astg_db->>astg_db: загрузка из БД по ref или выбор
+        astg_db->>Pipeline: project в запросе
     end
-    Pipeline->>astg: разбор контрактов (или кэш)
+    Pipeline->>astg: разбор контрактов или кэш (если project ещё нет)
     astg->>Pipeline: model.Project
     Pipeline->>hook: есть project и нет from-db?
     alt да
-        hook->>hook: сохранение в локальную БД
+        hook->>hook: полный снимок в локальную БД
     end
-    Pipeline->>Gen: генерация по model.Project
-    Gen->>User: код / OpenAPI
+    alt генерация
+        Pipeline->>Gen: генерация по model.Project
+        Gen->>User: код / OpenAPI
+    else инспекция
+        Pipeline->>JSON: tg astg json [-o] [--from-db]
+        JSON->>User: project.json
+    end
 ```
 
 ---
 
 ## Плагины: суть и возможности
 
+Краткие указатели. Каталоги аннотаций, опции и edge cases — только в `tg plugin doc <плагин>`.
+
 ### astg
 
-**Суть:** Парсер Go-проекта и источник единой модели. Находит контракты (интерфейсы с `@tg`), методы, типы и аннотации; собирает из них структурированную модель, которую используют все генераторы.
-
-**Возможности:** Обнаружение контрактов и типов, разбор аннотаций на уровнях пакет/интерфейс/метод/поле, разрешение импортов, кэш по дереву Меркла (go.mod, go.sum, .go), подстановка описаний из файлов (`file:path`, `file:path#section`).
-
-**Связи:** Зависимость всех плагинов генерации; опционально подменяется/дополняется astg-db (модель из БД) и дополняется astg-hook (сохранение в БД).
-
----
+Парсер Go-проекта и SSOT по смыслу `@tg`: layout `contracts/` + `contracts/dto`, уровни/приоритет, sub-аннотации, полный каталог, security/mapping, wire-форма (enums, inline, opaque JSON), матрица влияния на генераторы. Опции пайплайна `contracts-dir` / `no-cache`; `--contracts` снимок не сужает. Отладка модели — через `astg-json`.
 
 ### astg-db
 
-**Суть:** Pre-плагин: подставляет в запрос модель проекта из **локальной базы контрактов**, чтобы не разбирать репозиторий при каждом запуске.
-
-**Возможности:** Загрузка по ссылке вида `проект@версия` или `проект:Контракт1,Контракт2@версия`, интерактивный выбор проекта (пустой `from-db`) и контрактов (если они не заданы в ref и нет `--contracts`). Срабатывает только если модели ещё нет и указана опция `from-db`.
-
-**Связи:** Зависит от astg (в пайплайне). База заполняется плагином astg-hook.
-
----
+Pre: модель из локальной БД по `from-db` (ref, интерактив, `all-contracts`). Фильтр загруженной модели — контракты **в ref**; `--contracts` у генератора лишь глушит UI выбора (урезание для кода — у самого command-плагина). Ключ проекта = то, что записал hook (нормализованный remote/module), а не произвольное короткое имя.
 
 ### astg-hook
 
-**Суть:** Сохраняет текущую модель проекта в локальную базу контрактов после того, как она получена в пайплайне (например, плагином astg). Позволяет один раз разобрать репо и дальше использовать сохранённую версию через astg-db.
+Post: полный снимок после локального разбора. Версия: тег → ветка → `default`. Skip при `from-db`. Ошибки БД best-effort (debug, пайплайн не валится); проверка записи — `tg astg json --from-db`.
 
-**Возможности:** Автосохранение по идентификатору проекта и версии (ветка/тег или default). Не сохраняет, если в запросе уже была загрузка из БД (`from-db`), чтобы не перезаписывать текущую версию.
+### astg-json
 
-**Связи:** Выполняется после astg; база используется плагином astg-db.
-
----
+Команда `tg astg json [-o файл] [--from-db …]`: экспорт resolved JSON для инспекции и сравнения local vs DB. `all-contracts` по умолчанию true. Пишите в файл и запрашивайте точечно — не сбрасывайте весь JSON в чат.
 
 ### server
 
-**Суть:** Генератор серверного кода на [Fiber](https://github.com/gofiber/fiber): по контрактам строит HTTP REST и JSON-RPC 2.0 обработчики. Остаётся передать реализации интерфейсов и запустить сервер.
-
-**Возможности:** Маршруты по аннотациям (http-method, http-path, http-args, headers, cookies), batch для JSON-RPC, опциональные логирование/метрики/трассировка (log, metrics, trace), типобезопасные обработчики и единая обработка ошибок.
-
-**Связи:** Использует модель от astg (или подставленную astg-db).
-
----
+Fiber-сервер: HTTP REST, JSON-RPC 2.0 (batch), WS/SSE streams. Маршруты и mapping (`explicit`/`implicit`/`body`) из аннотаций; Auth/bearer, health/shutdown; опциональные log/metrics/trace.
 
 ### client-go
 
-**Суть:** Генератор типобезопасного Go-клиента к API: вызовы по контрактам через JSON-RPC 2.0 и HTTP REST.
-
-**Возможности:** Методы по сигнатурам интерфейсов, batch для JSON-RPC, настраиваемые пути/заголовки/cookie, опциональные логирование и метрики, свой HTTP-клиент и декодер ошибок, генерация readme по клиенту.
-
-**Связи:** Использует модель от astg (или astg-db).
-
----
+Типобезопасный Go-клиент: JSON-RPC, REST, WS/SSE; batch; Auth / ResourceTokens / TokenSource; upload/download; метрики latency.
 
 ### client-ts
 
-**Суть:** Генератор TypeScript-клиента для браузера и Node.js: типобезопасные асинхронные методы по контрактам (JSON-RPC и HTTP REST).
-
-**Возможности:** Promise-API, batch, Blob/FormData для файлов, статические и динамические заголовки (в т.ч. async), готовность к публикации в NPM (аннотации npmName, npmRegistry и др.), генерация документации с примерами.
-
-**Связи:** Использует модель от astg (или astg-db).
-
----
+TypeScript-клиент (browser/Node): RPC и HTTP accessors, batch, Blob/FormData, streams (`signal`/`onReady`), identity/`X-Client-Id`, опциональная NPM-мета из пакетных аннотаций.
 
 ### kafka-pub-go / kafka-sub-go
 
-**Суть:** Генераторы Kafka-издателя и подписчика на [franz-go](https://github.com/twmb/franz-go) по единым контрактам `@tg kafka`.
-
-**Возможности:** Именованные кодеки, `kafka-acks` с пулом до трёх client, sync produce с накоплением, четыре формы обработчиков подписчика (plain/Meta/Slice/Batch), commit AfterBatch/Auto, ResetOffset, наблюдаемость log/metrics/trace. Пакет вывода — basename `-o` (обычно `internal/publisher/kafka` и `internal/subscriber/kafka`).
-
-**Связи:** Использует модель от astg (или astg-db).
-
----
+Издатель и подписчик на franz-go по единым контрактам `@tg kafka`: кодеки, `kafka-acks`, sync produce; у sub — plain/Meta/Slice/Batch handlers, commit/offset reset, наблюдаемость. Пакет вывода — basename `--out`.
 
 ### swagger
 
-**Суть:** Генератор описания API в формате **OpenAPI 3.0** по контрактам: пути, схемы, параметры, примеры и авторизация для использования в Swagger UI, Postman и др.
-
-**Возможности:** Единая спецификация для HTTP и JSON-RPC, схемы данных и группировка по тегам, вывод в JSON/YAML, встроенный режим просмотра в браузере (`--serve`).
-
-**Связи:** Использует модель от astg (или astg-db).
-
----
+OpenAPI 3.0 по контрактам (HTTP/JSON-RPC/WS/SSE в одной спеке; Kafka опущен): схемы, parameters, security, JSON/YAML, встроенный `--serve` для Swagger UI.
 
 ### init-go
 
-**Суть:** Создаёт заготовку Go-проекта: каталоги, контракты (JSON-RPC и/или REST), заглушки сервисов, заготовку транспорта и точку входа. Транспорт и OpenAPI достраиваются через `go generate ./...`.
+Scaffold Go-модуля с контрактами (JSON-RPC и/или REST) и заглушками сервисов; транспорт/OpenAPI достраиваются через `go generate ./...`. Не для дописывания контрактов в уже существующий сервис.
 
-**Возможности:** Выбор модуля, списков JSON-RPC и REST-интерфейсов, генерация contracts/, internal/services/, internal/transport/, cmd и pkg/errs. Не использует существующую модель — только параметры команды.
+---
 
-**Связи:** Не зависит от других плагинов; даёт стартовый проект для последующего использования astg, server, swagger и т.д.
+## Типичные сценарии
+
+| Задача | Куда смотреть |
+| ------ | ------------- |
+| Написать/править контракты `@tg` | `tg plugin doc astg` (+ skill `tgp-contracts`) |
+| Проверить resolved-модель | `tg astg json -o .tg/project.json` → `tg plugin doc astg-json` |
+| Сгенерировать Fiber-сервер | `tg plugin doc server` |
+| Go / TS клиент | `tg plugin doc client-go` / `client-ts` |
+| OpenAPI / Swagger UI | `tg plugin doc swagger` |
+| Kafka pub/sub | `tg plugin doc kafka-pub-go` / `kafka-sub-go` |
+| Сохранить модель в БД | пайплайн с `astg-hook` → `tg plugin doc astg-hook` |
+| Генерировать из БД | `--from-db` → `tg plugin doc astg-db` |
+| Новый репозиторий с нуля | `tg plugin doc init-go` |
+
+Минимальный цикл после правки контрактов: экспорт модели → нужные генераторы → сборка потребителей. Не править сгенерированные деревья вместо аннотаций.
 
 ---
 
@@ -192,22 +177,23 @@ tg pkg add https://github.com/seniorGolang/tgp-go:kafka-pub-go
 tg pkg add https://github.com/seniorGolang/tgp-go:kafka-sub-go
 tg pkg add https://github.com/seniorGolang/tgp-go:swagger
 tg pkg add https://github.com/seniorGolang/tgp-go:init-go
+tg pkg add https://github.com/seniorGolang/tgp-go:astg
 tg pkg add https://github.com/seniorGolang/tgp-go:astg-db
 tg pkg add https://github.com/seniorGolang/tgp-go:astg-hook
+tg pkg add https://github.com/seniorGolang/tgp-go:astg-json
 ```
-
-Подробное описание каждого плагина (аннотации, опции, примеры):
 
 ```bash
 tg plugin doc <имя-плагина>
-# например: astg, server, client-go, client-ts, kafka-pub-go, kafka-sub-go, swagger, init-go, astg-db, astg-hook
+# astg | astg-db | astg-hook | astg-json | server | client-go | client-ts
+# kafka-pub-go | kafka-sub-go | swagger | init-go
 ```
 
 ---
 
 ## Аннотации @tg
 
-Аннотации задаются в комментариях к Go-коду с префиксом `@tg` на уровнях: пакет → интерфейс → метод → поле/параметр. На методе также поддерживаются sub-аннотации вида `<имяПеременной>.<ключ>` (например, `token.required`). Приоритет: поле/параметр → sub на методе → метод → интерфейс → пакет. Полный список и значения — в документации плагина astg: `tg plugin doc astg`.
+Задаются в комментариях с префиксом `@tg` на уровнях пакет → интерфейс → метод → поле/параметр; на методе — sub-аннотации `<имя>.<ключ>`. Приоритет: поле/параметр → sub → метод → интерфейс → пакет. Полный каталог, security/mapping/wire и примеры — **только** в `tg plugin doc astg`.
 
 ---
 

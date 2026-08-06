@@ -4,7 +4,6 @@ package tracer
 import (
 	"context"
 
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -16,21 +15,24 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 
-func Init(ctx context.Context, serviceName, endpoint string, attributes ...attribute.KeyValue) (tracer *trace.TracerProvider) {
+func Init(ctx context.Context, serviceName, endpoint string, sampler trace.Sampler, insecure bool, attributes ...attribute.KeyValue) (tracer *trace.TracerProvider) {
 
-	exporter, err := otlptrace.New(
-		ctx,
-		otlptracegrpc.NewClient(
-			otlptracegrpc.WithInsecure(),
-			otlptracegrpc.WithEndpoint(endpoint),
-		),
-	)
+	if sampler == nil {
+		sampler = trace.ParentBased(trace.TraceIDRatioBased(0.01))
+	}
+	opts := []otlptracegrpc.Option{
+		otlptracegrpc.WithEndpoint(endpoint),
+	}
+	if insecure {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+	exporter, err := otlptrace.New(ctx, otlptracegrpc.NewClient(opts...))
 	if err != nil {
-		log.Ctx(ctx).Panic().Err(errors.Wrap(err, "could not set exporter")).Send()
+		log.Ctx(ctx).Error().Err(err).Msg("otel exporter init failed")
 		return
 	}
 	tracer = trace.NewTracerProvider(
-		trace.WithSampler(trace.AlwaysSample()),
+		trace.WithSampler(sampler),
 		trace.WithBatcher(exporter),
 		trace.WithResource(resource.NewWithAttributes(semconv.SchemaURL, append(attributes, semconv.ServiceNameKey.String(serviceName))...)),
 	)

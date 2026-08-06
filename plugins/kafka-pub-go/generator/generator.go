@@ -3,6 +3,7 @@
 package generator
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -26,7 +27,7 @@ func Generate(project *model.Project, outDir string, targetModulePath string, ou
 		}
 	}
 	if !hasKafkaContracts(project) {
-		return fmt.Errorf("no kafka contracts")
+		return errors.New("no kafka contracts")
 	}
 	for _, contract := range project.Contracts {
 		if !model.ContractIsKafka(project, contract) {

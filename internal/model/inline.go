@@ -55,7 +55,7 @@ func ArgFieldEmbedded(project *Project, method *Method, arg *Variable) (ok bool)
 	}
 
 	jsonTag := tags.ParseMethodVarTags(method.Annotations, arg.Name)["json"]
-	return jsonTag == ",inline" && TypeIsEmbeddable(project, arg.TypeID)
+	return jsonTag == jsonTagInline && TypeIsEmbeddable(project, arg.TypeID)
 }
 
 // ResultFieldEmbedded reports whether the method result is serialized as json:,inline in exchange.
@@ -69,14 +69,41 @@ func ResultFieldEmbedded(project *Project, contract *Contract, method *Method, r
 	if contract != nil {
 		nonErr := 0
 		for _, r := range method.Results {
-			if r.TypeID != "error" {
+			if r.TypeID != string(TypeKindError) {
 				nonErr++
 			}
 		}
-		if nonErr == 1 && IsAnnotationSet(project, contract, method, nil, TagHttpEnableInlineSingle) && jsonTag == "" {
-			jsonTag = ",inline"
+		if nonErr == 1 && IsAnnotationSet(project, contract, method, nil, TagHTTPEnableInlineSingle) && jsonTag == "" {
+			jsonTag = jsonTagInline
 		}
 	}
 
-	return jsonTag == ",inline" && TypeIsEmbeddable(project, ret.TypeID)
+	return jsonTag == jsonTagInline && TypeIsEmbeddable(project, ret.TypeID)
+}
+
+// StructFieldIsAnonymousEmbed reports whether the struct field is an anonymous Go embed.
+func StructFieldIsAnonymousEmbed(field *StructField) (ok bool) {
+
+	return field != nil && field.Anonymous
+}
+
+// StructFieldHasJSONInline reports whether struct field tags contain json:inline.
+func StructFieldHasJSONInline(field *StructField) (ok bool) {
+
+	if field == nil {
+		return false
+	}
+
+	return tags.StructFieldHasJSONInline(field.Tags)
+}
+
+// StructFieldEmbedded reports whether the struct field is serialized as json:,inline embed.
+func StructFieldEmbedded(project *Project, field *StructField) (ok bool) {
+
+	if field == nil {
+		return false
+	}
+
+	jsonTag := tags.StructFieldJSONTag(field.Tags)
+	return jsonTag == jsonTagInline && TypeIsEmbeddable(project, field.TypeID)
 }

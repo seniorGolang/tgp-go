@@ -21,16 +21,16 @@ func testProject() (project *model.Project) {
 			Name:    "Rpc",
 			PkgPath: "example/contracts",
 			Annotations: tags.DocTags{
-				model.TagServerJsonRPC: "",
-				model.TagHttpPrefix:    "api/v1",
+				model.TagServerJSONRPC: "",
+				model.TagHTTPPrefix:    "api/v1",
 			},
 			Methods: []*model.Method{{
 				Name: "Echo",
 				Args: []*model.Variable{
-					{Name: "msg", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "msg", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "out", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "out", TypeID: "string"},
 				},
 			}},
 		}, {
@@ -38,20 +38,20 @@ func testProject() (project *model.Project) {
 			PkgPath: "example/contracts",
 			Annotations: tags.DocTags{
 				model.TagServerHTTP: "",
-				model.TagHttpPrefix: "api/v1",
+				model.TagHTTPPrefix: "api/v1",
 			},
 			Methods: []*model.Method{{
 				Name: "Get",
 				Annotations: tags.DocTags{
 					model.TagHTTPMethod: "GET",
-					model.TagHttpPath:   "/items/{id}",
-					model.TagHttpArg:    "id|id",
+					model.TagHTTPPath:   "/items/{id}",
+					model.TagHTTPArg:    "id|id",
 				},
 				Args: []*model.Variable{
-					{Name: "id", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "id", TypeID: "string"},
 				},
 				Results: []*model.Variable{
-					{Name: "name", TypeRef: model.TypeRef{TypeID: "string"}},
+					{Name: "name", TypeID: "string"},
 				},
 			}},
 		}},

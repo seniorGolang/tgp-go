@@ -60,7 +60,7 @@ func (r *ClientRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateDa
 	if tmpl, err = template.ParseFS(pkgTmplFS, pattern); err != nil {
 		return
 	}
-	if err = os.MkdirAll(path.Join(dst, pkg), 0700); err != nil {
+	if err = os.MkdirAll(path.Join(dst, pkg), 0o700); err != nil {
 		return
 	}
 	for _, name := range names {
@@ -69,7 +69,7 @@ func (r *ClientRenderer) pkgRenderTo(pkg string, dst string, data *pkgTemplateDa
 			return
 		}
 		outName := strings.TrimSuffix(filepath.Base(name), ".tmpl")
-		if err = os.WriteFile(path.Join(dst, pkg, outName), buf.Bytes(), 0600); err != nil {
+		if err = os.WriteFile(path.Join(dst, pkg, outName), buf.Bytes(), 0o600); err != nil {
 			return
 		}
 	}
@@ -84,11 +84,11 @@ func newPkgTemplateData() (data *pkgTemplateData) {
 	return &pkgTemplateData{DoNotEditComment: generated.ByToolGatewayComment}
 }
 
-func (r *ClientRenderer) HasJsonRPC() (ok bool) {
+func (r *ClientRenderer) HasJSONRPC() (ok bool) {
 
 	for _, contract := range r.project.Contracts {
 		for _, method := range contract.Methods {
-			if r.methodIsJsonRPC(contract, method) {
+			if r.methodIsJSONRPC(contract, method) {
 				return true
 			}
 		}

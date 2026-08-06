@@ -4,15 +4,13 @@ package renderer
 
 import (
 	"context"
-	"fmt"
 	"path"
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/content"
-	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
@@ -21,32 +19,30 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 	outDir := r.outDir
 	pkgName := filepath.Base(outDir)
 	srcFile := NewSrcFile(pkgName)
-	srcFile.PackageComment(generated.ByToolGateway)
+	ctx := context.WithValue(context.Background(), keyCode, srcFile)
+	ctx = context.WithValue(ctx, keyPackage, pkgName)
 
-	ctx := context.WithValue(context.Background(), keyCode, srcFile) // nolint
-	ctx = context.WithValue(ctx, keyPackage, pkgName)                // nolint
-
-	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) {
 		srcFile.ImportName(PackageContext, "context")
 		srcFile.ImportName(PackageUUID, "uuid")
 		srcFile.ImportName(PackageFiber, "fiber")
-		srcFile.ImportName(fmt.Sprintf("%s/jsonrpc", r.pkgPath(outDir)), "jsonrpc")
+		srcFile.ImportName(r.pkgPath(outDir)+"/jsonrpc", pkgJSONRPC)
 		jsonPkg := r.getPackageJSON(contract)
-		srcFile.ImportName(jsonPkg, "json")
+		srcFile.ImportName(jsonPkg, keyJSON)
 	}
 
 	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) {
 		srcFile.ImportName(PackageContext, "context")
 		srcFile.ImportName(PackageFmt, "fmt")
-		srcFile.ImportName(PackageTime, "time")
-		srcFile.ImportName(PackageHttp, "http")
+		srcFile.ImportName(PackageTime, PackageTime)
+		srcFile.ImportName(PackageHTTP, "http")
 		srcFile.ImportName(PackageURL, "url")
 		srcFile.ImportName(PackagePath, "path")
 		srcFile.ImportName(PackageBytes, "bytes")
 		srcFile.ImportName(PackageIO, "io")
 		srcFile.ImportName(PackageStrings, "strings")
 		jsonPkg := r.getPackageJSON(contract)
-		srcFile.ImportName(jsonPkg, "json")
+		srcFile.ImportName(jsonPkg, keyJSON)
 		for _, method := range contract.Methods {
 			if r.methodIsHTTP(contract, method) && (r.methodRequestMultipart(contract, method) || r.methodResponseMultipart(contract, method)) {
 				srcFile.ImportName(PackageMime, "mime")
@@ -84,7 +80,7 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 			if err = r.pkgRenderTo("schema", outDir, newPkgTemplateData()); err != nil {
 				return
 			}
-			srcFile.ImportName(fmt.Sprintf("%s/schema", r.pkgPath(outDir)), "schema")
+			srcFile.ImportName(r.pkgPath(outDir)+"/schema", "schema")
 		}
 	}
 
@@ -107,20 +103,21 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 		srcFile.ImportName(PackageStrings, "strings")
 		srcFile.ImportName(PackageURL, "url")
 		srcFile.ImportName(PackageUUID, "uuid")
-		srcFile.ImportName(r.getPackageJSON(contract), "json")
+		srcFile.ImportName(r.getPackageJSON(contract), keyJSON)
 		if hasWS {
 			srcFile.ImportName(packageWebsocket, "websocket")
-			srcFile.ImportName(PackageHttp, "http")
+			srcFile.ImportName(PackageHTTP, "http")
+			srcFile.ImportName(PackageIO, "io")
 		}
 		if hasSSE {
 			srcFile.ImportName(PackageBytes, "bytes")
 			srcFile.ImportName("bufio", "bufio")
-			srcFile.ImportName(PackageHttp, "http")
+			srcFile.ImportName(PackageHTTP, "http")
 		}
 	}
 
 	if r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) && r.contractHasHTTPMethods(contract) {
-		srcFile.ImportName(PackageTime, "time")
+		srcFile.ImportName(PackageTime, PackageTime)
 	}
 
 	srcFile.Line().Type().Id("Client" + contract.Name).StructFunc(func(sg *Group) {
@@ -130,18 +127,18 @@ func (r *ClientRenderer) RenderServiceClient(contract *model.Contract) (err erro
 	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerHTTP) && r.contractHasResponseMultipart(contract) {
 		srcFile.Add(r.StreamingMultipartHelperTypes())
 	}
-	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJsonRPC) && r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
+	if model.IsAnnotationSet(r.project, contract, nil, nil, model.TagServerJSONRPC) && r.HasMetrics() && model.IsAnnotationSet(r.project, contract, nil, nil, TagMetrics) {
 		srcFile.Add(r.rpcRecordMetricsHelper(contract))
 	}
 
 	for _, method := range contract.Methods {
-		if r.methodIsJsonRPC(contract, method) {
+		if r.methodIsJSONRPC(contract, method) {
 			srcFile.Type().Id("ret" + contract.Name + method.Name).Op("=").Func().Params(r.funcDefinitionParams(ctx, method.Results))
 		}
 	}
 
 	for _, method := range contract.Methods {
-		if r.methodIsJsonRPC(contract, method) {
+		if r.methodIsJSONRPC(contract, method) {
 			srcFile.Line().Add(r.jsonrpcClientMethodFunc(ctx, contract, method, outDir))
 			srcFile.Line().Add(r.jsonrpcClientRequestFunc(ctx, contract, method, outDir))
 		} else if r.methodIsHTTP(contract, method) {

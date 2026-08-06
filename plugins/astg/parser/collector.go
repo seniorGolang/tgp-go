@@ -212,9 +212,9 @@ func CollectWithExcludeDirs(version string, svcDir string, excludeDirs []string)
 							Selections: make(map[*ast.SelectorExpr]*types.Selection),
 							Scopes:     make(map[ast.Node]*types.Scope),
 						}
-						_, err := cfg.Check(pkgPath, pkgInfo.Fset, pkgInfo.Files, typeInfo)
-						if err != nil {
-							slog.Debug(i18n.Msg("Failed to create TypeInfo for contract package"), slog.String("package", pkgPath), slog.String("error", err.Error()))
+						_, checkErr := cfg.Check(pkgPath, pkgInfo.Fset, pkgInfo.Files, typeInfo)
+						if checkErr != nil {
+							slog.Debug(i18n.Msg("Failed to create TypeInfo for contract package"), slog.String("package", pkgPath), slog.String("error", checkErr.Error()))
 							continue
 						}
 						pkgInfo.TypeInfo = typeInfo
@@ -277,8 +277,8 @@ func getPkgPathFromDir(dir string, modulePath string) (pkgPath string, err error
 
 	var relPath string
 	if relPath, err = filepath.Rel(internal.ProjectRoot, dir); err != nil {
-		if strings.HasPrefix(dir, "/") {
-			relPath = strings.TrimPrefix(dir, "/")
+		if after, ok := strings.CutPrefix(dir, "/"); ok {
+			relPath = after
 		} else {
 			return "", fmt.Errorf("failed to compute relative path from %s to %s: %w", internal.ProjectRoot, dir, err)
 		}

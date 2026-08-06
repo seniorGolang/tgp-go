@@ -32,9 +32,9 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 		}
 	}
 
-	for i := 0; i < structType.NumFields(); i++ {
+	for i := range structType.NumFields() {
 		field := structType.Field(i)
-		if field == nil {
+		if field == nil || !field.Exported() {
 			continue
 		}
 
@@ -42,12 +42,16 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 		fieldType := field.Type()
 
 		typeInfo := convertFieldType(fieldType, pkgPath, imports, project, loader)
+		typeRef := fieldTypeInfoToTypeRef(typeInfo)
+		if typeRef == nil {
+			continue
+		}
 
 		fieldTags := make(map[string][]string)
 		if fieldTag := structType.Tag(i); fieldTag != "" {
 			fieldTags = parseStructTag(fieldTag)
 		} else if astStructType != nil {
-			astTags := extractTagsFromASTStruct(astStructType, fieldName)
+			astTags := extractTagsFromASTStruct(astStructType, fieldName, field.Anonymous())
 			if len(astTags) > 0 {
 				fieldTags = astTags
 			}
@@ -56,23 +60,22 @@ func fillStructFields(structType *types.Struct, pkgPath string, imports map[stri
 		var docs, directives []string
 		var annotations tags.DocTags
 		if astStructType != nil {
-			astLines := extractDocsFromASTStruct(astStructType, fieldName)
+			astLines := extractDocsFromASTStruct(astStructType, fieldName, field.Anonymous())
 			if len(astLines) > 0 {
 				docs, directives = splitDocsAndDirectives(astLines)
 				annotations = tags.ParseTags(astLines)
 			}
 		}
 
-		structField := &model.StructField{
-			TypeRef:     *fieldTypeInfoToTypeRef(typeInfo),
+		coreType.StructFields = append(coreType.StructFields, &model.StructField{
+			TypeRef:     *typeRef,
 			Name:        fieldName,
+			Anonymous:   field.Anonymous(),
 			Tags:        fieldTags,
 			Docs:        docs,
 			Directives:  directives,
 			Annotations: annotations,
-		}
-
-		coreType.StructFields = append(coreType.StructFields, structField)
+		})
 	}
 }
 
@@ -96,7 +99,7 @@ func fieldTypeInfoToTypeRef(info fieldTypeInfo) (ref *model.TypeRef) {
 	return conversionInfoToTypeRef(info)
 }
 
-func findASTStructType(file *ast.File, typeName string, typeInfo *types.Info) (foundStruct *ast.StructType) {
+func findASTStructType(file *ast.File, typeName string, _typeInfo *types.Info) (foundStruct *ast.StructType) {
 
 	if file == nil {
 		return
@@ -167,7 +170,7 @@ func getTypeDocs(loader *AutonomousPackageLoader, pkgPath string, typeName strin
 	return
 }
 
-func extractTagsFromASTStruct(structType *ast.StructType, fieldName string) (tags map[string][]string) {
+func extractTagsFromASTStruct(structType *ast.StructType, fieldName string, anonymous bool) (tags map[string][]string) {
 
 	if structType == nil || structType.Fields == nil {
 		tags = make(map[string][]string)
@@ -175,16 +178,15 @@ func extractTagsFromASTStruct(structType *ast.StructType, fieldName string) (tag
 	}
 
 	for _, field := range structType.Fields.List {
-		for _, name := range field.Names {
-			if name.Name == fieldName {
-				if field.Tag != nil {
-					tagValue := field.Tag.Value
-					if len(tagValue) >= 2 && tagValue[0] == '`' && tagValue[len(tagValue)-1] == '`' {
-						tagValue = tagValue[1 : len(tagValue)-1]
-					}
-					return parseStructTag(tagValue)
-				}
+		if !astFieldMatches(field, fieldName, anonymous) {
+			continue
+		}
+		if field.Tag != nil {
+			tagValue := field.Tag.Value
+			if len(tagValue) >= 2 && tagValue[0] == '`' && tagValue[len(tagValue)-1] == '`' {
+				tagValue = tagValue[1 : len(tagValue)-1]
 			}
+			return parseStructTag(tagValue)
 		}
 	}
 
@@ -192,22 +194,40 @@ func extractTagsFromASTStruct(structType *ast.StructType, fieldName string) (tag
 	return
 }
 
-func extractDocsFromASTStruct(structType *ast.StructType, fieldName string) (docs []string) {
+func extractDocsFromASTStruct(structType *ast.StructType, fieldName string, anonymous bool) (docs []string) {
 
 	if structType == nil || structType.Fields == nil {
 		return
 	}
 
 	for _, field := range structType.Fields.List {
-		for _, name := range field.Names {
-			if name.Name == fieldName {
-				docs = extractComments(field.Doc, field.Comment)
-				return
-			}
+		if !astFieldMatches(field, fieldName, anonymous) {
+			continue
 		}
+		docs = extractComments(field.Doc, field.Comment)
+		return
 	}
 
 	return
+}
+
+func astFieldMatches(field *ast.Field, fieldName string, anonymous bool) (ok bool) {
+
+	if field == nil {
+		return false
+	}
+
+	if len(field.Names) == 0 {
+		return anonymous
+	}
+
+	for _, name := range field.Names {
+		if name.Name == fieldName {
+			return true
+		}
+	}
+
+	return false
 }
 
 func parseStructTag(tag string) (result map[string][]string) {

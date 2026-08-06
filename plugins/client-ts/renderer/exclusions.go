@@ -56,13 +56,13 @@ func (r *ClientRenderer) isExplicitlyExcludedType(typ *model.Type) (excluded boo
 
 func (r *ClientRenderer) isExplicitlyExcludedBaseType(typ *model.Type) (excluded bool) {
 
-	if typ.ImportPkgPath == "time" && typ.TypeName == "Time" {
+	if typ.ImportPkgPath == pkgTime && typ.TypeName == nameTime {
 		return true
 	}
-	if typ.ImportPkgPath == "" && typ.TypeName == "Time" {
+	if typ.ImportPkgPath == "" && typ.TypeName == nameTime {
 		return true
 	}
-	if typ.ImportPkgPath == "time" && typ.TypeName == "Duration" {
+	if typ.ImportPkgPath == pkgTime && typ.TypeName == "Duration" {
 		return true
 	}
 	if strings.HasSuffix(typ.TypeName, "UUID") || typ.TypeName == "UUID" {
@@ -70,11 +70,11 @@ func (r *ClientRenderer) isExplicitlyExcludedBaseType(typ *model.Type) (excluded
 			return true
 		}
 		for _, pkg := range uuidPackages {
-			if strings.HasPrefix(typ.ImportPkgPath, pkg) && typ.TypeName != "Time" {
+			if strings.HasPrefix(typ.ImportPkgPath, pkg) && typ.TypeName != nameTime {
 				return true
 			}
 		}
-		if strings.Contains(typ.ImportPkgPath, "uuid") && typ.TypeName != "Time" {
+		if strings.Contains(typ.ImportPkgPath, "uuid") && typ.TypeName != nameTime {
 			return true
 		}
 	}
@@ -114,7 +114,7 @@ func (r *ClientRenderer) isExcludedTypeID(typeID string) (excluded bool) {
 	}
 	importPkgPath := typeID[:colon]
 	typeName := typeID[colon+1:]
-	if importPkgPath == "time" && (typeName == "Time" || typeName == "Duration") {
+	if importPkgPath == pkgTime && (typeName == nameTime || typeName == "Duration") {
 		return true
 	}
 	if strings.HasSuffix(typeName, "UUID") || typeName == "UUID" {

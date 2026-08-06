@@ -1,312 +1,250 @@
-# Плагин client-ts
+# Плагин client-ts — TypeScript SDK (browser / Node)
 
 ## Назначение
 
-Плагин генерирует **TypeScript-клиент** для вызова вашего API. Клиент поддерживает **JSON-RPC 2.0** и **HTTP REST** — в зависимости от того, как помечены контракты в проекте. По контрактам (интерфейсам с аннотациями `@tg`) строятся типобезопасные методы, типы и обработка ошибок.
+Плагин генерирует TypeScript-клиент по контрактам `@tg`: JSON-RPC 2.0, REST, WS/SSE, опционально npm-пакет. Методы асинхронные (`Promise`); ошибки — через throw.
 
-Подробнее про контракты и аннотации — в документации плагина astg: `tg plugin doc astg`.
+Полный синтаксис аннотаций: `tg plugin doc astg`.
 
-## Возможности
+## Когда использовать
 
-- **JSON-RPC 2.0** — вызовы методов и batch-запросы.
-- **HTTP REST** — GET, POST, PUT, PATCH, DELETE с настраиваемыми путями, заголовками и cookie.
-- **Streaming** — контракты с `ws-server` и `sse-server` включаются в генерацию для WebSocket/SSE профиля JSON-RPC 2.0. На SSE — `http-headers`/`http-cookies` в fetch; на WS в браузере custom headers недоступны, поэтому те же значения дублируются в query (сервер читает query как fallback). Stream-методы принимают `signal?: AbortSignal` (SSE → `fetch` + `reader.cancel`, WS → `socket.close`).
-- **Типобезопасность** — методы и типы генерируются по сигнатурам интерфейсов.
-- **Асинхронность** — все методы возвращают Promise.
-- **Заголовки** — статические или динамические (функция, в том числе async).
-- **Blob и FormData** — загрузка и скачивание файлов (один Blob — тело запроса/ответа; несколько или multipart — FormData).
-- **NPM** — генерация `package.json` по аннотациям (`--package-json`).
+- Нужен SDK для браузера или Node по tgp-контрактам.
+- Пути `--out` / `--package-json` считаются от **корня проекта** (каталог запуска `tg`).
+- Не для Kafka и не для правки server `transport/`.
 
-## Как запускать
+## Команда и параметры
 
-Команда генерации: `tg client ts` (или через общий пайплайн с плагином astg).
+```bash
+tg client ts --out web
+tg client ts --out web --package-json web/package.json --contracts=UserService
+tg client ts --out web --no-doc --no-client-id
+```
 
-**Обязательный параметр:**
+| Параметр | Короткая форма | Обязательный | Описание |
+|----------|----------------|--------------|----------|
+| `out` | **нет** (только `--out`) | да | Каталог TS-кода |
+| `package-json` | — | нет | Путь к генерируемому `package.json` (нужен `@tg npmName`) |
+| `contracts-dir` | — | нет | Каталог контрактов (default `contracts`) |
+| `contracts` | — | нет | Фильтр имён (без `!Name`) |
+| `doc-file` | — | нет | Документация (default `<out>/readme.md`) |
+| `no-doc` | — | нет | Не писать readme |
+| `no-client-id` | — | нет | Без `identity.ts`, без `clientName`, без `X-Client-Id` |
 
-- **`out`** — каталог для сгенерированного TypeScript-кода (например, `web` или `src/lib/services`). Путь разрешается относительно **корня проекта** (каталога запуска `tg`).
+### `go generate` и cwd
 
-**Корень проекта и `go generate`:**
-
-- **Web-проект** (без Go): запускайте `tg client ts` из корня репозитория; `out` — относительно этого каталога.
-- **Go-проект**: `go generate` запускает команду из каталога пакета с директивой (например, `contracts/`). Чтобы `tg` стартовал из корня модуля, смените каталог перед вызовом:
+`go generate` стартует из каталога пакета с директивой. Чтобы `tg` видел корень модуля:
 
 ```go
 //go:generate sh -c "cd .. && tg client ts --out web --package-json web/package.json"
 ```
 
-Путь в `cd` указывайте относительно каталога файла с директивой. Альтернатива — вынести директиву в `.go`-файл в корне модуля (без `cd`).
+Либо положите директиву в `.go` в корне модуля.
 
-**Необязательные параметры:**
+## Что генерируется
 
-- **`package-json`** — путь к генерируемому `package.json` (например, `web/package.json` или `package.json` в корне модуля). Требует `@tg npmName`. Включает `outDir: dist` в `tsconfig.json`.
-- **`contracts-dir`** — каталог с контрактами относительно корня проекта (по умолчанию `contracts`). Используется при разборе проекта (плагин astg).
-- **`contracts`** — список имён контрактов через запятую; клиент генерируется только по ним (например: `UserService,OrderService`). Если не указан — берутся все контракты.
-- **`doc-file`** — путь к файлу с документации по клиенту. По умолчанию при включённой документации: `<out>/readme.md`.
-- **`no-doc`** — не генерировать документацию (по умолчанию документация создаётся).
-- **`no-client-id`** — не генерировать `identity.ts`, не добавлять `clientName` в `ClientOptions` и не отправлять заголовок `X-Client-Id` (по умолчанию заголовок включён).
+### Матрица: контракт → API
 
-Перед каждой генерацией старые сгенерированные файлы в `out` удаляются; затем создаются новые.
+| Need / аннотации | API |
+|------------------|-----|
+| `jsonRPC-server` | `client.userService()` — RPC + stream helpers |
+| `http-server` | `client.userServiceHTTP()` — REST |
+| оба | два accessor’а на один контракт |
+| JSON-RPC batch | `client.batch(...)` + `reqGetUser` и т.п. |
+| `ws-server` / `sse-server` | async stream на RPC-accessor; `signal?`, `onReady?` |
+| form / multipart | `form.ts` (`parseFormValue` / `parseCSVFormValue`) |
+| без `--no-client-id` | `identity.ts`, `X-Client-Id` |
+| `--package-json` + npm-аннотации | `package.json`, `tsconfig` с `outDir: dist` |
+| `kafka` | ничего |
 
-## Что появляется в каталоге `out`
+Имена: контракт `UserService` → `userService()` / `userServiceHTTP()` (camelCase от имени).
 
-В указанном каталоге создаются следующие файлы:
+### Инвентарь
 
-- **client.ts** — функция `newClient()`, класс `Client`, методы вида `userService()` и `userServiceHTTP()` для доступа к клиентам контрактов, метод `batch()` для JSON-RPC batch;
-- **options.ts** — тип `ClientOptions` (url, headers, idGeneratorFn; `clientName` — если не указан `--no-client-id`);
-- **identity.ts** — `resolveDefaultClientName()` для автоматического `X-Client-Id` (Node: hostname; браузер: agent token + `fnv1a32(userAgent)`); не создаётся при `--no-client-id`;
-- **headers.ts** — `buildClientHeaders()` — сборка заголовков запроса (с `X-Client-Id`, если не указан `--no-client-id`);
-- **version.ts** — константа `VersionASTg` с версией проекта;
-- **error.ts** — `ErrorJsonRPC`, `ErrorDecoder`, `defaultErrorDecoder`; для REST — `ResponseError`, `HTTPErrorDecoder`, `defaultHTTPErrorDecoder`;
-- **batch.ts** — типы `BatchRequest` и `RpcCallback` для batch-запросов (только при наличии JSON-RPC-контрактов);
-- **jsonrpc/** — реализация JSON-RPC 2.0 клиента;
-- **\<имя-контракта>.ts** — JSON-RPC клиент сервиса (например, `user-service.ts`);
-- **\<имя-контракта>-http.ts** — HTTP клиент сервиса;
-- **\<имя-контракта>-exchange.ts** — TypeScript-типы запросов и ответов по контракту;
-- **tsconfig.json** — рекомендуемая конфигурация TypeScript;
-- **readme.md** — документация по клиенту (если не отключена через `no-doc`).
+| Файл | Назначение |
+|------|------------|
+| `client.ts` | `newClient`, `Client`, accessors, `batch` |
+| `options.ts` | `ClientOptions` |
+| `headers.ts` | сборка заголовков |
+| `identity.ts` | default `X-Client-Id` (нет при `--no-client-id`) |
+| `form.ts` | CSV/form parse (browser + Node) |
+| `error.ts` | `ErrorDecoder` / `HTTPErrorDecoder` и default’ы |
+| `batch.ts`, `jsonrpc/` | при JSON-RPC |
+| `{service}.ts`, `{service}-http.ts`, `{service}-exchange.ts` | сервисы и типы |
+| `tsconfig.json`, `version.ts`, `readme.md` | конфиг / версия / док |
 
-## Использование сгенерированного клиента
+## Аннотации и их влияние
 
-### Установка
+Полный синтаксис: `tg plugin doc astg`.
 
-После публикации пакета в NPM:
+| Аннотация | Уровень | Эффект на client-ts |
+|-----------|---------|---------------------|
+| `jsonRPC-server` | iface | RPC accessor `userService()` |
+| `http-server` | iface | REST accessor `userServiceHTTP()` |
+| `http-prefix` | пакет / iface | входит в заявленный route; стык с path endpoint сворачивается по совпадающим сегментам |
+| `http-method` / `http-path` / `http-args` | method | REST |
+| `http-headers` / `http-cookies` | method | headers/cookies; в браузерном WS — ещё query fallback |
+| `ws-server` / `sse-server` / `stream` / paths | iface / method | stream API |
+| `enableInlineSingle` | method | result без обёртки-объекта |
+| `http-multipart` / part-* | method / arg | FormData вместо одного Blob |
+| npm: `npmName`, `version`, `license`, `author`, `npmPrivate`, `npmRegistry` | пакет | метаданные при `--package-json` |
+| typed enums / `enums` | type / field | TS-константы / union-ограничения в типах |
+| `kafka` | iface | игнор |
 
-```bash
-npm install @your-org/your-api-client
-# или
-yarn add @your-org/your-api-client
-```
+### Mapping modes
+
+| Mode | HTTP-сигнатура (`*HTTP`) | OpenAPI / wire |
+|------|--------------------------|----------------|
+| `explicit` | аргумент в сигнатуре | отдельный header/cookie/query |
+| `implicit` | может отсутствовать | значение из `headers` в options |
+| `body` | в теле | не отдельный HTTP-параметр |
+
+### Endpoint
+
+`newClient(endpoint)`: origin или URL с path. REST/SSE/WS склеивают path endpoint с заявленным route и сворачивают совпадающие сегменты. JSON-RPC — на сам `endpoint`.
+
+## Использование
 
 ### Базовый пример
 
 ```typescript
-import { newClient } from '@your-org/your-api-client';
+import { newClient } from './client';
 
-const client = newClient('https://api.example.com');
-const userService = client.userService();
-
-const user = await userService.getUser('user-id-123');
-console.log('User:', user);
-```
-
-Один клиент даёт доступ ко всем контрактам: для JSON-RPC — методы вида `userService()`, для HTTP — `userServiceHTTP()`. Имена методов образуются от имени контракта в kebab-case (например, контракт `UserService` → `userService()` и `userServiceHTTP()`).
-
-### Настройка клиента
-
-```typescript
 const client = newClient('https://api.example.com', {
-    // Имя клиента для заголовка X-Client-Id (по умолчанию генерируется автоматически)
-    clientName: 'web-checkout',
-
-    // Статические заголовки
-    headers: {
-        'Authorization': 'Bearer token',
-        'X-Custom-Header': 'value',
-    },
-
-    // Динамические заголовки (функция, можно async)
-    headers: async () => {
-        const token = await getAuthToken();
-        return { 'Authorization': `Bearer ${token}` };
-    },
-
-    // URL для запросов (если нужно переопределить)
-    url: 'https://api.example.com',
-
-    // Генератор ID для JSON-RPC (по умолчанию crypto.randomUUID())
-    idGeneratorFn: () => crypto.randomUUID(),
+  clientName: 'web-checkout',
+  headers: async () => ({ Authorization: `Bearer ${await getToken()}` }),
 });
+
+const user = await client.userService().getUser('123');
+const created = await client.userServiceHTTP().createUser({ name: 'John', email: 'a@b.c' });
 ```
 
-### JSON-RPC вызовы
+### Опции клиента
 
-- Имя метода в JSON-RPC: `{контракт}.{метод}` в camelCase (например, `userService.getUser`).
-- Параметры метода (кроме контекста) передаются в запросе; результат приходит в ответе. Ошибки выбрасываются как исключения.
+| Поле | Назначение |
+|------|------------|
+| `url` | переопределить base URL |
+| `headers` | объект или sync/async функция |
+| `clientName` | `X-Client-Id` (если не `--no-client-id`) |
+| `idGeneratorFn` | ID для JSON-RPC (default `crypto.randomUUID`) |
+| `errorDecoder` / `httpErrorDecoder` | кастом разбора RPC / REST ошибок |
 
-```typescript
-const client = newClient('https://api.example.com');
-const userService = client.userService();
-
-const user = await userService.getUser('123');
-```
-
-### JSON-RPC batch
-
-Несколько запросов можно выполнить одним вызовом через `client.batch()`. Для каждого метода контракта есть функция вида `req{MethodName}` (например, `reqGetUser`), которая возвращает запрос для batch. Обработчик результата задаётся в поле `retHandler`.
+### Batch
 
 ```typescript
-const client = newClient('https://api.example.com');
-const userService = client.userService();
-
 await client.batch([
-    {
-        rpcRequest: userService.reqGetUser('1'),
-        retHandler: (error, response) => {
-            if (error) {
-                console.error('Error:', error);
-                return;
-            }
-            console.log('User 1:', response?.result?.user);
-        },
-    },
-    {
-        rpcRequest: userService.reqGetUser('2'),
-        retHandler: (error, response) => {
-            if (error) {
-                console.error('Error:', error);
-                return;
-            }
-            console.log('User 2:', response?.result?.user);
-        },
-    },
+  {
+    rpcRequest: userService.reqGetUser('1'),
+    retHandler: (error, response) => { /* … */ },
+  },
 ]);
 ```
 
-### HTTP-методы
+### Streams
 
-Для методов, помеченных в контракте как HTTP (`@tg http-method`, `@tg http-path` и т.д.), клиент:
+Последние аргументы stream-методов: `signal?: AbortSignal`, `onReady?: () => void`.
 
-- отправляет указанный HTTP-метод и путь (параметры пути подставляются по `http-args`);
-- передаёт query-параметры, тело запроса для POST/PUT/PATCH;
-- поддерживает заголовки и cookie через аннотации;
-- при одном аргументе типа Blob отправляет тело как Blob (или application/octet-stream); при нескольких Blob или `http-multipart` — как FormData. Ответ с одним Blob возвращается как Blob, с несколькими или multipart — как части FormData по именам.
+- SSE: `signal` → `fetch` + `reader.cancel`; `onReady` после успешного response.
+- WS: abort → `socket.close`; `onReady` после `open`.
+- В браузере custom upgrade headers недоступны: сгенерированный клиент дублирует нужные значения в **query**; сервер читает query как fallback.
 
-#### Режимы маппинга `http-headers` / `http-cookies` / `http-args`
+### Blob / FormData / CSV
 
-Аннотации маппинга поддерживают формат `arg|key` или `arg|key|mode`, где `mode` — один из `explicit`, `implicit`, `body`. Если режим не указан, используется `body`.
+| Контракт | TS |
+|----------|----|
+| один binary body/result | `Blob` |
+| несколько / multipart | `FormData` |
+| слайсы в header/query/form | CSV через `form.ts` |
 
-- **`explicit`**: аргумент присутствует в сигнатуре HTTP‑методов (`userServiceHTTP()` и т.п.) и отправляется в указанный заголовок/cookie/query‑параметр. Такой параметр также отражается в сгенерированной OpenAPI‑спецификации.
-- **`implicit`**: параметр описан в контракте и спецификации, но может не попадать в явную сигнатуру методов клиента; значение типично берётся из общих настроек (headers в `ClientOptions`) или внешнего кода.
-- **`body`**: значение остаётся частью тела запроса/ответа; маппинг может использоваться сервером как дополнительный источник/override, но TypeScript‑клиент не делает из него отдельный HTTP‑параметр.
+### NPM
 
-```typescript
-const client = newClient('https://api.example.com');
-const userServiceHTTP = client.userServiceHTTP();
-
-// GET
-const user = await userServiceHTTP.getUser('123');
-
-// POST с телом
-const id = await userServiceHTTP.createUser({
-    name: 'John',
-    email: 'john@example.com',
-});
-
-// Загрузка файла (один Blob — тело запроса)
-const blob = new Blob([binaryData]);
-const id = await fileServiceHTTP.upload({ filename: 'file.txt', body: blob });
-
-// Загрузка нескольких файлов (multipart/form-data)
-await fileServiceHTTP.uploadMultipart({ file1: blob1, file2: blob2 });
-
-// Скачивание (ответ как Blob)
-const blob = await fileServiceHTTP.download(id);
-
-// Скачивание multipart (ответ как части FormData по именам)
-const { part1, part2 } = await fileServiceHTTP.downloadMultipart(id);
+```go
+// @tg npmName=@your-org/api-client
+// @tg version=v1.0.0
+// @tg license=MIT
 ```
 
-### Inline-ответ для одного значения
-
-Если у метода одно возвращаемое значение (кроме error) и в контракте указана аннотация `@tg enableInlineSingle`, результат приходит без обёртки в объект — одним значением.
-
-```typescript
-// Без enableInlineSingle: result = { status: "ok" }
-// С enableInlineSingle: result = "ok"
-const status = await service.getStatus();
+```bash
+tg client ts --out web --package-json web/package.json
+cd web && npm install && npm run build && npm publish
 ```
 
-### Обработка ошибок
+Без `npmName` флаг `--package-json` завершится ошибкой. Для source-only клиента флаг не указывайте.
 
-Ошибки вызовов выбрасываются как исключения. Их можно ловить через try/catch.
+React/Vue и т.п. не входят в зону плагина: достаточно `newClient` + `AbortSignal` на размонтировании.
+
+### Ошибки
+
+Вызовы reject/throw. Различайте RPC и REST через кастомные decoder’ы в options (`errorDecoder`, `httpErrorDecoder`), если default `ErrorJsonRPC` / `ResponseError` недостаточно.
 
 ```typescript
 try {
-    const user = await userService.getUser('123');
-    console.log('User:', user);
-} catch (error) {
-    if (error instanceof Error) {
-        console.error('Error:', error.message);
-    } else {
-        console.error('Unknown error:', error);
-    }
+  await client.userService().getUser('123');
+} catch (e) {
+  // сузьте к сгенерированным/своим типам на границе приложения
 }
 ```
 
-### Пример с React
+### Inline single
+
+`@tg enableInlineSingle` на методе с одним значимым result: вместо `{ status: "ok" }` приходит `"ok"`. Меняет типы exchange — перегенерируйте потребителей.
+
+### Identity по умолчанию
+
+Без `--no-client-id` и без явного `clientName`:
+
+| Runtime | Default identity |
+|---------|------------------|
+| Node | hostname-based |
+| Browser | agent token + hash User-Agent |
+
+Итог уходит в `X-Client-Id` и должен совпадать с ожиданиями server metrics (`MaxClientIDs`, normalize).
+
+### REST vs RPC — как не перепутать
 
 ```typescript
-import { useState, useEffect } from 'react';
-import { newClient } from '@your-org/your-api-client';
+const rpc = client.userService();       // JSON-RPC + streams
+const rest = client.userServiceHTTP();  // только REST
 
-function UserComponent({ userId }: { userId: string }) {
-    const [user, setUser] = useState<User | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<Error | null>(null);
-
-    useEffect(() => {
-        const client = newClient('https://api.example.com');
-        const userService = client.userService();
-
-        userService.getUser(userId)
-            .then(setUser)
-            .catch(setError)
-            .finally(() => setLoading(false));
-    }, [userId]);
-
-    if (loading) return <div>Loading...</div>;
-    if (error) return <div>Error: {error.message}</div>;
-    if (!user) return <div>User not found</div>;
-
-    return <div>{user.name}</div>;
-}
+await rpc.getUser('1');                 // method userService.getUser
+await rest.getUser('1');                // GET по http-path
 ```
 
-## Документация по клиенту
+Если в контракте только `http-server`, RPC-accessor может отсутствовать (и наоборот) — смотрите матрицу генерации и `astg-json`.
 
-По умолчанию плагин генерирует в каталоге `out` файл `readme.md` с описанием контрактов, методов и типов. Документацию можно отключить опцией `--no-doc` или указать другой файл через `--doc-file`.
+### Типичный цикл разработки
 
-## Публикация как NPM-пакет
+1. Правите контракты (`tgp-contracts`).
+2. Из корня модуля: `tg client ts --out web …`.
+3. `npx tsc -p web/tsconfig.json` (или `npm run build` пакета).
+4. Smoke: один RPC, один REST, при наличии — stream cancel через `AbortSignal`.
+5. При npm: проверить `package.json` exports после `--package-json`.
 
-Укажите `--package-json` и npm-аннотации в пакете контрактов:
+## На что обратить внимание
 
-```go
-// @tg npmName=@your-org/your-api-client
-// @tg version=v1.0.0
-// @tg license=MIT
-// @tg author=`Your Name`
-// @tg npmPrivate=true
-// @tg npmRegistry=https://registry.npmjs.org
-//
-//go:generate tg client ts --out web --package-json web/package.json
-```
-
-Плагин создаёт `package.json`, `tsconfig.json` с `outDir: dist` и исходники в `out`.
-
-```bash
-cd web
-npm install
-npm run build
-npm publish
-```
-
-## Зависимости
-
-Сгенерированный код не требует внешних зависимостей для базовой работы. Используются только стандартные API:
-
-- `fetch` — для HTTP-запросов;
-- `crypto.randomUUID()` — для генерации ID (при необходимости можно подключить полифилл);
-- Promise — для асинхронности.
+1. Только **`--out`**, не `-o`.
+2. Неверный cwd (`go generate` из `contracts/`) → файлы не там.
+3. Выбирайте accessor по транспорту: RPC → `userService()`, REST → `userServiceHTTP()`.
+4. Browser WS: headers через query fallback — проверяйте серверный upgrade.
+5. `--no-client-id` меняет метки на server metrics/logs.
+6. `implicit` args «исчезают» из сигнатуры.
+7. Не патчите сгенерированный TS — правьте контракты.
+8. Kafka не генерируется.
+9. Полифиллы `fetch` / `crypto.randomUUID` / `Blob` зависят от runtime.
 
 ## Ограничения
 
-- В контрактах методы должны принимать `context.Context` первым аргументом (в TypeScript контекст не передаётся).
-- Методы должны возвращать `error` последним значением (в TypeScript ошибки приходят как исключения).
-- Параметры и возвращаемые значения (кроме error) должны быть именованными.
-- Поддерживаются только публичные интерфейсы (с заглавной буквы).
-- Для HTTP-методов в контракте должны быть указаны аннотации `http-method` и `http-path`.
-- Рекомендуется TypeScript 4.0 или выше.
+1. В Go-контракте `context.Context` и `error` обязательны; в TS контекст не передаётся, ошибки — исключения.
+2. Именованные параметры/результаты; только публичные интерфейсы.
+3. REST требует `http-method` + `http-path`.
+4. Рекомендуется TypeScript ≥ 4.
+5. Внешних runtime-зависимостей для базового клиента нет.
 
-## Совместимость
+## Связь с другими плагинами
 
-Клиент совместим с контрактами, поддерживаемыми плагином astg, и с серверами, сгенерированными плагином server. Все аннотации astg учитываются при генерации клиента.
+| Плагин | Связь |
+|--------|-------|
+| `astg` / `astg-json` | модель и диагностика |
+| `server` | совместимый wire (в т.ч. query fallback на WS) |
+| `client-go` | тот же контракт на Go |
+| `swagger` | документация API |
+| `tgp-contracts` | npm- и HTTP-аннотации |

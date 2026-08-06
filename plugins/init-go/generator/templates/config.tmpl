@@ -16,10 +16,11 @@ type CfgService struct {
 	LogLevel  string `envconfig:"LOG_LEVEL" default:"info"`
 	LogFormat string `envconfig:"LOG_FORMAT" default:"console"`
 
-	Bind          string `envconfig:"BIND_SERVICE" default:":9000"`
-	MetricsBind   string `envconfig:"BIND_METRICS" default:":9090"`
-	LivenessBind  string `envconfig:"BIND_LIVENESS" default:":9091"`
-	ReadinessBind string `envconfig:"BIND_READINESS" default:":9092"`
+	Bind            string        `envconfig:"BIND_SERVICE" default:":9000"`
+	MetricsBind     string        `envconfig:"BIND_METRICS" default:":9090"`
+	LivenessBind    string        `envconfig:"BIND_LIVENESS" default:":9091"`
+	ReadinessBind   string        `envconfig:"BIND_READINESS" default:":9092"`
+	ShutdownTimeout time.Duration `envconfig:"SHUTDOWN_TIMEOUT" default:"10s"`
 }
 
 var (

@@ -4,49 +4,49 @@ package renderer
 
 import "fmt"
 
-type typeDefTs struct {
+type typeDefTS struct {
 	name       string
 	kind       string
 	typeName   string
 	nullable   bool
 	value      any
-	properties map[string]typeDefTs
+	properties map[string]typeDefTS
 	// Для импортированных типов храним информацию о пакете и имени типа
 	importPkg  string // Пакет импорта (например, "dto")
 	importName string // Имя типа в пакете (например, "SomeStruct")
 }
 
-func (def typeDefTs) def() (prop string) {
+func (def typeDefTS) def() (prop string) {
 
 	switch def.kind {
-	case "map":
+	case kindMap:
 		if def.properties == nil {
 			return "Record<string, any>"
 		}
 		key := def.properties["key"]
 		value := def.properties["value"]
-		keyType := "string"
-		valueType := "any"
+		keyType := typeString
+		valueType := typeAny
 		if key.kind != "" {
-			keyType = castTypeTs(key.typeLink())
+			keyType = castTypeTS(key.typeLink())
 		}
 		if value.kind != "" {
-			valueType = castTypeTs(value.typeLink())
+			valueType = castTypeTS(value.typeLink())
 		}
 		return fmt.Sprintf("Record<%s, %s>", keyType, valueType)
-	case "array":
+	case kindArray:
 		if def.properties == nil {
 			return "any[]"
 		}
 		item := def.properties["item"]
-		itemType := "any"
+		itemType := typeAny
 		if item.kind != "" {
 			itemType = item.typeLink()
 		}
-		return fmt.Sprintf("%s[]", itemType)
-	case "struct":
+		return itemType + "[]"
+	case kindStruct:
 		return def.name
-	case "scalar":
+	case kindScalar:
 		// Для скалярных типов (алиасов) используем базовый TypeScript тип
 		// Если тип импортирован, используем namespace (например, "dto.UserID")
 		if def.importPkg != "" && def.importName != "" {
@@ -54,14 +54,14 @@ func (def typeDefTs) def() (prop string) {
 		}
 		return def.typeName
 	default:
-		return castTypeTs(def.kind)
+		return castTypeTS(def.kind)
 	}
 }
 
-func (def typeDefTs) typeLink() (link string) {
+func (def typeDefTS) typeLink() (link string) {
 
 	switch def.kind {
-	case "map":
+	case kindMap:
 		if def.importPkg != "" && def.importName != "" {
 			link = fmt.Sprintf("%s.%s", def.importPkg, def.importName)
 			break
@@ -70,32 +70,32 @@ func (def typeDefTs) typeLink() (link string) {
 			link = "Record<string, any>"
 			break
 		}
-		keyType := "string"
-		valueType := "any"
+		keyType := typeString
+		valueType := typeAny
 		if key, ok := def.properties["key"]; ok {
-			keyType = castTypeTs(key.typeLink())
+			keyType = castTypeTS(key.typeLink())
 		}
 		if value, ok := def.properties["value"]; ok {
-			valueType = castTypeTs(value.typeLink())
+			valueType = castTypeTS(value.typeLink())
 		}
 		link = fmt.Sprintf("Record<%s, %s>", keyType, valueType)
-	case "array":
+	case kindArray:
 		if def.properties == nil {
 			link = "any[]"
 			break
 		}
-		itemType := "any"
+		itemType := typeAny
 		if item, ok := def.properties["item"]; ok {
-			itemType = castTypeTs(item.typeLink())
+			itemType = castTypeTS(item.typeLink())
 		}
-		link = fmt.Sprintf("%s[]", itemType)
-	case "scalar":
+		link = itemType + "[]"
+	case kindScalar:
 		if def.importPkg != "" && def.importName != "" {
 			link = fmt.Sprintf("%s.%s", def.importPkg, def.importName)
 			break
 		}
 		link = def.typeName
-	case "struct":
+	case kindStruct:
 		if def.importPkg != "" && def.importName != "" {
 			link = fmt.Sprintf("%s.%s", def.importPkg, def.importName)
 			break
@@ -105,7 +105,7 @@ func (def typeDefTs) typeLink() (link string) {
 			break
 		}
 		if def.name == "" {
-			link = "any"
+			link = typeAny
 			break
 		}
 		link = def.name
@@ -116,12 +116,12 @@ func (def typeDefTs) typeLink() (link string) {
 		case def.typeName != "":
 			link = def.typeName
 		default:
-			link = "any"
+			link = typeAny
 		}
 	default:
-		link = castTypeTs(def.name)
+		link = castTypeTS(def.name)
 	}
-	if def.nullable && link != "any" {
+	if def.nullable && link != typeAny {
 		return link + " | null"
 	}
 	return link

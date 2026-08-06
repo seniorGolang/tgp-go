@@ -1,0 +1,91 @@
+{{.DoNotEditComment}}
+package bearer
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+type discovery struct {
+	Issuer  string `json:"issuer"`
+	JWKSURI string `json:"jwks_uri"`
+}
+
+func (verifier *Verifier) fetchKeysFor(ctx context.Context, path string) (keys subjectKeys, err error) {
+
+	var jwksURI string
+	var issuer string
+	if path == "" {
+		if jwksURI, issuer, err = verifier.discoverRFC(ctx); err != nil {
+			return
+		}
+	} else {
+		jwksURI = verifier.cfg.AuthorizationServer + path
+	}
+
+	var keyMap map[string]any
+	if keyMap, err = verifier.fetchKeys(ctx, jwksURI); err != nil {
+		return
+	}
+
+	keys = subjectKeys{
+		issuer: issuer,
+		keys:   keyMap,
+	}
+	return
+}
+
+func (verifier *Verifier) discoverRFC(ctx context.Context) (jwksURI string, issuer string, err error) {
+
+	metadataURL := verifier.cfg.AuthorizationServer + "/.well-known/oauth-authorization-server"
+	var cfg discovery
+	if cfg, err = verifier.fetchDiscovery(ctx, metadataURL); err != nil {
+		return
+	}
+	if strings.TrimSpace(cfg.JWKSURI) == "" {
+		err = fmt.Errorf("bearer: jwks_uri missing in authorization server metadata")
+		return
+	}
+	jwksURI = cfg.JWKSURI
+	issuer = cfg.Issuer
+	return
+}
+
+func (verifier *Verifier) fetchDiscovery(ctx context.Context, url string) (cfg discovery, err error) {
+
+	var body []byte
+	if body, err = verifier.get(ctx, url); err != nil {
+		return
+	}
+	if err = json.Unmarshal(body, &cfg); err != nil {
+		err = fmt.Errorf("bearer: decode discovery: %w", err)
+	}
+	return
+}
+
+func (verifier *Verifier) get(ctx context.Context, url string) (body []byte, err error) {
+
+	var req *http.Request
+	if req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil); err != nil {
+		return
+	}
+	var resp *http.Response
+	if resp, err = verifier.cfg.Client.Do(req); err != nil {
+		err = fmt.Errorf("bearer: GET %s: %w", url, err)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if body, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20)); err != nil {
+		err = fmt.Errorf("bearer: read %s: %w", url, err)
+		return
+	}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		err = fmt.Errorf("bearer: GET %s: status %d", url, resp.StatusCode)
+	}
+	return
+}

@@ -6,12 +6,12 @@ package sequence
 import "fmt"
 
 func (d *Diagram) Activate(participant string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    activate %s", participant))
+	d.body = append(d.body, "    activate "+participant)
 	return d
 }
 
 func (d *Diagram) Deactivate(participant string) (out *Diagram) {
-	d.body = append(d.body, fmt.Sprintf("    deactivate %s", participant))
+	d.body = append(d.body, "    deactivate "+participant)
 	return d
 }
 

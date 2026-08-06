@@ -6,7 +6,7 @@ package arch
 import "fmt"
 
 func (a *Architecture) Junction(junctionID string) *Architecture {
-	a.body = append(a.body, fmt.Sprintf("    junction %s", junctionID))
+	a.body = append(a.body, "    junction "+junctionID)
 	return a
 }
 

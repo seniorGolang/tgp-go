@@ -3,6 +3,7 @@
 package parser
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,12 +58,12 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 		relPath = strings.TrimPrefix(relPath, "/")
 		dir := filepath.Join(internal.ProjectRoot, filepath.FromSlash(relPath))
 		var info os.FileInfo
-		//nolint:gosec // G703 — dir формируется из ProjectRoot и import path, не из внешнего пользовательского ввода
+		//nolint:gosec,nolintlint // G703 — dir формируется из ProjectRoot и import path; nolintlint ложно срабатывает с -tags=pluginInfo
 		if info, err = os.Stat(dir); err == nil && info.IsDir() {
 			result = dir
 		} else if err != nil {
-			_ = fmt.Errorf("failed to stat directory %s: %w (pkgPath=%s, modulePath=%s, relPath=%s)",
-				dir, err, pkgPath, r.modulePath, relPath)
+			_ = err // continue with other resolvers
+			err = nil
 		} else if relPath == "" {
 			if info, err = os.Stat(internal.ProjectRoot); err == nil && info.IsDir() {
 				result = internal.ProjectRoot
@@ -72,7 +73,7 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 			r.resolveCacheMu.Lock()
 			r.resolveCache[pkgPath] = result
 			r.resolveCacheMu.Unlock()
-			return
+			return result, nil
 		}
 	}
 
@@ -85,7 +86,7 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 			r.resolveCacheMu.Lock()
 			r.resolveCache[pkgPath] = result
 			r.resolveCacheMu.Unlock()
-			return
+			return result, nil
 		}
 	}
 
@@ -100,7 +101,7 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 					dir := filepath.Join(modDir, filepath.FromSlash(relPath))
 					//nolint:gosec // G703 — dir формируется из найденного каталога модуля и import path
 					if _, statErr := os.Stat(dir); statErr == nil {
-						return dir, err
+						return dir, nil
 					}
 				}
 			}
@@ -112,7 +113,7 @@ func (r *PackageResolver) Resolve(pkgPath string) (result string, err error) {
 			r.resolveCacheMu.Lock()
 			r.resolveCache[pkgPath] = result
 			r.resolveCacheMu.Unlock()
-			return
+			return result, nil
 		}
 	}
 
@@ -182,7 +183,7 @@ func (r *PackageResolver) findModuleByPackagePath(pkgPath string) (result string
 	}
 
 	if len(modCacheDirs) == 0 {
-		return "", fmt.Errorf("GOMODCACHE and GOPATH not set")
+		return "", errors.New("GOMODCACHE and GOPATH not set")
 	}
 
 	// Пробуем найти модуль, начиная с полного пути

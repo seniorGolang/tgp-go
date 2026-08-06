@@ -6,8 +6,9 @@ import (
 	"context"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
+	"tgp/internal/converter"
 	"tgp/internal/model"
 )
 
@@ -75,13 +76,22 @@ func (r *ClientRenderer) argByName(method *model.Method, argName string) (v *mod
 	return nil
 }
 
-func (r *ClientRenderer) varToString(ctx context.Context, variable *model.Variable) (c Code) {
+func (r *ClientRenderer) varToString(_ctx context.Context, variable *model.Variable) (c Code) {
 
+	name := ToLowerCamel(variable.Name)
+	if variable.IsSlice {
+		sliceExpr := Id(name)
+		if variable.NumberOfPointers > 0 {
+			sliceExpr = Op("*").Id(name)
+		}
+		stringElements := variable.TypeID == typeString && variable.ElementPointers == 0
+		return converter.BuildSliceCSVExpr(sliceExpr, stringElements, func(_ string, _ string) {})
+	}
 	var expr Code
-	if variable.TypeID == "string" {
-		expr = Id(ToLowerCamel(variable.Name))
+	if variable.TypeID == typeString {
+		expr = Id(name)
 	} else {
-		expr = Qual(PackageFmt, "Sprint").Call(Id(ToLowerCamel(variable.Name)))
+		expr = Qual(PackageFmt, "Sprint").Call(Id(name))
 	}
 	if variable.NumberOfPointers > 0 {
 		expr = Op("*").Add(expr)
@@ -110,5 +120,5 @@ func (r *ClientRenderer) jsonRPCWireMethod(contract *model.Contract, method *mod
 	if contract == nil || method == nil {
 		return ""
 	}
-	return model.JsonRPCWireMethod(contract.Name, method.Name)
+	return model.JSONRPCWireMethod(contract.Name, method.Name)
 }

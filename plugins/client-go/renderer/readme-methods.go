@@ -5,6 +5,7 @@ package renderer
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"tgp/internal/markdown"
@@ -15,7 +16,7 @@ import (
 func (r *ClientRenderer) renderMethodDoc(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string, typeUsages map[string]*typeUsage) {
 
 	methodAnchor := methodAnchorID(contract.Name, method.Name)
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", methodAnchor))
 	md.LF()
 	md.H3(method.Name)
 
@@ -57,7 +58,7 @@ func (r *ClientRenderer) renderHTTPMethodDoc(md *markdown.Markdown, method *mode
 
 	methodTitle := fmt.Sprintf("%s %s", httpMethod, httpPath)
 	methodAnchor := methodAnchorID(contract.Name, methodTitle)
-	md.PlainText(fmt.Sprintf("<a id=\"%s\"></a>", methodAnchor))
+	md.PlainText(fmt.Sprintf("<a id=%q></a>", methodAnchor))
 	md.LF()
 	md.H3(methodTitle)
 
@@ -117,7 +118,7 @@ func (r *ClientRenderer) renderHTTPMethodDoc(md *markdown.Markdown, method *mode
 	md.LF()
 }
 
-func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *model.Method, contract *model.Contract, outDir string, isHTTP bool) {
+func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *model.Method, contract *model.Contract, _outDir string, isHTTP bool) {
 
 	md.PlainText(markdown.Bold("Сигнатура:"))
 	md.LF()
@@ -165,7 +166,7 @@ func (r *ClientRenderer) renderMethodSignature(md *markdown.Markdown, method *mo
 	md.LF()
 }
 
-func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, method *model.Method, contract *model.Contract, typeUsages map[string]*typeUsage) {
+func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, method *model.Method, contract *model.Contract, _typeUsages map[string]*typeUsage) {
 
 	args := r.argsWithoutContext(method)
 	results := r.resultsWithoutError(method)
@@ -190,7 +191,7 @@ func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, met
 			})
 		}
 
-		headers := []string{"Имя", "Тип", "Описание", "Ссылка на тип"}
+		headers := []string{labelName, labelType, labelDescription, labelTypeRef}
 		tableSet := markdown.TableSet{
 			Header: headers,
 			Rows:   rows,
@@ -224,12 +225,12 @@ func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, met
 		// Ошибка
 		rows = append(rows, []string{
 			markdown.Code("err"),
-			markdown.Code("error"),
+			markdown.Code(typeError),
 			"Ошибка выполнения запроса",
 			"-",
 		})
 
-		headers := []string{"Имя", "Тип", "Описание", "Ссылка на тип"}
+		headers := []string{labelName, labelType, labelDescription, labelTypeRef}
 		tableSet := markdown.TableSet{
 			Header: headers,
 			Rows:   rows,
@@ -239,7 +240,7 @@ func (r *ClientRenderer) renderMethodParamsAndResults(md *markdown.Markdown, met
 	}
 }
 
-func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model.Method, contract *model.Contract) {
+func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model.Method, _contract *model.Contract) {
 
 	if len(method.Errors) == 0 {
 		return
@@ -252,9 +253,9 @@ func (r *ClientRenderer) renderMethodErrors(md *markdown.Markdown, method *model
 	for _, errInfo := range sortedMethodErrors(method.Errors) {
 		if errInfo.HTTPCode != 0 {
 			errorDesc := fmt.Sprintf("%s (%d)", errInfo.HTTPCodeText, errInfo.HTTPCode)
-			md.PlainText(fmt.Sprintf("- %s - %s", markdown.Code(fmt.Sprintf("%d", errInfo.HTTPCode)), errorDesc))
+			md.PlainText(fmt.Sprintf("- %s - %s", markdown.Code(strconv.Itoa(errInfo.HTTPCode)), errorDesc))
 		} else {
-			md.PlainText(fmt.Sprintf("- %s", markdown.Code(errInfo.TypeName)))
+			md.PlainText("- " + markdown.Code(errInfo.TypeName))
 		}
 		md.LF()
 	}

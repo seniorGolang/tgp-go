@@ -28,9 +28,7 @@ func NewDiagram(w io.Writer, opts ...Option) (d *Diagram) {
 
 	lines := []string{}
 	if c.title != noTitle {
-		lines = append(lines, "---")
-		lines = append(lines, fmt.Sprintf("title: %s", c.title))
-		lines = append(lines, "---")
+		lines = append(lines, "---", "title: "+c.title, "---")
 	}
 	lines = append(lines, "stateDiagram-v2")
 
@@ -63,7 +61,7 @@ func (d *Diagram) Build() (err error) {
 func (d *Diagram) State(id, description string) *Diagram {
 
 	if description == "" {
-		d.body = append(d.body, fmt.Sprintf("    %s", id))
+		d.body = append(d.body, "    "+id)
 	} else {
 		d.body = append(d.body, fmt.Sprintf("    %s : %s", id, description))
 	}
@@ -84,7 +82,7 @@ func (d *Diagram) TransitionWithNote(from, to, note string) *Diagram {
 
 func (d *Diagram) StartTransition(to string) *Diagram {
 
-	d.body = append(d.body, fmt.Sprintf("    [*] --> %s", to))
+	d.body = append(d.body, "    [*] --> "+to)
 	return d
 }
 
@@ -120,9 +118,9 @@ func (d *Diagram) NoteRight(state, note string) *Diagram {
 
 func (d *Diagram) NoteLeftMultiLine(state string, lines ...string) *Diagram {
 
-	d.body = append(d.body, fmt.Sprintf("    note left of %s", state))
+	d.body = append(d.body, "    note left of "+state)
 	for _, line := range lines {
-		d.body = append(d.body, fmt.Sprintf("        %s", line))
+		d.body = append(d.body, "        "+line)
 	}
 	d.body = append(d.body, "    end note")
 	return d
@@ -130,9 +128,9 @@ func (d *Diagram) NoteLeftMultiLine(state string, lines ...string) *Diagram {
 
 func (d *Diagram) NoteRightMultiLine(state string, lines ...string) *Diagram {
 
-	d.body = append(d.body, fmt.Sprintf("    note right of %s", state))
+	d.body = append(d.body, "    note right of "+state)
 	for _, line := range lines {
-		d.body = append(d.body, fmt.Sprintf("        %s", line))
+		d.body = append(d.body, "        "+line)
 	}
 	d.body = append(d.body, "    end note")
 	return d
@@ -154,7 +152,7 @@ type CompositeStateBuilder struct {
 func (b *CompositeStateBuilder) State(id, description string) *CompositeStateBuilder {
 
 	if description == "" {
-		b.body = append(b.body, fmt.Sprintf("        %s", id))
+		b.body = append(b.body, "        "+id)
 	} else {
 		b.body = append(b.body, fmt.Sprintf("        %s : %s", id, description))
 	}
@@ -175,7 +173,7 @@ func (b *CompositeStateBuilder) TransitionWithNote(from, to, note string) *Compo
 
 func (b *CompositeStateBuilder) StartTransition(to string) *CompositeStateBuilder {
 
-	b.body = append(b.body, fmt.Sprintf("        [*] --> %s", to))
+	b.body = append(b.body, "        [*] --> "+to)
 	return b
 }
 

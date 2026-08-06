@@ -62,7 +62,7 @@ func detectInterfaces(typ types.Type, coreType *model.Type, project *model.Proje
 	}
 }
 
-func detectParseFromString(typ types.Type, coreType *model.Type, project *model.Project, loader *AutonomousPackageLoader) {
+func detectParseFromString(_typ types.Type, coreType *model.Type, project *model.Project, loader *AutonomousPackageLoader) {
 
 	if coreType.ImportPkgPath == "" || coreType.TypeName == "" {
 		return
@@ -144,6 +144,11 @@ func isBuiltinErrorType(t types.Type) (ok bool) {
 
 func getAllInterfacesFromLoader(loader *AutonomousPackageLoader) (interfaces map[string]*types.Interface) {
 
+	interfaces = make(map[string]*types.Interface)
+	if loader == nil || loader.resolver == nil {
+		return
+	}
+
 	// Список стандартных библиотек с важными интерфейсами
 	// Эти пакеты нужно загрузить явно, чтобы найти интерфейсы
 	stdlibPackagesWithInterfaces := []string{
@@ -179,7 +184,6 @@ func getAllInterfacesFromLoader(loader *AutonomousPackageLoader) (interfaces map
 		}
 	}
 
-	interfaces = make(map[string]*types.Interface)
 	seenInterfaces := make(map[string]bool)
 
 	allPackages := loader.GetAllPackages()

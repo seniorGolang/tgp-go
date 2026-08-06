@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"tgp/internal/model"
+	"tgp/internal/tags"
 )
 
 type typeUsage struct {
@@ -29,67 +30,71 @@ func (r *ClientRenderer) collectStructTypes() map[string]*typeUsage {
 		for _, method := range contract.Methods {
 			args := r.argsWithoutContext(method)
 			for _, arg := range args {
-				if structType, typeName, pkg := r.getStructType(arg.TypeID, contract.PkgPath); structType != nil {
-					keyTypeName := typeName
-					if typeName == "" {
-						typeName = arg.Name
-						keyTypeName = arg.Name
-					}
-					if strings.Contains(keyTypeName, ".") {
-						parts := strings.Split(keyTypeName, ".")
-						keyTypeName = parts[len(parts)-1]
-					}
-					key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
-
-					fullTypeNameForKey := typeName
-					if fullTypeNameForKey == "" {
-						fullTypeNameForKey = arg.Name
-					}
-
-					if _, ok := typeUsages[key]; !ok {
-						typeUsages[key] = &typeUsage{
-							typeName:     keyTypeName,
-							pkgPath:      pkg,
-							fullTypeName: fullTypeNameForKey,
-							locations:    make([]string, 0),
-						}
-					}
-					location := fmt.Sprintf("%s.%s.%s", contract.Name, method.Name, arg.Name)
-					typeUsages[key].locations = append(typeUsages[key].locations, location)
+				structType, typeName, pkg := r.getStructType(arg.TypeID, contract.PkgPath)
+				if structType == nil {
+					continue
 				}
+				keyTypeName := typeName
+				if typeName == "" {
+					typeName = arg.Name
+					keyTypeName = arg.Name
+				}
+				if strings.Contains(keyTypeName, ".") {
+					parts := strings.Split(keyTypeName, ".")
+					keyTypeName = parts[len(parts)-1]
+				}
+				key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
+
+				fullTypeNameForKey := typeName
+				if fullTypeNameForKey == "" {
+					fullTypeNameForKey = arg.Name
+				}
+
+				if _, ok := typeUsages[key]; !ok {
+					typeUsages[key] = &typeUsage{
+						typeName:     keyTypeName,
+						pkgPath:      pkg,
+						fullTypeName: fullTypeNameForKey,
+						locations:    make([]string, 0),
+					}
+				}
+				location := fmt.Sprintf("%s.%s.%s", contract.Name, method.Name, arg.Name)
+				typeUsages[key].locations = append(typeUsages[key].locations, location)
 			}
 
 			// Результаты
 			results := r.resultsWithoutError(method)
 			for _, result := range results {
-				if structType, typeName, pkg := r.getStructType(result.TypeID, contract.PkgPath); structType != nil {
-					keyTypeName := typeName
-					if typeName == "" {
-						typeName = result.Name
-						keyTypeName = result.Name
-					}
-					if strings.Contains(keyTypeName, ".") {
-						parts := strings.Split(keyTypeName, ".")
-						keyTypeName = parts[len(parts)-1]
-					}
-					key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
-
-					fullTypeNameForKey := typeName
-					if fullTypeNameForKey == "" {
-						fullTypeNameForKey = result.Name
-					}
-
-					if _, ok := typeUsages[key]; !ok {
-						typeUsages[key] = &typeUsage{
-							typeName:     keyTypeName,
-							pkgPath:      pkg,
-							fullTypeName: fullTypeNameForKey,
-							locations:    make([]string, 0),
-						}
-					}
-					location := fmt.Sprintf("%s.%s.%s", contract.Name, method.Name, result.Name)
-					typeUsages[key].locations = append(typeUsages[key].locations, location)
+				structType, typeName, pkg := r.getStructType(result.TypeID, contract.PkgPath)
+				if structType == nil {
+					continue
 				}
+				keyTypeName := typeName
+				if typeName == "" {
+					typeName = result.Name
+					keyTypeName = result.Name
+				}
+				if strings.Contains(keyTypeName, ".") {
+					parts := strings.Split(keyTypeName, ".")
+					keyTypeName = parts[len(parts)-1]
+				}
+				key := fmt.Sprintf("%s.%s", pkg, keyTypeName)
+
+				fullTypeNameForKey := typeName
+				if fullTypeNameForKey == "" {
+					fullTypeNameForKey = result.Name
+				}
+
+				if _, ok := typeUsages[key]; !ok {
+					typeUsages[key] = &typeUsage{
+						typeName:     keyTypeName,
+						pkgPath:      pkg,
+						fullTypeName: fullTypeNameForKey,
+						locations:    make([]string, 0),
+					}
+				}
+				location := fmt.Sprintf("%s.%s.%s", contract.Name, method.Name, result.Name)
+				typeUsages[key].locations = append(typeUsages[key].locations, location)
 			}
 		}
 	}
@@ -214,7 +219,7 @@ func (r *ClientRenderer) goTypeString(typeID, pkgPath string) (s string) {
 	case model.TypeKindArray:
 		if typ.IsSlice {
 			elemType := r.goTypeString(typ.ArrayOfID, pkgPath)
-			return fmt.Sprintf("[]%s", elemType)
+			return "[]" + elemType
 		}
 		elemType := r.goTypeString(typ.ArrayOfID, pkgPath)
 		return fmt.Sprintf("[%d]%s", typ.ArrayLen, elemType)
@@ -253,19 +258,5 @@ func (r *ClientRenderer) goTypeString(typeID, pkgPath string) (s string) {
 
 func (r *ClientRenderer) jsonName(field *model.StructField) (value string, inline bool) {
 
-	if tagValues, ok := field.Tags["json"]; ok {
-		for _, val := range tagValues {
-			if val == "inline" {
-				inline = true
-				continue
-			}
-			if val != "omitempty" && val != "-" {
-				value = val
-			}
-		}
-	}
-	if value == "" {
-		value = field.Name
-	}
-	return
+	return tags.StructFieldJSONName(field.Tags, field.Name)
 }

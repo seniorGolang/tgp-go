@@ -6,21 +6,17 @@ import (
 	"path"
 	"path/filepath"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
-
-	"tgp/internal/generated"
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 )
 
 func (r *ClientRenderer) RenderClientError() (err error) {
 
 	outDir := r.outDir
 	srcFile := NewSrcFile(filepath.Base(outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	jsonPkg := r.getPackageJSON(nil)
 
-	if r.HasJsonRPC() {
-		srcFile.ImportName(jsonPkg, "json")
+	if r.HasJSONRPC() {
+		srcFile.ImportName(jsonPkg, keyJSON)
 	}
 	if r.HasHTTP() {
 		srcFile.ImportName(PackageFmt, "fmt")
@@ -32,8 +28,8 @@ func (r *ClientRenderer) RenderClientError() (err error) {
 		Id("Code").Call().Int(),
 	)
 
-	if r.HasJsonRPC() {
-		srcFile.Line().Add(r.errorJsonRPCType()).Line()
+	if r.HasJSONRPC() {
+		srcFile.Line().Add(r.errorJSONRPCType()).Line()
 		srcFile.Line().Type().Id("ErrorDecoder").Func().Params(
 			Id("errData").Qual(jsonPkg, "RawMessage"),
 		).Params(Error())
@@ -52,8 +48,8 @@ func (r *ClientRenderer) RenderClientError() (err error) {
 		).Params(Id("err").Error())
 	}
 
-	if r.HasJsonRPC() {
-		srcFile.Line().Add(r.errorJsonRPCErrorMethod()).Line()
+	if r.HasJSONRPC() {
+		srcFile.Line().Add(r.errorJSONRPCErrorMethod()).Line()
 	}
 
 	if r.HasHTTP() {
@@ -67,16 +63,16 @@ func (r *ClientRenderer) RenderClientError() (err error) {
 				String().Call(Id("e").Dot("Body")),
 			)),
 		)
-		srcFile.Line().Func().Params(Id("e").Op("*").Id("ResponseError")).Id("Code").Params().Params(Id("code").Int()).Block(
+		srcFile.Line().Func().Params(Id("e").Op("*").Id("ResponseError")).Id("Code").Params().Params(Id(jsonTagCode).Int()).Block(
 			Return(Id("e").Dot("StatusCode")),
 		)
 	}
 
-	if r.HasJsonRPC() {
+	if r.HasJSONRPC() {
 		srcFile.Line().Func().Id("defaultErrorDecoder").Params(
 			Id("errData").Qual(jsonPkg, "RawMessage"),
 		).Params(Id("err").Error()).Block(
-			Var().Id("jsonrpcError").Id("errorJsonRPC"),
+			Var().Id("jsonrpcError").Id("errorJSONRPC"),
 			If(Err().Op("=").Qual(jsonPkg, "Unmarshal").Call(Id("errData"), Op("&").Id("jsonrpcError")).Op(";").Err().Op("!=").Nil()).Block(
 				Return(),
 			),
@@ -101,18 +97,18 @@ func (r *ClientRenderer) RenderClientError() (err error) {
 	return srcFile.Save(path.Join(outDir, "error.go"))
 }
 
-func (r *ClientRenderer) errorJsonRPCType() (c Code) {
+func (r *ClientRenderer) errorJSONRPCType() (c Code) {
 
-	return Type().Id("errorJsonRPC").Struct(
-		Id("Code").Int().Tag(map[string]string{"json": "code"}),
-		Id("Message").String().Tag(map[string]string{"json": "message"}),
-		Id("Data").Any().Tag(map[string]string{"json": "data,omitempty"}),
+	return Type().Id("errorJSONRPC").Struct(
+		Id("Code").Int().Tag(map[string]string{keyJSON: jsonTagCode}),
+		Id("Message").String().Tag(map[string]string{keyJSON: jsonTagMessage}),
+		Id("Data").Any().Tag(map[string]string{keyJSON: jsonTagDataOmitempty}),
 	)
 }
 
-func (r *ClientRenderer) errorJsonRPCErrorMethod() (c Code) {
+func (r *ClientRenderer) errorJSONRPCErrorMethod() (c Code) {
 
-	return Func().Params(Err().Id("errorJsonRPC")).Id("Error").Params().Params(String()).Block(
+	return Func().Params(Err().Id("errorJSONRPC")).Id("Error").Params().Params(String()).Block(
 		Return(Err().Dot("Message")),
 	)
 }

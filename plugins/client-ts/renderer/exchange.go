@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"tgp/internal/common"
-	"tgp/internal/generated"
 	"tgp/internal/model"
 )
 
@@ -19,7 +18,7 @@ func (r *ClientRenderer) RenderExchangeTypes(contract *model.Contract) (err erro
 	outDir := r.outDir
 	r.contract = contract
 	r.knownTypes = make(map[string]int)
-	r.typeDefTs = make(map[string]typeDefTs)
+	r.typeDefTS = make(map[string]typeDefTS)
 
 	for typeID, typ := range r.project.Types {
 		if typ.ImportPkgPath == "" {
@@ -36,7 +35,7 @@ func (r *ClientRenderer) RenderExchangeTypes(contract *model.Contract) (err erro
 				name = typeID
 			}
 		}
-		_ = r.walkVariable(name, typ.ImportPkgPath, &model.Variable{TypeRef: model.TypeRef{TypeID: typeID}, Name: name}, nil, false)
+		_ = r.walkVariable(name, typ.ImportPkgPath, &model.Variable{TypeID: typeID, Name: name}, nil, false)
 	}
 
 	for _, method := range contract.Methods {
@@ -57,17 +56,16 @@ func (r *ClientRenderer) RenderExchangeTypes(contract *model.Contract) (err erro
 	}
 
 	file := tsg.NewFile()
-	file.Comment(generated.ByToolGatewayComment)
 	file.Line()
 
-	typeByPackage := make(map[string]map[string]typeDefTs) // pkg -> name -> def
-	var standaloneTypes []typeDefTs
+	typeByPackage := make(map[string]map[string]typeDefTS) // pkg -> name -> def
+	var standaloneTypes []typeDefTS
 	seenStandalone := make(map[string]bool)
 
-	for key, def := range common.SortedPairs(r.typeDefTs) {
+	for key, def := range common.SortedPairs(r.typeDefTS) {
 		if def.importPkg != "" {
 			if typeByPackage[def.importPkg] == nil {
-				typeByPackage[def.importPkg] = make(map[string]typeDefTs)
+				typeByPackage[def.importPkg] = make(map[string]typeDefTS)
 			}
 			typeName := def.importName
 			if typeName == "" {
@@ -96,7 +94,7 @@ func (r *ClientRenderer) RenderExchangeTypes(contract *model.Contract) (err erro
 
 	exportedTypes := make(map[string]bool)
 	for pkgName, typesMap := range common.SortedPairs(typeByPackage) {
-		typesList := make([]typeDefTs, 0, len(typesMap))
+		typesList := make([]typeDefTS, 0, len(typesMap))
 		for _, def := range common.SortedPairs(typesMap) {
 			typesList = append(typesList, def)
 		}
@@ -113,16 +111,16 @@ func (r *ClientRenderer) RenderExchangeTypes(contract *model.Contract) (err erro
 				}
 				exportedTypes[interfaceName] = true
 				switch def.kind {
-				case "struct":
+				case kindStruct:
 					exportStmt := tsg.NewStatement()
 					exportStmt.Export().TypeAlias(interfaceName)
-					exportStmt.Id(pkgName).Dot(interfaceName).Semicolon()
+					exportStmt.ID(pkgName).Dot(interfaceName).Semicolon()
 					file.Add(exportStmt)
 					file.Line()
-				case "scalar":
+				case kindScalar:
 					exportStmt := tsg.NewStatement()
 					exportStmt.Export().TypeAlias(interfaceName)
-					exportStmt.Id(pkgName).Dot(interfaceName).Semicolon()
+					exportStmt.ID(pkgName).Dot(interfaceName).Semicolon()
 					file.Add(exportStmt)
 					file.Line()
 				}
@@ -142,7 +140,7 @@ func (r *ClientRenderer) RenderExchangeTypes(contract *model.Contract) (err erro
 
 	file.GenerateImports()
 
-	outFilename := path.Join(outDir, fmt.Sprintf("%s-exchange.ts", r.tsFileName(contract)))
+	outFilename := path.Join(outDir, r.tsFileName(contract)+"-exchange.ts")
 	return file.Save(outFilename)
 }
 
@@ -164,7 +162,7 @@ func (r *ClientRenderer) renderExchangeRequestType(contract *model.Contract, met
 	if len(args) == 0 {
 		stmt.Comment("Formal exchange type, please do not delete.")
 		stmt.Export().TypeAlias(requestName)
-		stmt.Id("Record").Generic("string", "never")
+		stmt.ID("Record").Generic(typeString, "never")
 		stmt.Semicolon()
 	} else {
 		stmt.Export().Interface(requestName, func(grp *tsg.Group) {
@@ -172,7 +170,7 @@ func (r *ClientRenderer) renderExchangeRequestType(contract *model.Contract, met
 				typeStr := r.walkVariable(arg.Name, contract.PkgPath, arg, method.Annotations, true).typeLink()
 
 				field := tsg.NewStatement()
-				field.Id(tsSafeName(arg.Name))
+				field.ID(tsSafeName(arg.Name))
 				if arg.NumberOfPointers > 0 || model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					field.Optional()
 				}
@@ -211,7 +209,7 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 		stmt.Void()
 		stmt.Semicolon()
 	case 1:
-		if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHttpEnableInlineSingle) ||
+		if model.IsAnnotationSet(r.project, contract, method, nil, model.TagHTTPEnableInlineSingle) ||
 			model.ResultFieldEmbedded(r.project, contract, method, results[0]) {
 			typeStr := r.walkVariable(results[0].Name, contract.PkgPath, results[0], method.Annotations, false).typeLink()
 			stmt.Export().TypeAlias(responseName)
@@ -222,7 +220,7 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 			typeStr := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
 			stmt.Export().Interface(responseName, func(grp *tsg.Group) {
 				field := tsg.NewStatement()
-				field.Id(tsSafeName(ret.Name))
+				field.ID(tsSafeName(ret.Name))
 				if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 					field.Optional()
 				}
@@ -237,26 +235,12 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 			seen := make(map[string]bool)
 			stmt.Export().Interface(responseName, func(grp *tsg.Group) {
 				for _, ret := range results {
-					if r.resultHasJsonInline(method, ret) {
+					if r.resultHasJSONInline(method, ret) {
 						typ, ok := r.project.Types[ret.TypeID]
 						if ok && typ.Kind == model.TypeKindStruct && typ.StructFields != nil {
+							opts := tsInterfaceFieldOptions{seen: seen, isArgument: false}
 							for _, f := range typ.StructFields {
-								jsonName, inline := r.jsonName(f)
-								if jsonName == "" || jsonName == "-" || inline {
-									continue
-								}
-								if seen[jsonName] {
-									continue
-								}
-								seen[jsonName] = true
-								fieldVar := &model.Variable{TypeRef: f.TypeRef, Name: f.Name}
-								typeStr := r.walkVariable(f.Name, typ.ImportPkgPath, fieldVar, nil, false).typeLink()
-								field := tsg.NewStatement()
-								field.Id(jsonName)
-								field.Colon()
-								field.Add(tsg.TypeFromString(typeStr))
-								field.Semicolon()
-								grp.Add(field)
+								r.appendStructFieldTSInterface(grp, f, typ.ImportPkgPath, opts)
 							}
 						}
 					} else {
@@ -266,7 +250,7 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 						seen[ret.Name] = true
 						typeStr := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
 						field := tsg.NewStatement()
-						field.Id(tsSafeName(ret.Name))
+						field.ID(tsSafeName(ret.Name))
 						if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 							field.Optional()
 						}
@@ -283,7 +267,7 @@ func (r *ClientRenderer) renderExchangeResponseType(contract *model.Contract, me
 					typeStr := r.walkVariable(ret.Name, contract.PkgPath, ret, method.Annotations, false).typeLink()
 
 					field := tsg.NewStatement()
-					field.Id(tsSafeName(ret.Name))
+					field.ID(tsSafeName(ret.Name))
 					if model.IsAnnotationSet(r.project, contract, method, nil, "nullable") {
 						field.Optional()
 					}
@@ -328,7 +312,7 @@ func (r *ClientRenderer) resultsWithoutError(method *model.Method) (out []*model
 
 	results := make([]*model.Variable, 0, len(method.Results))
 	for _, result := range method.Results {
-		if result.TypeID == "error" || result.TypeID == "builtin:error" {
+		if result.TypeID == typeError || result.TypeID == "builtin:error" {
 			continue
 		}
 		results = append(results, result)
@@ -336,7 +320,7 @@ func (r *ClientRenderer) resultsWithoutError(method *model.Method) (out []*model
 	return results
 }
 
-func (r *ClientRenderer) renderTypeDef(def typeDefTs) *tsg.Statement {
+func (r *ClientRenderer) renderTypeDef(def typeDefTS) *tsg.Statement {
 
 	stmt := tsg.NewStatement()
 
@@ -352,11 +336,11 @@ func (r *ClientRenderer) renderTypeDef(def typeDefTs) *tsg.Statement {
 			} else {
 				stmt.Add(
 					tsg.NewStatement().
-						Id("enum").
-						Id(def.typeName).
+						ID("enum").
+						ID(def.typeName).
 						Values(func(grp *tsg.Group) {
 							for key := range common.SortedPairs(def.properties) {
-								grp.Add(tsg.NewStatement().Id(key).Semicolon())
+								grp.Add(tsg.NewStatement().ID(key).Semicolon())
 							}
 						}).
 						Export(),
@@ -365,13 +349,13 @@ func (r *ClientRenderer) renderTypeDef(def typeDefTs) *tsg.Statement {
 		} else {
 			stmt.Add(tsg.NewStatement().Const(def.name).Op("=").Lit(def.value).Semicolon().Export())
 		}
-	case "struct":
-		stmt.Comment(fmt.Sprintf("Тип %s", def.name))
+	case kindStruct:
+		stmt.Comment("Тип " + def.name)
 		stmt.Interface(def.name, func(grp *tsg.Group) {
 			for name, property := range common.SortedPairs(def.properties) {
-				typeStr := castTypeTs(property.def())
+				typeStr := castTypeTS(property.def())
 				field := tsg.NewStatement().
-					Id(name)
+					ID(name)
 				if property.nullable {
 					field.Optional()
 				}
@@ -384,7 +368,7 @@ func (r *ClientRenderer) renderTypeDef(def typeDefTs) *tsg.Statement {
 	return stmt
 }
 
-func (r *ClientRenderer) renderNamespace(pkgName string, types []typeDefTs) *tsg.Statement {
+func (r *ClientRenderer) renderNamespace(pkgName string, types []typeDefTS) *tsg.Statement {
 
 	stmt := tsg.NewStatement()
 	stmt.Export().Namespace(pkgName, func(grp *tsg.Group) {
@@ -394,7 +378,7 @@ func (r *ClientRenderer) renderNamespace(pkgName string, types []typeDefTs) *tsg
 				interfaceName = def.name
 			}
 			if interfaceName == "" {
-				for key, d := range common.SortedPairs(r.typeDefTs) {
+				for key, d := range common.SortedPairs(r.typeDefTS) {
 					if d.importPkg == pkgName && d.importName != "" {
 						interfaceName = d.importName
 						break
@@ -412,13 +396,13 @@ func (r *ClientRenderer) renderNamespace(pkgName string, types []typeDefTs) *tsg
 				continue
 			}
 			switch def.kind {
-			case "struct":
+			case kindStruct:
 				ifStmt := tsg.NewStatement()
 				ifStmt.Interface(interfaceName, func(ig *tsg.Group) {
 					for name, property := range common.SortedPairs(def.properties) {
-						typeStr := castTypeTs(property.def())
+						typeStr := castTypeTS(property.def())
 						field := tsg.NewStatement().
-							Id(name)
+							ID(name)
 						if property.nullable {
 							field.Optional()
 						}
@@ -427,17 +411,17 @@ func (r *ClientRenderer) renderNamespace(pkgName string, types []typeDefTs) *tsg
 				})
 				ifStmt.Export()
 				grp.Add(ifStmt)
-			case "map":
+			case kindMap:
 				keyType := def.properties["key"]
 				valueType := def.properties["value"]
 				typeAliasStmt := tsg.NewStatement()
 				typeAliasStmt.TypeAlias(interfaceName)
-				recordType := fmt.Sprintf("Record<%s, %s>", castTypeTs(keyType.typeLink()), castTypeTs(valueType.typeLink()))
+				recordType := fmt.Sprintf("Record<%s, %s>", castTypeTS(keyType.typeLink()), castTypeTS(valueType.typeLink()))
 				typeAliasStmt.Add(tsg.TypeFromString(recordType))
 				typeAliasStmt.Semicolon()
 				typeAliasStmt.Export()
 				grp.Add(typeAliasStmt)
-			case "scalar":
+			case kindScalar:
 				typeAliasStmt := tsg.NewStatement()
 				typeAliasStmt.TypeAlias(interfaceName)
 				typeAliasStmt.Add(tsg.TypeFromString(def.typeName))

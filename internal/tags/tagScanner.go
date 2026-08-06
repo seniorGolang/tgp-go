@@ -30,12 +30,12 @@ func TagScanner(tagString string) (tags map[string]string, err error) {
 
 	setTag := func(k string, v string) {
 		if v == "" {
-			if _, ok := tags[k]; !ok {
+			if _, exists := tags[k]; !exists {
 				tags[k] = ""
 			}
 			return
 		}
-		if prev, ok := tags[k]; ok && prev != "" {
+		if prev, exists := tags[k]; exists && prev != "" {
 			tags[k] = prev + "," + v
 		} else {
 			tags[k] = v
@@ -50,7 +50,6 @@ garbage:
 	c = data[i]
 	switch {
 	case c > ' ' && c != '`' && c != '=':
-		key, val = nil, nil // nolint
 		m = i
 		i++
 		goto key

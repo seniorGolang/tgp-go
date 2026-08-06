@@ -33,6 +33,13 @@ func (p *KafkaSubGoPlugin) Execute(request data.Storage) (response data.Storage,
 	if project, err = helper.GetProject(request); err != nil {
 		return
 	}
+	var contracts []string
+	if contracts, err = helper.ParseStringList(request, "contracts"); err != nil {
+		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
+	}
+	if project, err = helper.ProjectWithFilter(project, contracts); err != nil {
+		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to filter contracts"), err)
+	}
 	var output string
 	if output, err = helper.GetOutput(request); err != nil || output == "" {
 		return
@@ -59,16 +66,10 @@ func (p *KafkaSubGoPlugin) Execute(request data.Storage) (response data.Storage,
 			return nil, fmt.Errorf("validate contract %q: %w", contract.Name, err)
 		}
 	}
-	var contracts []string
-	if contracts, err = helper.ParseStringList(request, "contracts"); err != nil {
-		return nil, fmt.Errorf("%s: %w", i18n.Msg("failed to parse contracts"), err)
-	}
-	filtered := *project
-	filtered.Contracts = helper.FilterContracts(project, contracts)
 	if err = cleanup.GeneratedFiles(output); err != nil {
 		return nil, fmt.Errorf("cleanup generated files: %w", err)
 	}
-	if err = generator.Generate(&filtered, output, targetModulePath, outputRelPath); err != nil {
+	if err = generator.Generate(project, output, targetModulePath, outputRelPath); err != nil {
 		return nil, fmt.Errorf("generate kafka-sub-go: %w", err)
 	}
 	return response, nil
@@ -91,9 +92,9 @@ func (p *KafkaSubGoPlugin) Info() (info plugin.Info, err error) {
 			Path:        []string{"kafka", "sub", "go"},
 			Description: i18n.Msg("Generate Kafka Go subscriber"),
 			Options: []plugin.Option{
-				{Name: "contracts-dir", Type: "string", Description: i18n.Msg("Path to contracts folder (relative to rootDir)"), Default: "contracts"},
-				{Name: "out", Type: "string", Description: i18n.Msg("Path to output directory (package name = basename)"), Required: true},
-				{Name: "contracts", Type: "string", Description: i18n.Msg("Comma-separated list of contracts for filtering")},
+				{Name: "contracts-dir", Type: typeString, Description: i18n.Msg("Path to contracts folder (relative to rootDir)"), Default: "contracts"},
+				{Name: "out", Type: typeString, Description: i18n.Msg("Path to output directory (package name = basename)"), Required: true},
+				{Name: "contracts", Type: typeString, Description: i18n.Msg("Comma-separated list of contracts for filtering")},
 			},
 		}},
 		AllowedEnvVars: []string{"GOPATH", "GOROOT", "GOMODCACHE"},

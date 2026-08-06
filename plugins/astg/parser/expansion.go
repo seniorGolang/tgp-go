@@ -16,18 +16,17 @@ import (
 func expandTypesRecursively(project *model.Project, loader *AutonomousPackageLoader) (err error) {
 
 	seenTypes := &typeutil.Map{}
-	msets := &typeutil.MethodSetCache{}
 
 	for _, contract := range project.Contracts {
 		for _, method := range contract.Methods {
 			for _, arg := range method.Args {
-				if err = collectTypeFromID(arg.TypeID, project, seenTypes, msets, loader); err != nil {
+				if err = collectTypeFromID(arg.TypeID, project, seenTypes, loader); err != nil {
 					return
 				}
 			}
 
 			for _, result := range method.Results {
-				if err = collectTypeFromID(result.TypeID, project, seenTypes, msets, loader); err != nil {
+				if err = collectTypeFromID(result.TypeID, project, seenTypes, loader); err != nil {
 					return
 				}
 			}
@@ -37,7 +36,7 @@ func expandTypesRecursively(project *model.Project, loader *AutonomousPackageLoa
 	return
 }
 
-func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeutil.Map, msets *typeutil.MethodSetCache, loader *AutonomousPackageLoader) (err error) {
+func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeutil.Map, loader *AutonomousPackageLoader) (err error) {
 
 	var typ *model.Type
 	var exists bool
@@ -52,7 +51,7 @@ func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeuti
 	}
 
 	if typ.Kind == model.TypeKindAlias && typ.AliasOf != "" {
-		if err = collectTypeFromID(typ.AliasOf, project, seenTypes, msets, loader); err != nil {
+		if err = collectTypeFromID(typ.AliasOf, project, seenTypes, loader); err != nil {
 			slog.Debug(i18n.Msg("Failed to collect base type for alias"), slog.String("baseType", typ.AliasOf), slog.String("alias", typeID), slog.Any("error", err))
 		}
 		if len(typ.StructFields) == 0 {
@@ -80,7 +79,7 @@ func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeuti
 		return
 	}
 
-	forEachReachableType(typeNameObj.Type(), project, seenTypes, msets, loader)
+	forEachReachableType(typeNameObj.Type(), project, seenTypes, loader)
 
 	if typ.Kind == model.TypeKindAlias && typ.AliasOf != "" {
 		var baseType *model.Type
@@ -92,7 +91,7 @@ func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeuti
 					if baseObj != nil {
 						var baseTypeNameObj *types.TypeName
 						if baseTypeNameObj, ok = baseObj.(*types.TypeName); ok {
-							forEachReachableType(baseTypeNameObj.Type(), project, seenTypes, msets, loader)
+							forEachReachableType(baseTypeNameObj.Type(), project, seenTypes, loader)
 						}
 					}
 				}
@@ -103,7 +102,7 @@ func collectTypeFromID(typeID string, project *model.Project, seenTypes *typeuti
 	return
 }
 
-func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeutil.Map, msets *typeutil.MethodSetCache, loader *AutonomousPackageLoader) {
+func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeutil.Map, loader *AutonomousPackageLoader) {
 
 	var visit func(t types.Type, skip bool)
 	visit = func(t types.Type, skip bool) {
@@ -113,12 +112,6 @@ func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeu
 			}
 			seenTypes.Set(t, true)
 			saveTypeFromGoTypes(t, project, loader)
-		}
-		tmset := msets.MethodSet(t)
-		for method := range tmset.Methods() {
-			sig := method.Type().(*types.Signature)
-			visit(sig.Params(), true)
-			visit(sig.Results(), true)
 		}
 
 		switch t := t.(type) {
@@ -148,15 +141,12 @@ func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeu
 			visit(t.Elem(), false)
 
 		case *types.Signature:
-			if t.Recv() != nil {
-				return
-			}
-			visit(t.Params(), true)
-			visit(t.Results(), true)
+			// Wire-замыкание не следует за сигнатурами функций.
 
 		case *types.Named:
-			ptrType := types.NewPointer(t)
-			visit(ptrType, false)
+			if typeHasJSONCodec(t) {
+				return
+			}
 			visit(t.Underlying(), true)
 
 		case *types.Array:
@@ -164,7 +154,11 @@ func forEachReachableType(t types.Type, project *model.Project, seenTypes *typeu
 
 		case *types.Struct:
 			for i, n := 0, t.NumFields(); i < n; i++ {
-				visit(t.Field(i).Type(), false)
+				field := t.Field(i)
+				if field == nil || !field.Exported() {
+					continue
+				}
+				visit(field.Type(), false)
 			}
 
 		case *types.Tuple:
@@ -250,8 +244,8 @@ func generateTypeIDFromGoTypes(t types.Type) (typeID string) {
 	switch t := t.(type) {
 	case *types.Basic:
 		result := t.Name()
-		//nolint:staticcheck // QF1003: проверка пустой строки более читаема через if
-		if result == "" || result == "invalid type" {
+
+		if result == "" || result == errInvalidType {
 			return
 		}
 		typeID = result

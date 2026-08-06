@@ -4,7 +4,9 @@ package renderer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +22,7 @@ func (r *ClientRenderer) RenderPackageJSON() (err error) {
 
 	name := model.GetAnnotationValue(r.project, nil, nil, nil, tagNpmName, "")
 	if name == "" {
-		return fmt.Errorf("package-json requires @tg npmName annotation")
+		return errors.New("package-json requires @tg npmName annotation")
 	}
 
 	packageDir := filepath.Dir(r.packageJSONPath)
@@ -67,9 +69,7 @@ func (r *ClientRenderer) RenderPackageJSON() (err error) {
 
 	if len(r.npmRuntimeDeps) > 0 {
 		deps := make(map[string]string, len(r.npmRuntimeDeps))
-		for name, version := range r.npmRuntimeDeps {
-			deps[name] = version
-		}
+		maps.Copy(deps, r.npmRuntimeDeps)
 		pkg["dependencies"] = deps
 	}
 
@@ -94,10 +94,10 @@ func (r *ClientRenderer) RenderPackageJSON() (err error) {
 		return fmt.Errorf("marshal package.json: %w", err)
 	}
 	jsonData = append(jsonData, '\n')
-	if err = os.MkdirAll(packageDir, 0700); err != nil {
+	if err = os.MkdirAll(packageDir, 0o700); err != nil {
 		return fmt.Errorf("create package.json directory: %w", err)
 	}
-	if err = os.WriteFile(r.packageJSONPath, jsonData, 0600); err != nil {
+	if err = os.WriteFile(r.packageJSONPath, jsonData, 0o600); err != nil {
 		return fmt.Errorf("write package.json: %w", err)
 	}
 	return nil

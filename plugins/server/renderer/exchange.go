@@ -4,15 +4,15 @@ package renderer
 
 import (
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
 	"strings"
 
-	. "github.com/dave/jennifer/jen" // nolint:staticcheck
+	. "github.com/dave/jennifer/jen" //nolint:staticcheck,revive
 
 	"tgp/internal/common"
 	"tgp/internal/content"
-	"tgp/internal/generated"
 	"tgp/internal/model"
 	"tgp/internal/tags"
 	"tgp/plugins/server/renderer/types"
@@ -21,15 +21,13 @@ import (
 func (r *contractRenderer) RenderExchange() (err error) {
 
 	srcFile := NewSrcFile(filepath.Base(r.outDir))
-	srcFile.PackageComment(generated.ByToolGateway)
-
 	typeGen := types.NewGenerator(r.project, &srcFile)
 
 	for _, method := range r.contract.Methods {
 		requestFields := r.fieldsArgument(method)
 		responseFields := r.fieldsResult(method)
-		if len(responseFields) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
-			responseFields[0].tags["json"] = ",inline"
+		if len(responseFields) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPEnableInlineSingle) {
+			responseFields[0].tags[keyJSON] = jsonTagInline
 		}
 
 		reqXML := content.Kind(model.GetAnnotationValue(r.project, r.contract, method, nil, model.TagRequestContentType, "application/json")) == content.KindXML
@@ -46,8 +44,8 @@ func (r *contractRenderer) RenderExchange() (err error) {
 
 		if len(r.resultNamesExcludeFromBody(method)) > 0 {
 			bodyFields := r.fieldsResultBody(method)
-			if len(bodyFields) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHttpEnableInlineSingle) {
-				bodyFields[0].tags["json"] = ",inline"
+			if len(bodyFields) == 1 && model.IsAnnotationSet(r.project, r.contract, method, nil, model.TagHTTPEnableInlineSingle) {
+				bodyFields[0].tags[keyJSON] = jsonTagInline
 			}
 			bodyName := responseBodyStructName(r.contract.Name, method.Name)
 			srcFile.Line().Add(r.exchangeStruct(typeGen, bodyName, bodyFields, respXML))
@@ -132,7 +130,7 @@ func (r *contractRenderer) fieldsArgument(method *model.Method) []exchangeField 
 		vars = streamVariables(r.project, vars, false)
 	}
 	omitSet := model.HTTPOmitFromRequestJSON(r.project, r.contract, method)
-	return r.varsToFields(vars, method.Annotations, omitSet)
+	return r.varsToFields(vars, method, omitSet)
 }
 
 func (r *contractRenderer) fieldsResult(method *model.Method) []exchangeField {
@@ -142,7 +140,7 @@ func (r *contractRenderer) fieldsResult(method *model.Method) []exchangeField {
 		vars = streamVariables(r.project, vars, false)
 	}
 	exclude := r.resultNamesExcludeFromBody(method)
-	return r.varsToFields(vars, method.Annotations, exclude)
+	return r.varsToFields(vars, method, exclude)
 }
 
 func (r *contractRenderer) fieldsResultForMarshal(method *model.Method) []exchangeField {
@@ -151,13 +149,13 @@ func (r *contractRenderer) fieldsResultForMarshal(method *model.Method) []exchan
 	if model.MethodIsStream(r.project, r.contract, method) {
 		vars = streamVariables(r.project, vars, false)
 	}
-	return r.varsToFields(vars, method.Annotations, nil)
+	return r.varsToFields(vars, method, nil)
 }
 
 func (r *contractRenderer) fieldsResultBody(method *model.Method) []exchangeField {
 
 	vars := r.resultsForBody(method)
-	return r.varsToFields(vars, method.Annotations, nil)
+	return r.varsToFields(vars, method, nil)
 }
 
 func streamVariables(project *model.Project, vars []*model.Variable, includeChannels bool) (out []*model.Variable) {
@@ -173,7 +171,14 @@ func streamVariables(project *model.Project, vars []*model.Variable, includeChan
 	return
 }
 
-func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.DocTags, requestJsonOmitNames map[string]struct{}) []exchangeField {
+func (r *contractRenderer) varsToFields(vars []*model.Variable, method *model.Method, requestJSONOmitNames map[string]struct{}) []exchangeField {
+
+	var methodTags tags.DocTags
+	var skipNames map[string]struct{}
+	if method != nil {
+		methodTags = method.Annotations
+		_, skipNames = model.MethodLogSkip(r.project, r.contract, method)
+	}
 
 	fields := make([]exchangeField, 0, len(vars))
 	for _, v := range vars {
@@ -190,13 +195,16 @@ func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.
 			tags:             make(map[string]string),
 		}
 
-		if requestJsonOmitNames != nil {
-			if _, omit := requestJsonOmitNames[v.Name]; omit {
-				field.tags["json"] = "-"
+		if requestJSONOmitNames != nil {
+			if _, omit := requestJSONOmitNames[v.Name]; omit {
+				field.tags[keyJSON] = "-"
 			}
 		}
-		for tagName, tagValue := range common.SortedPairs(tags.ParseMethodVarTags(methodTags, v.Name)) {
-			field.tags[tagName] = tagValue
+		maps.Insert(field.tags, common.SortedPairs(tags.ParseMethodVarTags(methodTags, v.Name)))
+		if model.VariableLogSkipped(method, v, skipNames) {
+			if _, hasDumper := field.tags[keyDumper]; !hasDumper {
+				field.tags[keyDumper] = dumperHide
+			}
 		}
 		fields = append(fields, field)
 	}
@@ -205,13 +213,13 @@ func (r *contractRenderer) varsToFields(vars []*model.Variable, methodTags tags.
 
 func (r *contractRenderer) structField(typeGen *types.Generator, field exchangeField, template string, withXML bool) (st *Statement) {
 
-	jsonTag := field.tags["json"]
+	jsonTag := field.tags[keyJSON]
 	if jsonTag == "" {
 		jsonTag = fmt.Sprintf(template, field.name)
 	}
-	fieldTags := map[string]string{"json": jsonTag}
+	fieldTags := map[string]string{keyJSON: jsonTag}
 	for tag, value := range common.SortedPairs(field.tags) {
-		if tag == "json" {
+		if tag == keyJSON {
 			continue
 		}
 		fieldTags[tag] = value
@@ -224,22 +232,20 @@ func (r *contractRenderer) structField(typeGen *types.Generator, field exchangeF
 		}
 	}
 
-	isEmbedded := fieldTags["json"] == ",inline" && typeGen.TypeIsEmbeddable(field.typeID)
+	isEmbedded := fieldTags[keyJSON] == jsonTagInline && typeGen.TypeIsEmbeddable(field.typeID)
 
 	var s *Statement
 	switch {
 	case field.isSlice || field.arrayLen > 0 || field.mapKey != nil:
 		v := &model.Variable{
-			TypeRef: model.TypeRef{
-				TypeID:           field.typeID,
-				NumberOfPointers: field.numberOfPointers,
-				IsSlice:          field.isSlice,
-				ArrayLen:         field.arrayLen,
-				IsEllipsis:       field.isEllipsis,
-				ElementPointers:  field.elementPointers,
-				MapKey:           field.mapKey,
-				MapValue:         field.mapValue,
-			},
+			TypeID:           field.typeID,
+			NumberOfPointers: field.numberOfPointers,
+			IsSlice:          field.isSlice,
+			ArrayLen:         field.arrayLen,
+			IsEllipsis:       field.isEllipsis,
+			ElementPointers:  field.elementPointers,
+			MapKey:           field.mapKey,
+			MapValue:         field.mapValue,
 		}
 		s = typeGen.FieldTypeFromTypeRef(&v.TypeRef, false)
 	case isEmbedded:

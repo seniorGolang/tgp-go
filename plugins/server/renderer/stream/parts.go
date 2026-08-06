@@ -3,6 +3,7 @@
 package stream
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -21,16 +22,49 @@ type partReader struct {
 	index int
 }
 
-// NewParts returns ordered io.Reader values over a single multipart stream.
+// Parts is an ordered multipart session over a single reader.
+// Readers must be consumed in name order; Close drains the active part.
+type Parts struct {
+	gate    *gate
+	readers []*partReader
+}
+
+// NewParts returns an ordered multipart session.
 // Parts must be read in the order of names; out-of-order Read returns an error.
-func NewParts(reader *multipart.Reader, names []string, contentTypes []string) (parts []io.Reader) {
+func NewParts(reader *multipart.Reader, names []string, contentTypes []string) (parts *Parts) {
 
 	shared := &gate{reader: reader, names: names, types: contentTypes}
-	parts = make([]io.Reader, len(names))
+	parts = &Parts{gate: shared, readers: make([]*partReader, len(names))}
 	for i := range names {
-		parts[i] = &partReader{gate: shared, index: i}
+		parts.readers[i] = &partReader{gate: shared, index: i}
 	}
 	return parts
+}
+
+// Reader returns the io.Reader for the part at index.
+func (p *Parts) Reader(index int) (r io.Reader) {
+
+	return p.readers[index]
+}
+
+// Close drains and closes the currently open part, if any. Safe to call multiple times.
+func (p *Parts) Close() (err error) {
+
+	if p == nil {
+		return nil
+	}
+	return p.gate.closeActive()
+}
+
+func (g *gate) closeActive() (err error) {
+
+	if g.part == nil {
+		return nil
+	}
+	err = g.part.Close()
+	g.part = nil
+	g.index++
+	return err
 }
 
 func (p *partReader) Read(buf []byte) (n int, err error) {
@@ -42,12 +76,12 @@ func (p *partReader) Read(buf []byte) (n int, err error) {
 		return 0, fmt.Errorf("multipart part %q: read out of order, expected %q", p.gate.names[p.index], p.gate.names[p.gate.index])
 	}
 	if p.gate.part == nil {
-		if err = p.gate.open(); err != nil {
-			return 0, err
+		if openErr := p.gate.open(); openErr != nil {
+			return 0, openErr
 		}
 	}
 	n, err = p.gate.part.Read(buf)
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		_ = p.gate.part.Close()
 		p.gate.part = nil
 		p.gate.index++
@@ -67,7 +101,6 @@ func (g *gate) open() (err error) {
 			return err
 		}
 		if part.FormName() != want {
-			_, _ = io.Copy(io.Discard, part)
 			_ = part.Close()
 			continue
 		}

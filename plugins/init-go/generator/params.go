@@ -23,7 +23,7 @@ type ContractIfaceData struct {
 
 type params struct {
 	Module         string
-	JsonRPCIfaces  []InterfaceSpec
+	JSONRPCIfaces  []InterfaceSpec
 	RestIfaces     []InterfaceSpec
 	EntityName     string
 	EntitySnake    string
@@ -38,13 +38,13 @@ type params struct {
 func newParams(moduleName string, jsonRPCRaw string, restRaw string) (p params) {
 
 	p.Module = moduleName
-	p.JsonRPCIfaces = parseAndNormalizeInterfaces(jsonRPCRaw)
+	p.JSONRPCIfaces = parseAndNormalizeInterfaces(jsonRPCRaw)
 	p.RestIfaces = parseAndNormalizeInterfaces(restRaw)
-	p.HasJSONRPC = len(p.JsonRPCIfaces) > 0
+	p.HasJSONRPC = len(p.JSONRPCIfaces) > 0
 	p.HasREST = len(p.RestIfaces) > 0
 	p.EntityName = entityNameDefault
 	if p.HasJSONRPC {
-		p.EntityName = p.JsonRPCIfaces[0].PublicName
+		p.EntityName = p.JSONRPCIfaces[0].PublicName
 	} else if p.HasREST {
 		p.EntityName = p.RestIfaces[0].PublicName
 	}
@@ -60,7 +60,7 @@ func newParams(moduleName string, jsonRPCRaw string, restRaw string) (p params) 
 func parseAndNormalizeInterfaces(raw string) (out []InterfaceSpec) {
 
 	seen := make(map[string]struct{})
-	for _, s := range strings.Split(raw, ",") {
+	for s := range strings.SplitSeq(raw, ",") {
 		s = strings.TrimSpace(s)
 		if s == "" {
 			continue
@@ -86,7 +86,7 @@ func toPublicName(s string) (out string) {
 	}
 	if strings.Contains(s, "_") {
 		var parts []string
-		for _, part := range strings.Split(s, "_") {
+		for part := range strings.SplitSeq(s, "_") {
 			part = strings.TrimSpace(part)
 			if part == "" {
 				continue
@@ -108,7 +108,7 @@ func isAllUpper(s string) (ok bool) {
 			return false
 		}
 	}
-	return len(s) > 0 && unicode.IsLetter(rune(s[0]))
+	return s != "" && unicode.IsLetter(rune(s[0]))
 }
 
 // publicNameToFileBase переводит публичное имя в базовое имя файла Go (snake_case).

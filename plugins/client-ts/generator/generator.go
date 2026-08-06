@@ -73,7 +73,7 @@ func (g *generator) generate() (err error) {
 		}
 	}
 
-	if g.renderer.HasJsonRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE() {
+	if g.renderer.HasJSONRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE() {
 		if err = g.renderer.RenderClientOptions(); err != nil {
 			return
 		}
@@ -86,8 +86,11 @@ func (g *generator) generate() (err error) {
 		if err = g.renderer.RenderHeaders(); err != nil {
 			return
 		}
-		if g.renderer.HasJsonRPC() {
-			if err = g.renderer.RenderJsonRPCLibrary(); err != nil {
+		if err = g.renderer.RenderForm(); err != nil {
+			return
+		}
+		if g.renderer.HasJSONRPC() {
+			if err = g.renderer.RenderJSONRPCLibrary(); err != nil {
 				return
 			}
 		}
@@ -97,7 +100,7 @@ func (g *generator) generate() (err error) {
 		if err = g.renderer.RenderClientError(); err != nil {
 			return
 		}
-		if g.renderer.HasJsonRPC() {
+		if g.renderer.HasJSONRPC() {
 			if err = g.renderer.RenderClientBatch(); err != nil {
 				return
 			}
@@ -122,10 +125,10 @@ func (g *generator) generate() (err error) {
 		if err = g.renderer.RenderExchangeTypes(contract); err != nil {
 			return
 		}
-		if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJsonRPC) ||
+		if model.IsAnnotationSet(g.project, contract, nil, nil, model.TagServerJSONRPC) ||
 			model.ContractHasWS(g.project, contract) ||
 			model.ContractHasSSE(g.project, contract) {
-			if err = g.renderer.RenderJsonRPCClientClass(contract); err != nil {
+			if err = g.renderer.RenderJSONRPCClientClass(contract); err != nil {
 				return
 			}
 		}
@@ -136,8 +139,8 @@ func (g *generator) generate() (err error) {
 		}
 	}
 
-	if g.renderer.HasJsonRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE() {
-		if err = g.renderer.RenderTsConfig(); err != nil {
+	if g.renderer.HasJSONRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE() {
+		if err = g.renderer.RenderTSConfig(); err != nil {
 			return
 		}
 		if err = g.renderer.RenderPackageJSON(); err != nil {
@@ -145,7 +148,7 @@ func (g *generator) generate() (err error) {
 		}
 	}
 
-	if g.opts.Doc.Enabled && (g.renderer.HasJsonRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE()) {
+	if g.opts.Doc.Enabled && (g.renderer.HasJSONRPC() || g.renderer.HasHTTP() || g.renderer.HasWS() || g.renderer.HasSSE()) {
 		rendererDocOpts := renderer.DocOptions{
 			Enabled:  g.opts.Doc.Enabled,
 			FilePath: g.opts.Doc.FilePath,

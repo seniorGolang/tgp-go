@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -15,6 +14,7 @@ import (
 {{end}}
 	"{{.Module}}/internal/transport"
 	"{{.Module}}/internal/transport/logger"
+	"{{.Module}}/pkg/errs"
 )
 
 const (
@@ -26,18 +26,20 @@ var version = "local"
 
 func main() {
 
-    log.Logger = config.Service().Logger().With().Str("version", version).Str("service", serviceName).Logger()
-	ctx := log.Logger.WithContext(context.Background())
+	cfg := config.Service()
+	log.Logger = cfg.Logger().With().
+		Str("version", version).
+		Str("service", serviceName).
+		Logger()
+	ctx, stop := signal.NotifyContext(log.Logger.WithContext(context.Background()), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	serverLogger := logger.NewZerolog(log.Logger)
 
-	shutdown := make(chan os.Signal, 1)
-    signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
-
 	log.Ctx(ctx).Info().Msg("start service")
-	defer log.Info().Msg("shutdown server")
+	defer log.Info().Msg("shutdown service")
 
-	livenessSrv := transport.ServeHealth(serverLogger, "/liveness", config.Service().LivenessBind, "ok")
+	livenessSrv := transport.ServeHealth(serverLogger, "/liveness", cfg.LivenessBind)
 	defer livenessSrv.Stop()
 
 {{ range .ServicePackages}}
@@ -52,18 +54,23 @@ func main() {
 	}
 
 	srv := transport.New(serverLogger, services...).WithLog().WithMetrics()
-	srv.ServeMetrics(serverLogger, "/", config.Service().MetricsBind)
-    defer func() { _ = srv.Shutdown() }()
-
-	go func() {
-		log.Info().Str("bind", config.Service().Bind).Msg("listen on")
-		if listenErr := srv.Fiber().Listen(config.Service().Bind); listenErr != nil {
-			log.Panic().Err(listenErr).Stack().Msg("server error")
+	srv.ServeMetrics(serverLogger, "/", cfg.MetricsBind)
+	defer func() {
+		if shutdownErr := srv.ShutdownWithTimeout(cfg.ShutdownTimeout); shutdownErr != nil {
+			log.Error().Err(shutdownErr).Msg("shutdown error")
 		}
 	}()
 
-    readinessSrv := transport.ServeHealth(serverLogger, "/readiness", config.Service().ReadinessBind, "ok")
-    defer readinessSrv.Stop()
+	go func() {
+		log.Info().Str("bind", cfg.Bind).Msg("listen on")
+		if listenErr := srv.Fiber().Listen(cfg.Bind); listenErr != nil {
+			errs.PanicOnError(ctx, listenErr, "server listen error")
+		}
+	}()
 
-	<-shutdown
+	readinessSrv := transport.ServeHealth(serverLogger, "/readiness", cfg.ReadinessBind)
+	defer readinessSrv.Stop()
+
+	<-ctx.Done()
+	stop()
 }

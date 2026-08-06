@@ -23,7 +23,7 @@ func ParseMethodVarTags(methodTags DocTags, varName string) (out map[string]stri
 		return
 	}
 
-	for _, item := range strings.Split(value, "|") {
+	for item := range strings.SplitSeq(value, "|") {
 		tokens := strings.SplitN(strings.TrimSpace(item), ":", 2)
 		if len(tokens) < 2 {
 			continue

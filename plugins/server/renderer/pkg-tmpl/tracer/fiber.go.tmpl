@@ -2,14 +2,12 @@
 package tracer
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
 	"go.opentelemetry.io/contrib"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -84,7 +82,7 @@ func Middleware(opts ...Option) (h fiber.Handler) {
 			return ftx.Next()
 		}
 		ftx.Locals(tracerKey, tracer)
-		savedCtx, cancel := context.WithCancel(ftx.UserContext())
+		savedCtx := ftx.UserContext()
 		start := time.Now()
 		requestMetricsAttrs := httpServerMetricAttributesFromRequest(ftx, cfg)
 		httpServerActiveRequests.Add(savedCtx, 1, metric.WithAttributes(requestMetricsAttrs...))
@@ -99,13 +97,13 @@ func Middleware(opts ...Option) (h fiber.Handler) {
 			trace.WithAttributes(httpServerTraceAttributesFromRequest(ftx, cfg)...),
 			trace.WithSpanKind(trace.SpanKindServer),
 		}
-		spanName := utils.CopyString(ftx.Path())
+		spanName := ftx.Path()
 		ctx, span := tracer.Start(ctx, spanName, options...)
-		defer span.End()
 		ftx.SetUserContext(ctx)
-		if err = ftx.Next(); err != nil {
-			span.RecordError(err)
-			_ = ftx.App().Config().ErrorHandler(ftx, err)
+		reqErr := ftx.Next()
+		if reqErr != nil {
+			span.RecordError(reqErr)
+			_ = ftx.App().Config().ErrorHandler(ftx, reqErr)
 		}
 		responseAttrs := []attribute.KeyValue{
 			semconv.HTTPResponseStatusCode(ftx.Response().StatusCode()),
@@ -113,7 +111,8 @@ func Middleware(opts ...Option) (h fiber.Handler) {
 		}
 		requestSize, _ := strconv.ParseInt(string(ftx.Request().Header.Peek("Content-Length")), 10, 64)
 		var responseSize int64
-		if ftx.GetRespHeader("Content-Type") != "text/event-stream" {
+		isSSE := ftx.GetRespHeader("Content-Type") == "text/event-stream"
+		if !isSSE {
 			responseSize, _ = strconv.ParseInt(string(ftx.Response().Header.Peek("Content-Length")), 10, 64)
 		}
 		defer func() {
@@ -122,9 +121,10 @@ func Middleware(opts ...Option) (h fiber.Handler) {
 			httpServerDuration.Record(savedCtx, float64(time.Since(start).Microseconds())/1000, metric.WithAttributes(responseMetricAttrs...))
 			httpServerRequestSize.Record(savedCtx, requestSize, metric.WithAttributes(responseMetricAttrs...))
 			httpServerResponseSize.Record(savedCtx, responseSize, metric.WithAttributes(responseMetricAttrs...))
-
-			ftx.SetUserContext(savedCtx)
-			cancel()
+			// SSE body streams after the handler returns; keep span context until the connection ends.
+			if !isSSE {
+				ftx.SetUserContext(savedCtx)
+			}
 		}()
 		span.SetAttributes(responseAttrs...)
 		span.SetName(cfg.SpanNameFormatter(ftx))
@@ -134,6 +134,9 @@ func Middleware(opts ...Option) (h fiber.Handler) {
 		cfg.Propagators.Inject(ftx.UserContext(), tracingHeaders)
 		for _, headerKey := range tracingHeaders.Keys() {
 			ftx.Set(headerKey, tracingHeaders.Get(headerKey))
+		}
+		if !isSSE {
+			span.End()
 		}
 		return nil
 	}

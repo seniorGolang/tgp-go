@@ -52,12 +52,12 @@ func newConfig() (c *config) {
 		actorFontFamily:         "Open Sans, sans-serif",
 		actorFontWeight:         "Open Sans, sans-serif",
 		noteFontSize:            14, //nolint:mnd
-		noteFontFamily:          "trebuchet ms, verdana, arial",
-		noteFontWeight:          "trebuchet ms, verdana, arial",
+		noteFontFamily:          fontTrebuchet,
+		noteFontWeight:          fontTrebuchet,
 		noteAlign:               "center",
 		messageFontSize:         16, //nolint:mnd
-		messageFontFamily:       "trebuchet ms, verdana, arial",
-		messageFontWeight:       "trebuchet ms, verdana, arial",
+		messageFontFamily:       fontTrebuchet,
+		messageFontWeight:       fontTrebuchet,
 	}
 }
 

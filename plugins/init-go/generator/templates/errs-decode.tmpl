@@ -5,9 +5,9 @@ import (
 )
 
 type rpcError struct {
+	Error   `json:"data,inline"`
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-	Data    Error  `json:"data,omitempty"`
 }
 
 func Decoder(errData json.RawMessage) (err error) {
@@ -16,5 +16,5 @@ func Decoder(errData json.RawMessage) (err error) {
 	if err = json.Unmarshal(errData, &srcErr); err != nil {
 		return Internal.SetCauseRaw(string(errData))
 	}
-	return makeError(srcErr.Message, srcErr.Data.TrKey, srcErr.Code).SetCauseRaw(srcErr.Data.Cause)
+	return makeError(srcErr.Message, srcErr.TrKey, srcErr.Code).SetCauseRaw(srcErr.Cause)
 }
